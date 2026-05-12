@@ -146,6 +146,9 @@ router.get('/', async (req, res, next) => {
 
 router.get('/:id', async (req, res, next) => {
   try {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ message: 'Invalid asset ID' });
+
   const [rows] = await db.query(`
     SELECT a.*, at.name AS asset_type_name, l.name AS location_name, tt.name AS tag_type_name, v.name AS vendor_name
     FROM assets a
@@ -154,7 +157,7 @@ router.get('/:id', async (req, res, next) => {
     LEFT JOIN tag_types tt ON a.tag_type_id = tt.id
     LEFT JOIN vendors v ON a.vendor_id = v.id
     WHERE a.id = ?
-  `, [req.params.id]);
+  `, [id]);
   if (!rows.length) return res.status(404).json({ message: 'Not found' });
   res.json(rows[0]);
   } catch (err) { next(err); }
@@ -163,12 +166,15 @@ router.get('/:id', async (req, res, next) => {
 // Get attribute values for an asset
 router.get('/:id/attributes', async (req, res, next) => {
   try {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ message: 'Invalid asset ID' });
+
   const [rows] = await db.query(`
     SELECT aav.*, ata.name, ata.attr_type
     FROM asset_attribute_values aav
     JOIN asset_type_attributes ata ON aav.attribute_id = ata.id
     WHERE aav.asset_id = ?
-  `, [req.params.id]);
+  `, [id]);
 
   // Attach list options
   for (const row of rows) {
@@ -189,18 +195,21 @@ router.get('/:id/attributes', async (req, res, next) => {
 // Save/update attribute values for an asset
 router.put('/:id/attributes', async (req, res, next) => {
   try {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ message: 'Invalid asset ID' });
+
   const { values } = req.body; // [{ attribute_id, value }]
   for (const v of values) {
     await db.query(
       `INSERT INTO asset_attribute_values (asset_id, attribute_id, value)
        VALUES (?, ?, ?)
        ON DUPLICATE KEY UPDATE value = ?`,
-      [req.params.id, v.attribute_id, v.value, v.value]
+      [id, v.attribute_id, v.value, v.value]
     );
   }
   // Trigger attribute/maintenance rules immediately
   setImmediate(() => runRules().catch(e => console.error('Rule engine error:', e.message)));
-  await audit.log('Asset', 'Modified', `Attributes updated for asset ID ${req.params.id}`, req.auditUser, req.auditUserId);
+  await audit.log('Asset', 'Modified', `Attributes updated for asset ID ${id}`, req.auditUser, req.auditUserId);
   res.json({ message: 'Saved' });
   } catch (err) { next(err); }
 });
@@ -249,6 +258,9 @@ router.post('/', async (req, res, next) => {
 
 router.put('/:id', async (req, res, next) => {
   try {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ message: 'Invalid asset ID' });
+
   const { rfid_tag, tag_type_id, vendor_id, asset_serial, name, asset_type_id, current_location_id, status, description } = req.body;
 
   // Check asset modify privilege
@@ -285,24 +297,24 @@ router.put('/:id', async (req, res, next) => {
   if (rfid_tag && rfid_tag.toString().trim().length !== 24) editErrors.push('RFID tag must be exactly 24 characters');
   if (editErrors.length) return res.status(400).json({ message: editErrors.join('; ') });
 
-  const [existing] = await db.query('SELECT current_location_id FROM assets WHERE id = ?', [req.params.id]);
+  const [existing] = await db.query('SELECT current_location_id FROM assets WHERE id = ?', [id]);
   if (!existing.length) return res.status(404).json({ message: 'Not found' });
 
   await db.query(
     'UPDATE assets SET rfid_tag = ?, tag_type_id = ?, vendor_id = ?, asset_serial = ?, name = ?, asset_type_id = ?, current_location_id = ?, status = ?, description = ? WHERE id = ?',
-    [rfid_tag || null, tag_type_id || null, vendor_id || null, asset_serial, name, asset_type_id, current_location_id || null, status, description || null, req.params.id]
+    [rfid_tag || null, tag_type_id || null, vendor_id || null, asset_serial, name, asset_type_id, current_location_id || null, status, description || null, id]
   );
 
   const oldLocation = existing[0].current_location_id;
   if (current_location_id && current_location_id != oldLocation) {
     await db.query(
       'INSERT INTO movement_history (asset_id, from_location_id, to_location_id, notes) VALUES (?, ?, ?, ?)',
-      [req.params.id, oldLocation, current_location_id, req.body.notes || null]
+      [id, oldLocation, current_location_id, req.body.notes || null]
     );
     // Trigger rule engine immediately for real-time alerts
     setImmediate(() => runRules().catch(e => console.error('Rule engine error:', e.message)));
   }
-  await audit.log('Asset', 'Modified', `Asset ID ${req.params.id} was updated`, req.auditUser, req.auditUserId);
+  await audit.log('Asset', 'Modified', `Asset ID ${id} was updated`, req.auditUser, req.auditUserId);
   res.json({ message: 'Updated' });
   } catch (err) { next(err); }
 });
@@ -326,9 +338,14 @@ router.delete('/bulk', async (req, res, next) => {
 
 router.delete('/:id', async (req, res, next) => {
   try {
-  const [rows] = await db.query('SELECT name, asset_serial FROM assets WHERE id=?', [req.params.id]);
-  await db.query('DELETE FROM assets WHERE id = ?', [req.params.id]);
-  if (rows.length) await audit.log('Asset', 'Deleted', `Asset "${rows[0].name}" (Serial: ${rows[0].asset_serial || 'N/A'}) was deleted`, req.auditUser, req.auditUserId);
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ message: 'Invalid asset ID' });
+
+  const [rows] = await db.query('SELECT name, asset_serial FROM assets WHERE id = ?', [id]);
+  if (!rows.length) return res.status(404).json({ message: 'Asset not found' });
+
+  await db.query('DELETE FROM assets WHERE id = ?', [id]);
+  await audit.log('Asset', 'Deleted', `Asset "${rows[0].name}" (Serial: ${rows[0].asset_serial || 'N/A'}) was deleted`, req.auditUser, req.auditUserId);
   res.json({ message: 'Deleted' });
   } catch (err) { next(err); }
 });

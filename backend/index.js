@@ -5,7 +5,7 @@ require('dotenv').config();
 const app = express();
 
 // ── CORS — only allow configured origins ──────────────────────
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000')
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3002')
   .split(',')
   .map(o => o.trim())
   .filter(Boolean);
@@ -49,6 +49,11 @@ app.use('/api/vendors',  require('./routes/vendors'));
 
 const { startRuleEngine } = require('./ruleEngine');
 startRuleEngine();
+
+// ── 404 handler — must come before the error handler ──
+app.use((req, res, next) => {
+  res.status(404).json({ status: false, message: `Endpoint not found: ${req.method} ${req.originalUrl}` });
+});
 
 // ── Global error handler — catches any unhandled error from routes ──
 app.use((err, req, res, next) => {
