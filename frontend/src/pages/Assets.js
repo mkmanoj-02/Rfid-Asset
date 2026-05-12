@@ -1071,8 +1071,8 @@ export default function Assets() {
               exportExcel(
                 [
                   { header: '#',           key: '_idx' },
-                  { header: 'Serial',      key: 'asset_serial' },
-                  { header: 'Name',        key: 'name' },
+                  { header: 'Asset Serial',      key: 'asset_serial' },
+                  { header: 'Asset Name',        key: 'name' },
                   { header: 'RFID Tag',    key: 'rfid_tag' },
                   { header: 'Tag Type',    key: 'tag_type_name' },
                   { header: 'Asset Type',  key: 'asset_type_name' },
@@ -1089,10 +1089,11 @@ export default function Assets() {
               exportPDF(
                 [
                   { header: '#',           key: '_idx' },
-                  { header: 'Serial',      key: 'asset_serial' },
-                  { header: 'Name',        key: 'name' },
+                  { header: 'Asset Serial',      key: 'asset_serial' },
+                  { header: 'Asset Name',        key: 'name' },
                   { header: 'RFID',        key: 'rfid_tag' },
-                  { header: 'Type',        key: 'asset_type_name' },
+                  { header: 'Tag Type',    key: 'tag_type_name' },
+                  { header: 'Asset Type',        key: 'asset_type_name' },
                   { header: 'Vendor',      key: 'vendor_name' },
                   { header: 'Location',    key: 'location_name' },
                   { header: 'Status',      key: 'status' },
@@ -1181,7 +1182,7 @@ export default function Assets() {
                 <SortTh col="name" label="Asset Name" />
                 <th>RFID</th>
                 <th>Tag Type</th>
-                <SortTh col="asset_type_name" label="Type" />
+                <SortTh col="asset_type_name" label="Asset Type" />
                 <th>Vendor</th>
                 <SortTh col="location_name" label="Location" />
                 <SortTh col="status" label="Status" />
