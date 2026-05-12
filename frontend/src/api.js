@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = (process.env.REACT_APP_API_BASE_URL || 'http://localhost:5005').replace(/\/+$/, '');
+const API_BASE_URL = (process.env.REACT_APP_API_BASE_URL || 'http://localhost:5004').replace(/\/+$/, '');
 
 const api = axios.create({ baseURL: `${API_BASE_URL}/api` });
 
@@ -41,6 +41,7 @@ export const getAssets = (params) => api.get('/assets', { params });
 export const createAsset = (data) => api.post('/assets', data);
 export const updateAsset = (id, data) => api.put(`/assets/${id}`, data);
 export const deleteAsset = (id) => api.delete(`/assets/${id}`);
+export const bulkDeleteAssets = (ids) => axios.delete(`${API_BASE_URL}/api/assets/bulk`, { data: { ids } });
 export const getAssetAttributes = (id) => api.get(`/assets/${id}/attributes`);
 export const saveAssetAttributes = (id, values) => api.put(`/assets/${id}/attributes`, { values });
 

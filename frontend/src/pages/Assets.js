@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  getAssets, createAsset, updateAsset, deleteAsset,
+  getAssets, createAsset, updateAsset, deleteAsset, bulkDeleteAssets,
   getAssetTypes, getLocations,
   getAssetAttributes, saveAssetAttributes, getAssetMovements,
   getRfidTags, removeRfidTag, getAttributes,
@@ -840,7 +840,19 @@ export default function Assets() {
     if (s) q.search = s;
     if (loc) q.location_id = loc;
     if (typ) q.asset_type_id = typ;
-    return getAssets(q).then(r => setItems(r.data));
+    return getAssets(q).then(r => {
+      const data = r.data;
+      if (Array.isArray(data)) {
+        setItems(data);
+      } else if (data && Array.isArray(data.data)) {
+        setItems(data.data);
+      } else if (data && Array.isArray(data.assets)) {
+        setItems(data.assets);
+      } else {
+        console.warn('Unexpected /assets response shape:', data);
+        setItems([]);
+      }
+    });
   };
 
   const load = useCallback(() => fetchAssets(search, filterLocation, filterType), [search, filterLocation, filterType]);
@@ -896,6 +908,24 @@ export default function Assets() {
     });
   };
 
+  const bulkDelete = () => {
+    if (!canDelete) { showToast('You do not have permission to delete assets', 'error'); return; }
+    const ids = [...checkedIds];
+    setConfirmDialog({
+      title: `Delete ${ids.length} Asset${ids.length > 1 ? 's' : ''}`,
+      message: `Are you sure you want to delete ${ids.length} selected asset${ids.length > 1 ? 's' : ''}?`,
+      subMessage: 'This action cannot be undone. All trace history for these assets will also be removed.',
+      confirmLabel: 'Delete',
+      confirmStyle: 'danger',
+      onConfirm: async () => {
+        await bulkDeleteAssets(ids);
+        showToast(`${ids.length} asset${ids.length > 1 ? 's' : ''} deleted`, 'success');
+        setCheckedIds(new Set());
+        fetchAssets(search, filterLocation, filterType);
+      },
+    });
+  };
+
   const toggleCheck = (id) => {
     setCheckedIds(prev => {
       const next = new Set(prev);
@@ -904,14 +934,19 @@ export default function Assets() {
     });
   };
 
+  const allPageChecked = pagedItems.length > 0 && pagedItems.every(i => checkedIds.has(i.id));
+  const somePageChecked = pagedItems.some(i => checkedIds.has(i.id));
+
   const toggleAll = () => {
-    if (pagedItems.every(i => checkedIds.has(i.id))) {
+    if (allPageChecked) {
+      // uncheck all on current page
       setCheckedIds(prev => {
         const next = new Set(prev);
         pagedItems.forEach(i => next.delete(i.id));
         return next;
       });
     } else {
+      // check all on current page
       setCheckedIds(prev => {
         const next = new Set(prev);
         pagedItems.forEach(i => next.add(i.id));
@@ -926,7 +961,7 @@ export default function Assets() {
     setCurrentPage(1);
   };
 
-  const sortedItems = [...items].sort((a, b) => {
+  const sortedItems = [...(Array.isArray(items) ? items : [])].sort((a, b) => {
     const valA = (a[sortKey] || '').toString().toLowerCase();
     const valB = (b[sortKey] || '').toString().toLowerCase();
     if (valA < valB) return sortDir === 'asc' ? -1 : 1;
@@ -1014,6 +1049,9 @@ export default function Assets() {
               <button className="btn btn-secondary" onClick={() => setUpdateAttrModal(true)}>Update Attribute ({checkedIds.size})</button>
             </>
           )}
+          {checkedIds.size > 0 && canDelete && (
+            <button className="btn btn-danger" onClick={bulkDelete}>Delete ({checkedIds.size})</button>
+          )}
           {canModify && <button className="btn btn-primary" onClick={() => setModal(true)}>+ Add Asset</button>}
         </div>
       </div>
@@ -1057,7 +1095,12 @@ export default function Assets() {
             <thead>
               <tr>
                 <th style={{ width: 36, padding: '10px 12px' }}>
-                  <input type="checkbox" checked={checkedIds.size === pagedItems.length && pagedItems.length > 0} onChange={toggleAll} />
+                  <input
+                    type="checkbox"
+                    ref={el => { if (el) el.indeterminate = somePageChecked && !allPageChecked; }}
+                    checked={allPageChecked}
+                    onChange={toggleAll}
+                  />
                 </th>
                 <th style={{ width: 42, padding: '10px 8px' }}>#</th>
                 <SortTh col="asset_serial" label="Asset Serial" />
