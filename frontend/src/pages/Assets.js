@@ -838,6 +838,19 @@ export default function Assets() {
   const canModify = isSuperAdmin || !!currentUser?.asset_can_modify;
   const canDelete = isSuperAdmin || !!currentUser?.asset_can_delete;
 
+  const PAGE_SIZES = [10, 25, 50, 100];
+
+  // Auto-correct pageSize downward only — if selected limit exceeds what's meaningful
+  // e.g. total=8, limit=25 → correct to 10. But never force upward (10→25).
+  const clampPageSize = (tot, currentLimit) => {
+    const prev = PAGE_SIZES[PAGE_SIZES.indexOf(currentLimit) - 1];
+    // If there's a smaller option and total fits within it, step down
+    if (prev !== undefined && tot <= prev) {
+      return clampPageSize(tot, prev); // recurse to find the right size
+    }
+    return currentLimit;
+  };
+
   const fetchAssets = (s, loc, typ, page, limit, sKey, sDir) => {
     const q = {
       search: s || '',
@@ -851,23 +864,26 @@ export default function Assets() {
     setLoading(true);
     return getAssets(q).then(r => {
       const data = r.data;
+      let tot = 0, totPages = 1, list = [];
       // Response shape: { pagination: { total, page, limit, totalPages }, data: [...] }
       if (data && data.pagination && Array.isArray(data.data)) {
-        setItems(data.data);
-        setTotal(data.pagination.total ?? data.data.length);
-        setTotalPages(data.pagination.totalPages ?? 1);
+        list = data.data;
+        tot = data.pagination.total ?? data.data.length;
+        totPages = data.pagination.totalPages ?? 1;
       } else if (Array.isArray(data)) {
-        setItems(data);
-        setTotal(data.length);
-        setTotalPages(1);
+        list = data; tot = data.length; totPages = 1;
       } else if (data && Array.isArray(data.assets)) {
-        setItems(data.assets);
-        setTotal(data.pagination?.total ?? data.assets.length);
-        setTotalPages(data.pagination?.totalPages ?? 1);
-      } else {
-        setItems([]);
-        setTotal(0);
-        setTotalPages(1);
+        list = data.assets;
+        tot = data.pagination?.total ?? data.assets.length;
+        totPages = data.pagination?.totalPages ?? 1;
+      }
+      setItems(list);
+      setTotal(tot);
+      setTotalPages(totPages);
+      // Auto-correct pageSize if current limit is now disabled for this total
+      const corrected = clampPageSize(tot, limit);
+      if (corrected !== limit) {
+        setPageSize(corrected);
       }
     }).finally(() => setLoading(false));
   };
