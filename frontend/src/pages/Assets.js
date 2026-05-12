@@ -1036,6 +1036,25 @@ export default function Assets() {
   const selectedAssets = pagedItems.filter(i => checkedIds.has(i.id));
   const hasFilters = search || filterLocation || filterType;
 
+  // Fetch all records (no pagination) for export
+  const fetchAllForExport = () => {
+    return getAssets({
+      search: search || '',
+      location_id: filterLocation || '',
+      asset_type_id: filterType || '',
+      page: 1,
+      limit: total || 99999,
+      sort: sortKey,
+      sort_dir: sortDir,
+    }).then(r => {
+      const data = r.data;
+      if (data && data.pagination && Array.isArray(data.data)) return data.data;
+      if (Array.isArray(data)) return data;
+      if (data && Array.isArray(data.assets)) return data.assets;
+      return [];
+    });
+  };
+
   if (selected) {
     return <AssetDetail asset={selected} types={types} locations={locations} tagTypes={tagTypes} vendors={vendors} onBack={() => setSelected(null)} onRefresh={load} canModify={canModify} canDelete={canDelete} />;
   }
@@ -1047,36 +1066,42 @@ export default function Assets() {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {/* Export buttons */}
           <ExportButtons
-            onExcel={() => exportExcel(
-              [
-                { header: '#',           key: '_idx' },
-                { header: 'Serial',      key: 'asset_serial' },
-                { header: 'Name',        key: 'name' },
-                { header: 'RFID Tag',    key: 'rfid_tag' },
-                { header: 'Tag Type',    key: 'tag_type_name' },
-                { header: 'Asset Type',  key: 'asset_type_name' },
-                { header: 'Vendor',      key: 'vendor_name' },
-                { header: 'Location',    key: 'location_name' },
-                { header: 'Status',      key: 'status' },
-              ],
-              pagedItems.map((item, i) => ({ ...item, _idx: (currentPage - 1) * pageSize + i + 1 })),
-              'assets'
-            )}
-            onPDF={() => exportPDF(
-              [
-                { header: '#',           key: '_idx' },
-                { header: 'Serial',      key: 'asset_serial' },
-                { header: 'Name',        key: 'name' },
-                { header: 'RFID',        key: 'rfid_tag' },
-                { header: 'Type',        key: 'asset_type_name' },
-                { header: 'Vendor',      key: 'vendor_name' },
-                { header: 'Location',    key: 'location_name' },
-                { header: 'Status',      key: 'status' },
-              ],
-              pagedItems.map((item, i) => ({ ...item, _idx: (currentPage - 1) * pageSize + i + 1 })),
-              'Asset List',
-              'assets'
-            )}
+            onExcel={async () => {
+              const all = await fetchAllForExport();
+              exportExcel(
+                [
+                  { header: '#',           key: '_idx' },
+                  { header: 'Serial',      key: 'asset_serial' },
+                  { header: 'Name',        key: 'name' },
+                  { header: 'RFID Tag',    key: 'rfid_tag' },
+                  { header: 'Tag Type',    key: 'tag_type_name' },
+                  { header: 'Asset Type',  key: 'asset_type_name' },
+                  { header: 'Vendor',      key: 'vendor_name' },
+                  { header: 'Location',    key: 'location_name' },
+                  { header: 'Status',      key: 'status' },
+                ],
+                all.map((item, i) => ({ ...item, _idx: i + 1 })),
+                'assets'
+              );
+            }}
+            onPDF={async () => {
+              const all = await fetchAllForExport();
+              exportPDF(
+                [
+                  { header: '#',           key: '_idx' },
+                  { header: 'Serial',      key: 'asset_serial' },
+                  { header: 'Name',        key: 'name' },
+                  { header: 'RFID',        key: 'rfid_tag' },
+                  { header: 'Type',        key: 'asset_type_name' },
+                  { header: 'Vendor',      key: 'vendor_name' },
+                  { header: 'Location',    key: 'location_name' },
+                  { header: 'Status',      key: 'status' },
+                ],
+                all.map((item, i) => ({ ...item, _idx: i + 1 })),
+                'Asset List',
+                'assets'
+              );
+            }}
           />
           <span style={{ fontSize: 13, color: '#555' }}>Sorted By</span>
           <select value={sortKey} onChange={e => { setSortKey(e.target.value); setSortDir('asc'); setCurrentPage(1); }}
