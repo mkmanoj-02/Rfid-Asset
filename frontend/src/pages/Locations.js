@@ -1,0 +1,328 @@
+import React, { useEffect, useState } from 'react';
+import { getLocationTree, getLocations, createLocation, updateLocation, deleteLocation,
+  getLocationTypes, createLocationType, updateLocationType, deleteLocationType } from '../api';
+import { useToast } from '../Toast';
+
+// ── Tree Node ──────────────────────────────────────────────────
+function TreeNode({ node, selectedId, onSelect, level = 0 }) {
+  const [expanded, setExpanded] = useState(true);
+  const hasChildren = node.children && node.children.length > 0;
+  return (
+    <div>
+      <div className={`tree-node ${selectedId === node.id ? 'selected' : ''}`}
+        style={{ paddingLeft: 12 + level * 20 }} onClick={() => onSelect(node)}>
+        {hasChildren
+          ? <span className="tree-toggle" onClick={e => { e.stopPropagation(); setExpanded(!expanded); }}>{expanded ? '▾' : '▸'}</span>
+          : <span style={{ display: 'inline-block', width: 16 }} />}
+        <span>{node.name}</span>
+        {node.location_type_name && (
+          <span style={{ marginLeft: 6, fontSize: 11, background: '#e9ecff', color: '#5a67d8', padding: '1px 6px', borderRadius: 8 }}>
+            {node.location_type_name}
+          </span>
+        )}
+      </div>
+      {expanded && hasChildren && node.children.map(child => (
+        <TreeNode key={child.id} node={child} selectedId={selectedId} onSelect={onSelect} level={level + 1} />
+      ))}
+    </div>
+  );
+}
+
+// ── Manage Location Tab ────────────────────────────────────────
+function ManageLocations() {
+  const [tree, setTree] = useState([]);
+  const [flatList, setFlatList] = useState([]);
+  const [locationTypes, setLocationTypes] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [modal, setModal] = useState(false);
+  const [form, setForm] = useState({ name: '', description: '', parent_id: '', location_type_id: '' });
+  const [editing, setEditing] = useState(null);
+  const { showToast } = useToast();
+
+  const currentUser = (() => { try { return JSON.parse(sessionStorage.getItem('rfid_user') || 'null'); } catch { return null; } })();
+  const isSuperAdmin = currentUser?.profile_type === 'super_admin';
+  const canModify = isSuperAdmin || !!currentUser?.location_can_modify;
+  const canDelete = isSuperAdmin || !!currentUser?.location_can_delete;
+
+  const load = async () => {
+    const [treeRes, flatRes, typesRes] = await Promise.all([getLocationTree(), getLocations(), getLocationTypes()]);
+    setTree(treeRes.data);
+    setFlatList(flatRes.data);
+    setLocationTypes(typesRes.data);
+    if (selected) {
+      const updated = flatRes.data.find(l => l.id === selected.id);
+      setSelected(updated || null);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const openAdd = (parentId = '') => {
+    setForm({ name: '', description: '', parent_id: parentId, location_type_id: '' });
+    setEditing(null); setModal(true);
+  };
+
+  const openEdit = (item) => {
+    setForm({ name: item.name, description: item.description || '', parent_id: item.parent_id || '', location_type_id: item.location_type_id || '' });
+    setEditing(item.id); setModal(true);
+  };
+
+  const save = async () => {
+    try {
+      if (editing) { await updateLocation(editing, form); showToast('Location updated', 'success'); }
+      else { await createLocation(form); showToast('Location added', 'success'); }
+    } catch (e) {
+      const msg = e.response?.data?.message || 'Save failed';
+      showToast(msg, 'error');
+      return;
+    }
+    setModal(false); load();
+  };
+
+  const remove = async (id) => {
+    if (window.confirm('Delete this location and all its children?')) {
+      await deleteLocation(id);
+      showToast('Location deleted', 'success');
+      if (selected?.id === id) setSelected(null);
+      load();
+    }
+  };
+
+  const children = selected ? flatList.filter(l => l.parent_id === selected.id) : [];
+
+  return (
+    <div className="locations-layout">
+      <div className="location-tree-panel">
+        <div className="panel-header">
+          <span>Locations</span>
+          {canModify && <button className="btn btn-primary btn-sm" onClick={() => openAdd()}>+ Add</button>}
+        </div>
+        <div className="tree-container">
+          {tree.length === 0 && <p style={{ color: '#aaa', padding: 12, fontSize: 13 }}>No locations yet.</p>}
+          {tree.map(node => (
+            <TreeNode key={node.id} node={node} selectedId={selected?.id} onSelect={setSelected} />
+          ))}
+        </div>
+      </div>
+
+      <div className="location-detail-panel">
+        {!selected ? (
+          <div className="empty-state">Select a location from the tree to view details</div>
+        ) : (
+          <>
+            <div className="page-header">
+              <div>
+                <h1>{selected.name}</h1>
+                {selected.location_type_name && (
+                  <span style={{ fontSize: 12, background: '#e9ecff', color: '#5a67d8', padding: '2px 8px', borderRadius: 8, marginRight: 8 }}>
+                    {selected.location_type_name}
+                  </span>
+                )}
+                {selected.parent_name && <p style={{ color: '#888', fontSize: 13, marginTop: 4 }}>Parent: {selected.parent_name}</p>}
+                {selected.description && <p style={{ color: '#555', marginTop: 4 }}>{selected.description}</p>}
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {canModify && <button className="btn btn-primary" onClick={() => openAdd(selected.id)}>+ Add Child</button>}
+                {canModify && <button className="btn btn-secondary" onClick={() => openEdit(selected)}>Edit</button>}
+                {canDelete && <button className="btn btn-danger" onClick={() => remove(selected.id)}>Delete</button>}
+              </div>
+            </div>
+            <h3 style={{ marginBottom: 12, fontSize: 15, color: '#555' }}>Sub-locations</h3>
+            {children.length === 0 ? <p style={{ color: '#aaa' }}>No sub-locations.</p> : (
+              <table>
+                <thead><tr><th>Name</th><th>Type</th><th>Description</th><th>Actions</th></tr></thead>
+                <tbody>
+                  {children.map(child => (
+                    <tr key={child.id}>
+                      <td><span style={{ cursor: 'pointer', color: '#7c8cf8' }} onClick={() => setSelected(child)}>{child.name}</span></td>
+                      <td><span style={{ fontSize: 12, background: '#e9ecff', color: '#5a67d8', padding: '1px 6px', borderRadius: 8 }}>{child.location_type_name || '—'}</span></td>
+                      <td>{child.description || '—'}</td>
+                      <td>
+                        {canModify && <button className="btn btn-secondary btn-sm" style={{ marginRight: 6 }} onClick={() => openEdit(child)}>Edit</button>}
+                        {canDelete && <button className="btn btn-danger btn-sm" onClick={() => remove(child.id)}>Delete</button>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </>
+        )}
+      </div>
+
+      {modal && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <h2>{editing ? 'Edit Location' : 'Add Location'}</h2>
+            <div className="form-group">
+              <label>Location Name <span style={{ color: '#e53e3e' }}>*</span></label>
+              <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Enter location name" />
+            </div>
+            <div className="form-group">
+              <label>Location Type</label>
+              <select value={form.location_type_id} onChange={e => setForm({ ...form, location_type_id: e.target.value })}>
+                <option value="">— Select type —</option>
+                {locationTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Parent Location</label>
+              <select value={form.parent_id} onChange={e => setForm({ ...form, parent_id: e.target.value })}>
+                <option value="">— None (top level) —</option>
+                {flatList.filter(l => l.id !== editing).map(l => (
+                  <option key={l.id} value={l.id}>{l.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Description</label>
+              <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setModal(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={save}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Location Types Tab ─────────────────────────────────────────
+function LocationTypes() {
+  const [types, setTypes] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [modal, setModal] = useState(false);
+  const [form, setForm] = useState({ name: '', description: '' });
+  const [editing, setEditing] = useState(null);
+  const { showToast } = useToast();
+
+  const currentUser = (() => { try { return JSON.parse(sessionStorage.getItem('rfid_user') || 'null'); } catch { return null; } })();
+  const isSuperAdmin = currentUser?.profile_type === 'super_admin';
+  const canModify = isSuperAdmin || !!currentUser?.location_type_can_modify;
+  const canDelete = isSuperAdmin || !!currentUser?.location_type_can_delete;
+
+  const load = () => getLocationTypes().then(r => {
+    setTypes(r.data);
+    if (selected) {
+      const updated = r.data.find(t => t.id === selected.id);
+      setSelected(updated || null);
+    }
+  });
+
+  useEffect(() => { load(); }, []);
+
+  const openAdd = () => { setForm({ name: '', description: '' }); setEditing(null); setModal(true); };
+  const openEdit = (item) => { setForm({ name: item.name, description: item.description || '' }); setEditing(item.id); setModal(true); };
+
+  const save = async () => {
+    try {
+      if (editing) { await updateLocationType(editing, form); showToast('Location type updated', 'success'); }
+      else { await createLocationType(form); showToast('Location type added', 'success'); }
+    } catch (e) {
+      const msg = e.response?.data?.message || 'Save failed';
+      showToast(msg, 'error');
+      return;
+    }
+    setModal(false); load();
+  };
+
+  const remove = async (id) => {
+    if (window.confirm('Delete this location type?')) {
+      await deleteLocationType(id);
+      showToast('Location type deleted', 'success');
+      if (selected?.id === id) setSelected(null);
+      load();
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+      {/* Left list */}
+      <div style={{ width: 240, flexShrink: 0, background: '#fff', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+        <div style={{ fontWeight: 600, fontSize: 13, padding: '10px 14px', background: '#f7f8fc', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>
+          — Location Type List —
+        </div>
+        <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+          {types.map(t => (
+            <div key={t.id} onClick={() => setSelected(t)}
+              style={{ padding: '9px 14px', cursor: 'pointer', fontSize: 14, borderBottom: '1px solid #f7f8fc',
+                background: selected?.id === t.id ? '#e9ecff' : 'inherit',
+                color: selected?.id === t.id ? '#5a67d8' : '#333',
+                fontWeight: selected?.id === t.id ? 600 : 400 }}>
+              {t.name}
+            </div>
+          ))}
+          {types.length === 0 && <div style={{ padding: 16, color: '#aaa', fontSize: 13, textAlign: 'center' }}>No types yet</div>}
+        </div>
+        <div style={{ padding: '10px 14px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end' }}>
+          {canModify && <button className="btn btn-primary btn-sm" onClick={openAdd}>+ Add Type</button>}
+        </div>
+      </div>
+
+      {/* Right detail */}
+      {selected ? (
+        <div style={{ flex: 1, background: '#fff', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', padding: 28 }}>
+          <div style={{ fontWeight: 700, fontSize: 15, textAlign: 'center', marginBottom: 24, borderBottom: '1px solid #f0f2f5', paddingBottom: 12 }}>
+            Location Type Details
+          </div>
+          {[
+            { label: 'Location Type', value: selected.name },
+            { label: 'Description', value: selected.description || '—' },
+            { label: 'Created', value: new Date(selected.created_at).toLocaleString() },
+          ].map(({ label, value }) => (
+            <div key={label} style={{ display: 'flex', fontSize: 14, marginBottom: 14 }}>
+              <span style={{ minWidth: 160, fontWeight: 500, color: '#555' }}>{label}</span>
+              <span>: {value}</span>
+            </div>
+          ))}
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 24 }}>
+            {canModify && <button className="btn btn-secondary btn-sm" onClick={() => openEdit(selected)}>Edit</button>}
+            {canDelete && <button className="btn btn-danger btn-sm" onClick={() => remove(selected.id)}>Delete</button>}
+          </div>
+        </div>
+      ) : (
+        <div style={{ flex: 1, background: '#fff', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, color: '#aaa' }}>
+          Select a location type to view details
+        </div>
+      )}
+
+      {modal && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <h2>{editing ? 'Edit Location Type' : 'Add Location Type'}</h2>
+            <div className="form-group">
+              <label>Name <span style={{ color: '#e53e3e' }}>*</span></label>
+              <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Building, Floor, Room" />
+            </div>
+            <div className="form-group">
+              <label>Description</label>
+              <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setModal(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={save}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main Locations Page ────────────────────────────────────────
+export default function Locations() {
+  const [tab, setTab] = useState('manage');
+  return (
+    <div>
+      <div className="page-header"><h1>Locations</h1></div>
+      <div className="detail-tabs" style={{ marginBottom: 20 }}>
+        <button className={`tab-btn ${tab === 'manage' ? 'active' : ''}`} onClick={() => setTab('manage')}>Manage Location</button>
+        <button className={`tab-btn ${tab === 'types' ? 'active' : ''}`} onClick={() => setTab('types')}>Location Type</button>
+      </div>
+      {tab === 'manage' && <ManageLocations />}
+      {tab === 'types' && <LocationTypes />}
+    </div>
+  );
+}
