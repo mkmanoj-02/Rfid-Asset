@@ -809,6 +809,9 @@ function UpdateAttributeModal({ selectedAssets, onClose, onSaved }) {
 export default function Assets() {
   const [tab, setTab] = useState('manage');
   const [items, setItems] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loading, setLoading] = useState(false);
   const [types, setTypes] = useState([]);
   const [locations, setLocations] = useState([]);
   const [tagTypes, setTagTypes] = useState([]);
@@ -835,61 +838,118 @@ export default function Assets() {
   const canModify = isSuperAdmin || !!currentUser?.asset_can_modify;
   const canDelete = isSuperAdmin || !!currentUser?.asset_can_delete;
 
-  const fetchAssets = (s, loc, typ) => {
-    const q = {};
-    if (s) q.search = s;
-    if (loc) q.location_id = loc;
-    if (typ) q.asset_type_id = typ;
+  const fetchAssets = (s, loc, typ, page, limit, sKey, sDir) => {
+    const q = {
+      search: s || '',
+      location_id: loc || '',
+      asset_type_id: typ || '',
+      page: page || 1,
+      limit: limit || 10,
+      sort: sKey || 'created_at',
+      sort_dir: sDir || 'desc',
+    };
+    setLoading(true);
     return getAssets(q).then(r => {
       const data = r.data;
-      if (Array.isArray(data)) {
-        setItems(data);
-      } else if (data && Array.isArray(data.data)) {
+      // Response shape: { pagination: { total, page, limit, totalPages }, data: [...] }
+      if (data && data.pagination && Array.isArray(data.data)) {
         setItems(data.data);
+        setTotal(data.pagination.total ?? data.data.length);
+        setTotalPages(data.pagination.totalPages ?? 1);
+      } else if (Array.isArray(data)) {
+        setItems(data);
+        setTotal(data.length);
+        setTotalPages(1);
       } else if (data && Array.isArray(data.assets)) {
         setItems(data.assets);
+        setTotal(data.pagination?.total ?? data.assets.length);
+        setTotalPages(data.pagination?.totalPages ?? 1);
       } else {
-        console.warn('Unexpected /assets response shape:', data);
         setItems([]);
+        setTotal(0);
+        setTotalPages(1);
       }
-    });
+    }).finally(() => setLoading(false));
   };
 
-  const load = useCallback(() => fetchAssets(search, filterLocation, filterType), [search, filterLocation, filterType]);
+  const load = useCallback(() => {
+    fetchAssets(search, filterLocation, filterType, currentPage, pageSize, sortKey, sortDir);
+  }, [search, filterLocation, filterType, currentPage, pageSize, sortKey, sortDir]);
 
   useEffect(() => {
-    fetchAssets('', '', '');
+    fetchAssets('', '', '', 1, 10, 'created_at', 'desc');
     getAssetTypes().then(r => setTypes(r.data));
     getLocations().then(r => setLocations(r.data));
     getTagTypes().then(r => setTagTypes(r.data)).catch(() => {});
     getVendors().then(r => setVendors(r.data)).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    fetchAssets(search, filterLocation, filterType, currentPage, pageSize, sortKey, sortDir);
+  }, [currentPage, pageSize, sortKey, sortDir]);
+
   const handleSearch = (val) => {
     setSearch(val);
     setCurrentPage(1);
     clearTimeout(searchTimer.current);
     if (val.length === 0 || val.length >= 2) {
-      searchTimer.current = setTimeout(() => fetchAssets(val, filterLocation, filterType), 300);
+      searchTimer.current = setTimeout(() => fetchAssets(val, filterLocation, filterType, 1, pageSize, sortKey, sortDir), 300);
     }
   };
 
   const handleLocationFilter = (val) => {
     setFilterLocation(val);
     setCurrentPage(1);
-    fetchAssets(search, val, filterType);
+    fetchAssets(search, val, filterType, 1, pageSize, sortKey, sortDir);
   };
 
   const handleTypeFilter = (val) => {
     setFilterType(val);
     setCurrentPage(1);
-    fetchAssets(search, filterLocation, val);
+    fetchAssets(search, filterLocation, val, 1, pageSize, sortKey, sortDir);
   };
 
   const clearFilters = () => {
     setSearch(''); setFilterLocation(''); setFilterType('');
     setCurrentPage(1);
-    fetchAssets('', '', '');
+    fetchAssets('', '', '', 1, pageSize, sortKey, sortDir);
+  };
+
+  // Fetch and auto-correct page if current page exceeds new totalPages after a delete
+  const fetchAndClampPage = async (s, loc, typ, page, limit, sKey, sDir) => {
+    const q = {
+      search: s || '',
+      location_id: loc || '',
+      asset_type_id: typ || '',
+      page: page || 1,
+      limit: limit || 10,
+      sort: sKey || 'created_at',
+      sort_dir: sDir || 'desc',
+    };
+    setLoading(true);
+    try {
+      const r = await getAssets(q);
+      const data = r.data;
+      let list = [], tot = 0, totPages = 1;
+      if (data && data.pagination && Array.isArray(data.data)) {
+        list = data.data;
+        tot = data.pagination.total ?? data.data.length;
+        totPages = data.pagination.totalPages ?? 1;
+      } else if (Array.isArray(data)) {
+        list = data; tot = data.length; totPages = 1;
+      }
+      // If current page is now beyond totalPages, re-fetch the last valid page
+      if (page > totPages && totPages >= 1) {
+        setCurrentPage(totPages);
+        setLoading(false);
+        return fetchAndClampPage(s, loc, typ, totPages, limit, sKey, sDir);
+      }
+      setItems(list);
+      setTotal(tot);
+      setTotalPages(totPages);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const remove = async (id) => {
@@ -903,7 +963,7 @@ export default function Assets() {
       onConfirm: async () => {
         await deleteAsset(id);
         showToast('Asset deleted', 'success');
-        fetchAssets(search, filterLocation, filterType);
+        fetchAndClampPage(search, filterLocation, filterType, currentPage, pageSize, sortKey, sortDir);
       },
     });
   };
@@ -921,7 +981,7 @@ export default function Assets() {
         await bulkDeleteAssets(ids);
         showToast(`${ids.length} asset${ids.length > 1 ? 's' : ''} deleted`, 'success');
         setCheckedIds(new Set());
-        fetchAssets(search, filterLocation, filterType);
+        fetchAndClampPage(search, filterLocation, filterType, currentPage, pageSize, sortKey, sortDir);
       },
     });
   };
@@ -934,19 +994,26 @@ export default function Assets() {
     });
   };
 
+  const handleSort = (key) => {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(key); setSortDir('asc'); }
+    setCurrentPage(1);
+  };
+
+  // Server-side pagination: items already contains only the current page
+  const pagedItems = items;
+
   const allPageChecked = pagedItems.length > 0 && pagedItems.every(i => checkedIds.has(i.id));
   const somePageChecked = pagedItems.some(i => checkedIds.has(i.id));
 
   const toggleAll = () => {
     if (allPageChecked) {
-      // uncheck all on current page
       setCheckedIds(prev => {
         const next = new Set(prev);
         pagedItems.forEach(i => next.delete(i.id));
         return next;
       });
     } else {
-      // check all on current page
       setCheckedIds(prev => {
         const next = new Set(prev);
         pagedItems.forEach(i => next.add(i.id));
@@ -954,24 +1021,6 @@ export default function Assets() {
       });
     }
   };
-
-  const handleSort = (key) => {
-    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    else { setSortKey(key); setSortDir('asc'); }
-    setCurrentPage(1);
-  };
-
-  const sortedItems = [...(Array.isArray(items) ? items : [])].sort((a, b) => {
-    const valA = (a[sortKey] || '').toString().toLowerCase();
-    const valB = (b[sortKey] || '').toString().toLowerCase();
-    if (valA < valB) return sortDir === 'asc' ? -1 : 1;
-    if (valA > valB) return sortDir === 'asc' ? 1 : -1;
-    return 0;
-  });
-
-  const totalPages = Math.max(1, Math.ceil(sortedItems.length / pageSize));
-  const safePage = Math.min(currentPage, totalPages);
-  const pagedItems = sortedItems.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   const SortIcon = ({ col }) => {
     if (sortKey !== col) return <span style={{ color: '#ccc', marginLeft: 4 }}>↕</span>;
@@ -984,7 +1033,7 @@ export default function Assets() {
     </th>
   );
 
-  const selectedAssets = sortedItems.filter(i => checkedIds.has(i.id));
+  const selectedAssets = pagedItems.filter(i => checkedIds.has(i.id));
   const hasFilters = search || filterLocation || filterType;
 
   if (selected) {
@@ -1010,7 +1059,7 @@ export default function Assets() {
                 { header: 'Location',    key: 'location_name' },
                 { header: 'Status',      key: 'status' },
               ],
-              sortedItems.map((item, i) => ({ ...item, _idx: i + 1 })),
+              pagedItems.map((item, i) => ({ ...item, _idx: (currentPage - 1) * pageSize + i + 1 })),
               'assets'
             )}
             onPDF={() => exportPDF(
@@ -1024,13 +1073,13 @@ export default function Assets() {
                 { header: 'Location',    key: 'location_name' },
                 { header: 'Status',      key: 'status' },
               ],
-              sortedItems.map((item, i) => ({ ...item, _idx: i + 1 })),
+              pagedItems.map((item, i) => ({ ...item, _idx: (currentPage - 1) * pageSize + i + 1 })),
               'Asset List',
               'assets'
             )}
           />
           <span style={{ fontSize: 13, color: '#555' }}>Sorted By</span>
-          <select value={sortKey} onChange={e => { setSortKey(e.target.value); setSortDir('asc'); }}
+          <select value={sortKey} onChange={e => { setSortKey(e.target.value); setSortDir('asc'); setCurrentPage(1); }}
             style={{ padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13 }}>
             <option value="name">Asset Name</option>
             <option value="asset_serial">Asset Serial</option>
@@ -1039,7 +1088,7 @@ export default function Assets() {
             <option value="status">Status</option>
             <option value="created_at">Recently Added</option>
           </select>
-          <button onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+          <button onClick={() => { setSortDir(d => d === 'asc' ? 'desc' : 'asc'); setCurrentPage(1); }}
             style={{ padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, background: '#fff', cursor: 'pointer' }}>
             {sortDir === 'asc' ? '↑ Asc' : '↓ Desc'}
           </button>
@@ -1079,7 +1128,7 @@ export default function Assets() {
         </select>
         {hasFilters && <button className="btn btn-secondary btn-sm" onClick={clearFilters}>✕ Clear</button>}
         <span style={{ fontSize: 12, color: '#888', marginLeft: 'auto' }}>
-          {sortedItems.length} asset{sortedItems.length !== 1 ? 's' : ''}{hasFilters ? ' (filtered)' : ''}
+          {total} asset{total !== 1 ? 's' : ''}{hasFilters ? ' (filtered)' : ''}
         </span>
       </div>
 
@@ -1115,15 +1164,18 @@ export default function Assets() {
               </tr>
             </thead>
             <tbody>
-              {pagedItems.length === 0 && (
+              {loading && (
+                <tr><td colSpan={11} style={{ textAlign: 'center', color: '#aaa', padding: 40 }}>Loading...</td></tr>
+              )}
+              {!loading && pagedItems.length === 0 && (
                 <tr><td colSpan={11} style={{ textAlign: 'center', color: '#aaa', padding: 40 }}>
                   {hasFilters ? 'No assets match your search or filters.' : 'No assets yet.'}
                 </td></tr>
               )}
-              {pagedItems.map((item, i) => (
+              {!loading && pagedItems.map((item, i) => (
                 <tr key={item.id} style={{ background: checkedIds.has(item.id) ? '#f0f4ff' : 'inherit' }}>
                   <td style={{ padding: '10px 12px' }}><input type="checkbox" checked={checkedIds.has(item.id)} onChange={() => toggleCheck(item.id)} /></td>
-                  <td style={{ padding: '10px 8px', color: '#9ca3af', fontSize: 12 }}>{(safePage - 1) * pageSize + i + 1}</td>
+                  <td style={{ padding: '10px 8px', color: '#9ca3af', fontSize: 12 }}>{(currentPage - 1) * pageSize + i + 1}</td>
                   <td style={{ maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.asset_serial || ''}>{item.asset_serial || '—'}</td>
                   <td style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.name}>
                     <span style={{ cursor: 'pointer', color: '#1565c0', fontWeight: 600 }} onClick={() => setSelected(item)}>{item.name}</span>
@@ -1149,7 +1201,7 @@ export default function Assets() {
         </div>
 
         {/* Pagination bar */}
-        {sortedItems.length > 0 && (
+        {total > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderTop: '1px solid #f0f4f8', flexWrap: 'wrap', gap: 10 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#555' }}>
               <span>Rows per page:</span>
@@ -1158,25 +1210,29 @@ export default function Assets() {
                 onChange={e => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
                 style={{ padding: '4px 8px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13 }}
               >
-                {[10, 25, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
+                {[10, 25, 50, 100].map((n, i, arr) => (
+                  <option key={n} value={n} disabled={i > 0 && total <= arr[i - 1]}>
+                    {n}
+                  </option>
+                ))}
               </select>
               <span style={{ marginLeft: 8 }}>
-                {(safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, sortedItems.length)} of {sortedItems.length}
+                {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, total)} of {total}
               </span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <button
                 onClick={() => setCurrentPage(1)}
-                disabled={safePage === 1}
-                style={{ padding: '5px 10px', border: '1px solid #d1d5db', borderRadius: 6, background: safePage === 1 ? '#f7f8fc' : '#fff', cursor: safePage === 1 ? 'default' : 'pointer', color: safePage === 1 ? '#bbb' : '#333', fontSize: 13 }}
+                disabled={currentPage === 1}
+                style={{ padding: '5px 10px', border: '1px solid #d1d5db', borderRadius: 6, background: currentPage === 1 ? '#f7f8fc' : '#fff', cursor: currentPage === 1 ? 'default' : 'pointer', color: currentPage === 1 ? '#bbb' : '#333', fontSize: 13 }}
               >«</button>
               <button
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                disabled={safePage === 1}
-                style={{ padding: '5px 10px', border: '1px solid #d1d5db', borderRadius: 6, background: safePage === 1 ? '#f7f8fc' : '#fff', cursor: safePage === 1 ? 'default' : 'pointer', color: safePage === 1 ? '#bbb' : '#333', fontSize: 13 }}
+                disabled={currentPage === 1}
+                style={{ padding: '5px 10px', border: '1px solid #d1d5db', borderRadius: 6, background: currentPage === 1 ? '#f7f8fc' : '#fff', cursor: currentPage === 1 ? 'default' : 'pointer', color: currentPage === 1 ? '#bbb' : '#333', fontSize: 13 }}
               >‹</button>
               {Array.from({ length: totalPages }, (_, idx) => idx + 1)
-                .filter(p => p === 1 || p === totalPages || Math.abs(p - safePage) <= 2)
+                .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
                 .reduce((acc, p, i, arr) => {
                   if (i > 0 && p - arr[i - 1] > 1) acc.push('...');
                   acc.push(p);
@@ -1190,35 +1246,35 @@ export default function Assets() {
                         onClick={() => setCurrentPage(p)}
                         style={{
                           padding: '5px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13,
-                          background: safePage === p ? '#1565c0' : '#fff',
-                          color: safePage === p ? '#fff' : '#333',
-                          cursor: 'pointer', fontWeight: safePage === p ? 600 : 400,
+                          background: currentPage === p ? '#1565c0' : '#fff',
+                          color: currentPage === p ? '#fff' : '#333',
+                          cursor: 'pointer', fontWeight: currentPage === p ? 600 : 400,
                         }}
                       >{p}</button>
                 )}
               <button
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                disabled={safePage === totalPages}
-                style={{ padding: '5px 10px', border: '1px solid #d1d5db', borderRadius: 6, background: safePage === totalPages ? '#f7f8fc' : '#fff', cursor: safePage === totalPages ? 'default' : 'pointer', color: safePage === totalPages ? '#bbb' : '#333', fontSize: 13 }}
+                disabled={currentPage === totalPages}
+                style={{ padding: '5px 10px', border: '1px solid #d1d5db', borderRadius: 6, background: currentPage === totalPages ? '#f7f8fc' : '#fff', cursor: currentPage === totalPages ? 'default' : 'pointer', color: currentPage === totalPages ? '#bbb' : '#333', fontSize: 13 }}
               >›</button>
               <button
                 onClick={() => setCurrentPage(totalPages)}
-                disabled={safePage === totalPages}
-                style={{ padding: '5px 10px', border: '1px solid #d1d5db', borderRadius: 6, background: safePage === totalPages ? '#f7f8fc' : '#fff', cursor: safePage === totalPages ? 'default' : 'pointer', color: safePage === totalPages ? '#bbb' : '#333', fontSize: 13 }}
+                disabled={currentPage === totalPages}
+                style={{ padding: '5px 10px', border: '1px solid #d1d5db', borderRadius: 6, background: currentPage === totalPages ? '#f7f8fc' : '#fff', cursor: currentPage === totalPages ? 'default' : 'pointer', color: currentPage === totalPages ? '#bbb' : '#333', fontSize: 13 }}
               >»</button>
             </div>
           </div>
         )}
       </div>
-      {modal && <AddAssetModal types={types} locations={locations} tagTypes={tagTypes} vendors={vendors} onClose={() => setModal(false)} onSaved={() => fetchAssets(search, filterLocation, filterType)} />}
+      {modal && <AddAssetModal types={types} locations={locations} tagTypes={tagTypes} vendors={vendors} onClose={() => setModal(false)} onSaved={() => fetchAssets(search, filterLocation, filterType, currentPage, pageSize, sortKey, sortDir)} />}
       {updateAttrModal && (
         <UpdateAttributeModal selectedAssets={selectedAssets} onClose={() => setUpdateAttrModal(false)}
-          onSaved={() => { setCheckedIds(new Set()); fetchAssets(search, filterLocation, filterType); }} />
+          onSaved={() => { setCheckedIds(new Set()); fetchAssets(search, filterLocation, filterType, currentPage, pageSize, sortKey, sortDir); }} />
       )}
       {changeLocModal && (
         <BulkChangeLocationModal selectedAssets={selectedAssets} locations={locations}
           onClose={() => setChangeLocModal(false)}
-          onSaved={() => { setCheckedIds(new Set()); fetchAssets(search, filterLocation, filterType); }} />
+          onSaved={() => { setCheckedIds(new Set()); fetchAssets(search, filterLocation, filterType, currentPage, pageSize, sortKey, sortDir); }} />
       )}
       {confirmDialog && (
         <ConfirmModal
