@@ -29,9 +29,10 @@ router.get('/', async (req, res, next) => {
   try {
   const { user_id, search, location_id, asset_type_id, page, limit } = req.query;
 
-  // Pagination params
-  const pageNum  = Math.max(1, parseInt(page)  || 1);
-  const pageSize = Math.min(200, Math.max(1, parseInt(limit) || 20)); // default 20, max 200
+  // Pagination only applies when both page and limit are explicitly provided
+  const paginate = page !== undefined && limit !== undefined;
+  const pageNum  = Math.max(1, parseInt(page) || 1);
+  const pageSize = Math.min(200, Math.max(1, parseInt(limit)));
   const offset   = (pageNum - 1) * pageSize;
 
   let allowedTypeIds = null;
@@ -123,24 +124,32 @@ router.get('/', async (req, res, next) => {
 
   const whereClause = conditions.length ? ' WHERE ' + conditions.join(' AND ') : '';
 
-  // Total count (same filters, no LIMIT)
-  const [[{ total }]] = await db.query(
-    `SELECT COUNT(*) AS total ${baseJoin}${whereClause}`,
-    params
-  );
+  query += whereClause + ' ORDER BY a.created_at DESC';
 
-  query += whereClause + ' ORDER BY a.created_at DESC LIMIT ? OFFSET ?';
-  const [rows] = await db.query(query, [...params, pageSize, offset]);
+  if (paginate) {
+    // Total count (same filters, no LIMIT)
+    const [[{ total }]] = await db.query(
+      `SELECT COUNT(*) AS total ${baseJoin}${whereClause}`,
+      params
+    );
 
-  res.json({
-    data: rows,
-    pagination: {
-      total,
-      page:      pageNum,
-      limit:     pageSize,
-      totalPages: Math.ceil(total / pageSize),
-    },
-  });
+    query += ' LIMIT ? OFFSET ?';
+    const [rows] = await db.query(query, [...params, pageSize, offset]);
+
+    return res.json({
+      data: rows,
+      pagination: {
+        total,
+        page:       pageNum,
+        limit:      pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    });
+  }
+
+  // No pagination — return all records as a plain array
+  const [rows] = await db.query(query, params);
+  res.json(rows);
   } catch (err) { next(err); }
 });
 
