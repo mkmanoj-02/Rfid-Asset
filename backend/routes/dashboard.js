@@ -32,9 +32,12 @@ router.get('/', async (req, res) => {
     LIMIT 3
   `);
 
-  const [statusBreakdown] = await db.query(`
-    SELECT status, COUNT(*) AS count FROM assets GROUP BY status
-  `);
+  const [[{ tagged }]] = await db.query(
+    "SELECT COUNT(*) AS tagged FROM assets WHERE rfid_tag IS NOT NULL AND rfid_tag != ''"
+  );
+  const [[{ untagged }]] = await db.query(
+    "SELECT COUNT(*) AS untagged FROM assets WHERE rfid_tag IS NULL OR rfid_tag = ''"
+  );
 
   res.json({
     total_assets,
@@ -43,7 +46,7 @@ router.get('/', async (req, res) => {
     assets_by_type: assetsByType,
     assets_by_location: assetsByLocation,
     recent_movements: recentMovements,
-    status_breakdown: statusBreakdown,
+    rfid_breakdown: { tagged, untagged },
   });
 });
 

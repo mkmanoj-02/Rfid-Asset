@@ -148,7 +148,7 @@ export default function Dashboard() {
     savePins(next);
   };
 
-  const missing      = data ? (data.status_breakdown.find(s => s.status === 'inactive')?.count || 0) : 0;
+  const missing      = data ? (data.rfid_breakdown?.untagged || 0) : 0;
   const scannedToday = data?.recent_movements?.length || 0;
 
   // Build location tree from flat list (only allowed locations are in the list)
@@ -241,11 +241,8 @@ export default function Dashboard() {
           { label: 'Total Assets', value: data?.total_assets ?? '—', icon: '📦' },
           { label: 'Locations', value: data?.total_locations ?? '—', icon: '📍' },
           { label: 'Asset Types', value: data?.total_types ?? '—', icon: '🏷️' },
-          ...(data?.status_breakdown || []).map(s => ({
-            label: s.status.charAt(0).toUpperCase() + s.status.slice(1),
-            value: s.count,
-            icon: s.status === 'active' ? '✅' : s.status === 'inactive' ? '⚠️' : '🔧'
-          })),
+          { label: 'Tagged', value: data?.rfid_breakdown?.tagged ?? '—', icon: '🔖' },
+          { label: 'Untagged', value: data?.rfid_breakdown?.untagged ?? '—', icon: '🚫' },
         ].map(({ label, value, icon }) => (
           <div className="stat-card" key={label}>
             <span className="stat-icon">{icon}</span>

@@ -361,10 +361,13 @@ function Sidebar({ mobileOpen, onMobileClose }) {
           <NavItem to="/rules-alerts" icon={Bell}    label="Rules & Alerts" />
 
           <SidebarDivider />
+          <SectionLabel label="Import Manager" />
+          {isAdmin && <NavItem to="/import" icon={Upload} label="Import" />}
+
+          <SidebarDivider />
           <SectionLabel label="Reports" />
           <NavItem to="/reports"   icon={BarChart2}     label="Reports"        />
           <NavItem to="/audit-log" icon={ClipboardList} label="User Audit Log" />
-          {isAdmin && <NavItem to="/import" icon={Upload} label="Import" />}
         </div>
 
         {/* User card */}

@@ -4,8 +4,41 @@ require('dotenv').config();
 
 const app = express();
 
+const routeMethods = ['all', 'get', 'post', 'put', 'patch', 'delete'];
+
+function wrapHandler(handler) {
+  if (Array.isArray(handler)) return handler.map(wrapHandler);
+  if (typeof handler !== 'function' || handler.length === 4) return handler;
+  return function asyncErrorBoundary(req, res, next) {
+    try {
+      const result = handler(req, res, next);
+      if (result && typeof result.catch === 'function') result.catch(next);
+    } catch (err) {
+      next(err);
+    }
+  };
+}
+
+function wrapAsyncHandlers(target) {
+  for (const method of routeMethods) {
+    const original = target[method];
+    target[method] = function patchedRouteMethod(...args) {
+      return original.call(this, ...args.map(wrapHandler));
+    };
+  }
+}
+
+const createRouter = express.Router;
+express.Router = function patchedRouter(...args) {
+  const router = createRouter.apply(this, args);
+  wrapAsyncHandlers(router);
+  return router;
+};
+
+wrapAsyncHandlers(app);
+
 // ── CORS — only allow configured origins ──────────────────────
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3002')
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000')
   .split(',')
   .map(o => o.trim())
   .filter(Boolean);
@@ -46,6 +79,7 @@ app.use('/api/audit-logs', require('./routes/auditLogs'));
 app.use('/api/location-types', require('./routes/locationTypes'));
 app.use('/api/tag-types', require('./routes/tagTypes'));
 app.use('/api/vendors',  require('./routes/vendors'));
+app.use('/api/depreciation', require('./routes/depreciation'));
 
 const { startRuleEngine } = require('./ruleEngine');
 startRuleEngine();
@@ -59,6 +93,8 @@ app.use((req, res, next) => {
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err.message);
 
+  if (res.headersSent) return next(err);
+
   // MySQL duplicate entry
   if (err.code === 'ER_DUP_ENTRY') {
     const field = err.sqlMessage && err.sqlMessage.includes('rfid_tag') ? 'RFID tag' :
@@ -66,7 +102,20 @@ app.use((err, req, res, next) => {
     return res.status(409).json({ message: `${field} already exists. Please use a unique value.` });
   }
 
-  res.status(500).json({ message: 'An unexpected error occurred. Please try again.' });
+  if (err.code === 'ER_BAD_NULL_ERROR') {
+    const field = err.sqlMessage?.match(/Column '([^']+)' cannot be null/)?.[1] || 'Required field';
+    return res.status(400).json({ message: `${field} is required.` });
+  }
+
+  if (err.code?.startsWith('ER_')) {
+    return res.status(400).json({ message: err.sqlMessage || 'Database request failed.' });
+  }
+
+  res.status(err.status || 500).json({ message: err.message || 'An unexpected error occurred. Please try again.' });
+});
+
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled promise rejection:', err?.message || err);
 });
 
 const PORT = process.env.PORT || 5000;

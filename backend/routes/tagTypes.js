@@ -57,5 +57,48 @@ router.delete('/:id', async (req, res) => {
   res.json({ message: 'Deleted' });
 });
 
+
+// Get recommendation for an asset type
+router.get('/recommend/:asset_type_id', async (req, res) => {
+  const [rows] = await db.query(`
+    SELECT tt.*, attr.reason
+    FROM asset_type_tag_recommendations attr
+    JOIN tag_types tt ON attr.tag_type_id = tt.id
+    WHERE attr.asset_type_id = ?
+    LIMIT 1
+  `, [req.params.asset_type_id]);
+  res.json(rows[0] || null);
+});
+
+// Get all recommendations
+router.get('/recommendations', async (req, res) => {
+  const [rows] = await db.query(`
+    SELECT attr.*, at.name AS asset_type_name, tt.name AS tag_type_name
+    FROM asset_type_tag_recommendations attr
+    JOIN asset_types at ON attr.asset_type_id = at.id
+    JOIN tag_types tt ON attr.tag_type_id = tt.id
+    ORDER BY at.name
+  `);
+  res.json(rows);
+});
+
+// Save recommendation for asset type
+router.post('/recommendations', async (req, res) => {
+  const { asset_type_id, tag_type_id, reason } = req.body;
+  await db.query(`
+    INSERT INTO asset_type_tag_recommendations (asset_type_id, tag_type_id, reason)
+    VALUES (?, ?, ?)
+    ON DUPLICATE KEY UPDATE tag_type_id = ?, reason = ?
+  `, [asset_type_id, tag_type_id, reason || null, tag_type_id, reason || null]);
+  res.json({ message: 'Saved' });
+});
+
+// Delete recommendation
+router.delete('/recommendations/:asset_type_id', async (req, res) => {
+  await db.query('DELETE FROM asset_type_tag_recommendations WHERE asset_type_id = ?', [req.params.asset_type_id]);
+  res.json({ message: 'Deleted' });
+});
+
+
 module.exports = router;
 

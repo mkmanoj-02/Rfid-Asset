@@ -504,8 +504,10 @@ async function runRules() {
 // Run every 30 seconds as fallback, but also triggered on-demand
 function startRuleEngine() {
   console.log('Rule engine started');
-  runRules();
-  setInterval(runRules, 30 * 1000);
+  runRules().catch(e => console.error('Rule engine error:', e.message));
+  setInterval(() => {
+    runRules().catch(e => console.error('Rule engine error:', e.message));
+  }, 30 * 1000);
 }
 
 module.exports = { startRuleEngine, runRules };
