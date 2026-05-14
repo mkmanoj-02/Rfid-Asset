@@ -11,11 +11,22 @@ function parsePriv(val) {
   try { const p = JSON.parse(val); return p && p.length ? p : null; } catch { return null; }
 }
 
-function toBool01(val, defaultVal) {
+const ASSET_INVENTORY_STATUSES = ['in_inventory', 'missing', 'not_in_inventory'];
+
+/** @returns {string} defaultVal when val omitted; null when invalid */
+function normalizeAssetInventoryStatus(val, defaultVal = 'in_inventory') {
   if (val === undefined || val === null || val === '') return defaultVal;
-  if (val === true || val === 1 || val === '1' || val === 'true') return 1;
-  if (val === false || val === 0 || val === '0' || val === 'false') return 0;
-  return defaultVal;
+  const s = String(val).trim().toLowerCase().replace(/-/g, '_');
+  const aliases = {
+    inventory: 'in_inventory',
+    in_inventory: 'in_inventory',
+    missing: 'missing',
+    not_in_inventory: 'not_in_inventory',
+    excluded: 'not_in_inventory',
+    out_of_inventory: 'not_in_inventory',
+  };
+  const mapped = aliases[s] || (ASSET_INVENTORY_STATUSES.includes(s) ? s : null);
+  return mapped || null;
 }
 
 function parseSinceQuery(since) {
@@ -41,7 +52,7 @@ async function expandWithSubLocations(ids) {
 
 router.get('/', async (req, res, next) => {
   try {
-  const { user_id, search, location_id, asset_type_id, page, limit, since, is_missing, is_inventory } = req.query;
+  const { user_id, search, location_id, asset_type_id, page, limit, since, asset_inventory_status } = req.query;
 
   // Pagination only applies when both page and limit are explicitly provided
   const paginate = page !== undefined && limit !== undefined;
@@ -126,14 +137,13 @@ router.get('/', async (req, res, next) => {
     params.push(parsed.date);
   }
 
-  if (is_missing !== undefined && is_missing !== null && is_missing !== '') {
-    conditions.push('a.is_missing = ?');
-    params.push(toBool01(is_missing, 0));
-  }
-
-  if (is_inventory !== undefined && is_inventory !== null && is_inventory !== '') {
-    conditions.push('a.is_inventory = ?');
-    params.push(toBool01(is_inventory, 1));
+  if (asset_inventory_status !== undefined && asset_inventory_status !== null && asset_inventory_status !== '') {
+    const st = normalizeAssetInventoryStatus(asset_inventory_status, 'in_inventory');
+    if (!st) return res.status(400).json({
+      message: `Invalid asset_inventory_status; use one of: ${ASSET_INVENTORY_STATUSES.join(', ')}`,
+    });
+    conditions.push('a.asset_inventory_status = ?');
+    params.push(st);
   }
 
   // Search across serial, name, rfid, asset type name, location name, attribute values
@@ -257,7 +267,7 @@ router.put('/:id/attributes', async (req, res, next) => {
 
 router.post('/', async (req, res, next) => {
   try {
-  const { rfid_tag, tag_type_id, vendor_id, asset_serial, name, asset_type_id, current_location_id, status, description, is_inventory, is_missing } = req.body;
+  const { rfid_tag, tag_type_id, vendor_id, asset_serial, name, asset_type_id, current_location_id, status, description, asset_inventory_status } = req.body;
 
   // --- Mandatory field validation ---
   const errors = [];
@@ -269,15 +279,16 @@ router.post('/', async (req, res, next) => {
   if (!tag_type_id) errors.push('Tag type is required');
   if (!status || !status.toString().trim()) errors.push('Status is required');
   if (rfid_tag && rfid_tag.toString().trim().length !== 24) errors.push('RFID tag must be exactly 24 characters');
+  const invStatus = normalizeAssetInventoryStatus(asset_inventory_status, 'in_inventory');
+  if (asset_inventory_status !== undefined && asset_inventory_status !== null && asset_inventory_status !== '' && !invStatus)
+    errors.push(`asset_inventory_status must be one of: ${ASSET_INVENTORY_STATUSES.join(', ')}`);
   if (errors.length) return res.status(400).json({ message: errors.join('; ') });
 
   const locationId = current_location_id;
-  const inv = toBool01(is_inventory, 1);
-  const miss = toBool01(is_missing, 0);
 
   const [result] = await db.query(
-    'INSERT INTO assets (rfid_tag, tag_type_id, vendor_id, asset_serial, name, asset_type_id, current_location_id, status, description, is_inventory, is_missing) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [rfid_tag || null, tag_type_id || null, vendor_id || null, asset_serial, name, asset_type_id, locationId, status || 'active', description || null, inv, miss]
+    'INSERT INTO assets (rfid_tag, tag_type_id, vendor_id, asset_serial, name, asset_type_id, current_location_id, status, description, asset_inventory_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [rfid_tag || null, tag_type_id || null, vendor_id || null, asset_serial, name, asset_type_id, locationId, status || 'active', description || null, invStatus]
   );
   const assetId = result.insertId;
 
@@ -304,7 +315,7 @@ router.put('/:id', async (req, res, next) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) return res.status(400).json({ message: 'Invalid asset ID' });
 
-  const { rfid_tag, tag_type_id, vendor_id, asset_serial, name, asset_type_id, current_location_id, status, description, is_inventory, is_missing } = req.body;
+  const { rfid_tag, tag_type_id, vendor_id, asset_serial, name, asset_type_id, current_location_id, status, description, asset_inventory_status } = req.body;
 
   // Check asset modify privilege
   const userId = req.headers['x-user-id'];
@@ -338,24 +349,26 @@ router.put('/:id', async (req, res, next) => {
   if (!tag_type_id) editErrors.push('Tag type is required');
   if (!status || !status.toString().trim()) editErrors.push('Status is required');
   if (rfid_tag && rfid_tag.toString().trim().length !== 24) editErrors.push('RFID tag must be exactly 24 characters');
+  if (asset_inventory_status !== undefined && asset_inventory_status !== null && asset_inventory_status !== '') {
+    const st = normalizeAssetInventoryStatus(asset_inventory_status, 'in_inventory');
+    if (!st) editErrors.push(`asset_inventory_status must be one of: ${ASSET_INVENTORY_STATUSES.join(', ')}`);
+  }
   if (editErrors.length) return res.status(400).json({ message: editErrors.join('; ') });
 
   const [existing] = await db.query(
-    'SELECT current_location_id, is_inventory, is_missing FROM assets WHERE id = ?',
+    'SELECT current_location_id, asset_inventory_status FROM assets WHERE id = ?',
     [id]
   );
   if (!existing.length) return res.status(404).json({ message: 'Not found' });
 
-  const inv = is_inventory !== undefined && is_inventory !== null && is_inventory !== ''
-    ? toBool01(is_inventory, 1)
-    : Number(existing[0].is_inventory);
-  const miss = is_missing !== undefined && is_missing !== null && is_missing !== ''
-    ? toBool01(is_missing, 0)
-    : Number(existing[0].is_missing);
+  const invStatus =
+    asset_inventory_status !== undefined && asset_inventory_status !== null && asset_inventory_status !== ''
+      ? normalizeAssetInventoryStatus(asset_inventory_status, 'in_inventory')
+      : existing[0].asset_inventory_status || 'in_inventory';
 
   await db.query(
-    'UPDATE assets SET rfid_tag = ?, tag_type_id = ?, vendor_id = ?, asset_serial = ?, name = ?, asset_type_id = ?, current_location_id = ?, status = ?, description = ?, is_inventory = ?, is_missing = ? WHERE id = ?',
-    [rfid_tag || null, tag_type_id || null, vendor_id || null, asset_serial, name, asset_type_id, current_location_id || null, status, description || null, inv, miss, id]
+    'UPDATE assets SET rfid_tag = ?, tag_type_id = ?, vendor_id = ?, asset_serial = ?, name = ?, asset_type_id = ?, current_location_id = ?, status = ?, description = ?, asset_inventory_status = ? WHERE id = ?',
+    [rfid_tag || null, tag_type_id || null, vendor_id || null, asset_serial, name, asset_type_id, current_location_id || null, status, description || null, invStatus, id]
   );
 
   const oldLocation = existing[0].current_location_id;
