@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   getAssetTypes, createAssetType, updateAssetType, deleteAssetType,
   getAttributes, createAttribute, updateAttribute, deleteAttribute
@@ -6,6 +6,21 @@ import {
 import { useToast } from '../Toast';
 
 const ATTR_TYPES = ['string', 'double', 'date', 'list'];
+
+function matchesAssetTypeQuery(item, q) {
+  if (!q) return true;
+  const hay = [item.name || '', item.description || '', item.parent_name || ''].join(' ').toLowerCase();
+  return hay.includes(q);
+}
+
+/** Include this type if it matches `q` or any descendant matches (recursive). */
+function visibleInAssetTypeSearch(item, allTypes, q) {
+  if (!q) return true;
+  if (matchesAssetTypeQuery(item, q)) return true;
+  return allTypes
+    .filter(t => t.parent_id === item.id)
+    .some(c => visibleInAssetTypeSearch(c, allTypes, q));
+}
 
 // ── Confirm Dialog (same pattern as Assets delete modal) ────────
 function ConfirmModal({ title, message, subMessage, confirmLabel = 'Delete', confirmStyle = 'danger', onConfirm, onCancel }) {
@@ -231,7 +246,7 @@ function AddAttributeForm({ typeId, onSaved, showInfo }) {
 }
 
 // ── Asset Type Card (with attributes + sub-types) ──────────────
-function AssetTypeCard({ item, allTypes, onEdit, onDelete, onAddSub, onAttributeDeleteRequest, showInfo, level = 0, canModify, canDelete }) {
+function AssetTypeCard({ item, allTypes, onEdit, onDelete, onAddSub, onAttributeDeleteRequest, showInfo, level = 0, canModify, canDelete, searchQuery = '' }) {
   const [expanded, setExpanded] = useState(false);
   const [attrs, setAttrs] = useState([]);
 
@@ -242,7 +257,7 @@ function AssetTypeCard({ item, allTypes, onEdit, onDelete, onAddSub, onAttribute
 
   useEffect(() => { if (expanded) loadAttrs(); }, [expanded]);
 
-  const children = allTypes.filter(t => t.parent_id === item.id);
+  const children = allTypes.filter(t => t.parent_id === item.id && visibleInAssetTypeSearch(t, allTypes, searchQuery));
 
   return (
     <div style={{ marginLeft: level * 24, marginBottom: 8 }}>
@@ -291,7 +306,7 @@ function AssetTypeCard({ item, allTypes, onEdit, onDelete, onAddSub, onAttribute
         <AssetTypeCard key={child.id} item={child} allTypes={allTypes}
           onEdit={onEdit} onDelete={onDelete} onAddSub={onAddSub} onAttributeDeleteRequest={onAttributeDeleteRequest}
           level={level + 1}
-          canModify={canModify} canDelete={canDelete} />
+          canModify={canModify} canDelete={canDelete} searchQuery={searchQuery} />
       ))}
     </div>
   );
@@ -300,6 +315,7 @@ function AssetTypeCard({ item, allTypes, onEdit, onDelete, onAddSub, onAttribute
 // ── Main Page ──────────────────────────────────────────────────
 export default function AssetTypes() {
   const [items, setItems] = useState([]);
+  const [search, setSearch] = useState('');
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ name: '', description: '', parent_id: '' });
   const [editing, setEditing] = useState(null);
@@ -378,7 +394,15 @@ export default function AssetTypes() {
     });
   };
 
-  const rootTypes = items.filter(t => !t.parent_id);
+  const searchQuery = search.trim().toLowerCase();
+  const rootTypes = useMemo(
+    () => items.filter(t => !t.parent_id && visibleInAssetTypeSearch(t, items, searchQuery)),
+    [items, searchQuery],
+  );
+  const visibleTypeCount = useMemo(
+    () => items.filter(t => visibleInAssetTypeSearch(t, items, searchQuery)).length,
+    [items, searchQuery],
+  );
 
   return (
     <div>
@@ -387,15 +411,42 @@ export default function AssetTypes() {
         {canModify && <button className="btn btn-primary" onClick={() => openAdd()}>+ Add Asset Type</button>}
       </div>
 
+      <div style={{ background: '#fff', borderRadius: 8, padding: '12px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginBottom: 16, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', flex: '1 1 220px', minWidth: 180, maxWidth: 420 }}>
+          <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', display: 'flex', alignItems: 'center', pointerEvents: 'none' }}>
+            <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+            </svg>
+          </span>
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search by name, description, parent…"
+            style={{ width: '100%', padding: '7px 10px 7px 30px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, boxSizing: 'border-box' }}
+          />
+        </div>
+        {searchQuery && (
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSearch('')}>✕ Clear</button>
+        )}
+        <span style={{ fontSize: 12, color: '#888', marginLeft: 'auto' }}>
+          {searchQuery
+            ? `${visibleTypeCount} matching type${visibleTypeCount !== 1 ? 's' : ''}`
+            : `${items.length} type${items.length !== 1 ? 's' : ''}`}
+        </span>
+      </div>
+
       <div className="type-cards">
-        {rootTypes.length === 0 && (
+        {items.length === 0 && (
           <div style={{ textAlign: 'center', color: '#aaa', padding: 32 }}>No asset types yet.</div>
+        )}
+        {items.length > 0 && rootTypes.length === 0 && searchQuery && (
+          <div style={{ textAlign: 'center', color: '#aaa', padding: 32 }}>No asset types match your search.</div>
         )}
         {rootTypes.map(item => (
           <AssetTypeCard key={item.id} item={item} allTypes={items}
             onEdit={openEdit} onDelete={removeAssetType} onAddSub={(parentId) => openAdd(parentId)}
             onAttributeDeleteRequest={openAttributeDeleteConfirm}
-            canModify={canModify} canDelete={canDelete} />
+            canModify={canModify} canDelete={canDelete} searchQuery={searchQuery} />
         ))}
       </div>
 
