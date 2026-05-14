@@ -199,7 +199,7 @@ function SettingsDropdown() {
   }, []);
 
   const items = [
-    { icon: SettingsIcon, label: 'Settings', path: '/settings', desc: 'Tag types & tag recommendations' },
+    { icon: Tag, label: 'Tag Management', path: '/settings', desc: 'Manage tag types & tag recommendations' },
     { icon: Truck, label: 'Vendors', path: '/settings/vendors', desc: 'Manage asset vendors & suppliers' },
   ];
 
