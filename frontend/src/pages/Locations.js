@@ -344,9 +344,23 @@ function LocationTypes() {
 
   return (
     <div className="location-types-split">
-      <div ref={typesLeftRef} style={{ width: 240, flexShrink: 0, background: '#fff', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
-        <div style={{ fontWeight: 600, fontSize: 13, padding: '10px 14px', background: '#f7f8fc', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>
-          — Location Type List —
+      <div
+        ref={typesLeftRef}
+        style={{
+          width: 260,
+          flexShrink: 0,
+          background: '#fff',
+          borderRadius: 12,
+          boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+          border: '1px solid #e8edf2',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        <div className="panel-header">
+          <span>Location Types</span>
+          {canModify && <button type="button" className="btn btn-primary btn-sm" onClick={openAdd}>+ Add</button>}
         </div>
         <div style={{ padding: '8px 10px', borderBottom: '1px solid #e2e8f0', background: '#fafbfc' }}>
           <div style={{ position: 'relative' }}>
@@ -380,9 +394,6 @@ function LocationTypes() {
           {types.length > 0 && filteredTypes.length === 0 && typesQuery && (
             <div style={{ padding: 16, color: '#aaa', fontSize: 13, textAlign: 'center' }}>No types match your search.</div>
           )}
-        </div>
-        <div style={{ padding: '10px 14px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end' }}>
-          {canModify && <button className="btn btn-primary btn-sm" onClick={openAdd}>+ Add Type</button>}
         </div>
       </div>
 
