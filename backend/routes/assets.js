@@ -133,7 +133,10 @@ router.get('/', async (req, res, next) => {
     LEFT JOIN tag_types tt ON a.tag_type_id = tt.id
     LEFT JOIN vendors v ON a.vendor_id = v.id`;
 
-  let query = `SELECT a.*, at.name AS asset_type_name, l.name AS location_name, tt.name AS tag_type_name, v.name AS vendor_name ${baseJoin}`;
+  const lastSeenSubquery = `(SELECT MAX(mh.moved_at) FROM movement_history mh WHERE mh.asset_id = a.id)`;
+
+  let query = `SELECT a.*, at.name AS asset_type_name, l.name AS location_name, tt.name AS tag_type_name, v.name AS vendor_name,
+    ${lastSeenSubquery} AS lastseen ${baseJoin}`;
   const conditions = [];
   const params = [];
 
@@ -215,6 +218,7 @@ router.get('/', async (req, res, next) => {
     location_name: 'l.name',
     created_at: 'a.created_at',
     asset_inventory_status: 'a.asset_inventory_status',
+    lastseen: lastSeenSubquery,
   };
   const sortCol = SORT_MAP[String(sortField || '').trim()] || 'a.created_at';
   const sortDirection = String(sort_dir || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
@@ -257,7 +261,8 @@ router.get('/:id', async (req, res, next) => {
   if (isNaN(id)) return res.status(400).json({ message: 'Invalid asset ID' });
 
   const [rows] = await db.query(`
-    SELECT a.*, at.name AS asset_type_name, l.name AS location_name, tt.name AS tag_type_name, v.name AS vendor_name
+    SELECT a.*, at.name AS asset_type_name, l.name AS location_name, tt.name AS tag_type_name, v.name AS vendor_name,
+      (SELECT MAX(mh.moved_at) FROM movement_history mh WHERE mh.asset_id = a.id) AS lastseen
     FROM assets a
     LEFT JOIN asset_types at ON a.asset_type_id = at.id
     LEFT JOIN locations l ON a.current_location_id = l.id

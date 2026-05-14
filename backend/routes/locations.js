@@ -103,8 +103,24 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', async (req, res) => {
   const { name, description, parent_id } = req.body;
-  const [existing] = await db.query('SELECT id FROM locations WHERE LOWER(name) = LOWER(?)', [name]);
-  if (existing.length) return res.status(400).json({ message: `Location "${name}" already exists` });
+  const pid = parent_id === undefined || parent_id === null || parent_id === '' ? null : parent_id;
+  const [existing] = await db.query(
+    `SELECT id 
+     FROM locations 
+     WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))
+     AND (
+       (parent_id IS NULL AND ? IS NULL)
+       OR parent_id = ?
+     )`,
+    [name, pid, pid]
+  );
+  if (existing.length) {
+    return res.status(400).json({
+      message: pid
+        ? `Child location "${name}" already exists under this parent`
+        : `Parent location "${name}" already exists`,
+    });
+  }
   const [result] = await db.query('INSERT INTO locations (name, description, parent_id, location_type_id) VALUES (?, ?, ?, ?)',
     [name, description, parent_id || null, req.body.location_type_id || null]);
   await audit.log('Location', 'Added', `Location "${name}" was created`, req.auditUser, req.auditUserId);
@@ -119,8 +135,25 @@ router.put('/:id', async (req, res) => {
       return res.status(403).json({ message: 'You do not have permission to modify locations' });
   }
   const { name, description, parent_id } = req.body;
-  const [existing] = await db.query('SELECT id FROM locations WHERE LOWER(name) = LOWER(?) AND id != ?', [name, req.params.id]);
-  if (existing.length) return res.status(400).json({ message: `Location "${name}" already exists` });
+  const pid = parent_id === undefined || parent_id === null || parent_id === '' ? null : parent_id;
+  const [existing] = await db.query(
+    `SELECT id 
+     FROM locations 
+     WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))
+     AND (
+       (parent_id IS NULL AND ? IS NULL)
+       OR parent_id = ?
+     )
+     AND id != ?`,
+    [name, pid, pid, req.params.id]
+  );
+  if (existing.length) {
+    return res.status(400).json({
+      message: pid
+        ? `Child location "${name}" already exists under this parent`
+        : `Parent location "${name}" already exists`,
+    });
+  }
   await db.query(
     'UPDATE locations SET name = ?, description = ?, parent_id = ?, location_type_id = ? WHERE id = ?',
     [name, description, parent_id || null, req.body.location_type_id || null, req.params.id]
@@ -154,6 +187,7 @@ router.delete('/bulk', async (req, res, next) => {
 });
 
 router.delete('/:id', async (req, res) => {
+  const [rows] = await db.query('SELECT name FROM locations WHERE id = ?', [req.params.id]);
   await db.query('DELETE FROM locations WHERE id = ?', [req.params.id]);
   if (rows.length) await audit.log('Location', 'Deleted', `Location "${rows[0].name}" was deleted`, req.auditUser, req.auditUserId);
   res.json({ message: 'Deleted' });
