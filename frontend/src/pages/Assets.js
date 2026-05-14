@@ -990,6 +990,21 @@ function getAssetAttrValueDisplay(asset, attrName) {
   return String(v);
 }
 
+/** `lastseen` from API — latest movement time for the asset. */
+function formatAssetLastSeenDisplay(raw) {
+  const v = raw ?? null;
+  if (v === null || v === undefined || String(v).trim() === '') return '—';
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 function AssetTableAttrColumnToggle({ expanded, onToggle, selectedCount }) {
   return (
     <button
@@ -1403,7 +1418,7 @@ export default function Assets() {
 
   const selectedAssets = pagedItems.filter(i => checkedIds.has(i.id));
   const hasFilters = search || filterLocation || filterType || filterInventoryStatus;
-  const tableColSpan = 10 + tableAttrColumns.length;
+  const tableColSpan = 11 + tableAttrColumns.length;
 
   const handleTableAttrColumnsChange = useCallback((next) => {
     const cleaned = (Array.isArray(next) ? next : []).slice(0, MAX_ASSET_TABLE_ATTR_COLUMNS);
@@ -1413,7 +1428,12 @@ export default function Assets() {
 
   const buildExportRowExtras = useCallback((all) => {
     return all.map((item, i) => {
-      const row = { ...item, _idx: i + 1, _invLabel: inventoryStatusLabel(item.asset_inventory_status) };
+      const row = {
+        ...item,
+        _idx: i + 1,
+        _invLabel: inventoryStatusLabel(item.asset_inventory_status),
+        _lastTracedAt: formatAssetLastSeenDisplay(item.lastseen ?? item.lastSeen),
+      };
       tableAttrColumns.forEach((col, j) => {
         row[`_attrCol_${j}`] = getAssetAttrValueDisplay(item, col.name);
       });
@@ -1429,6 +1449,7 @@ export default function Assets() {
     { header: 'Tag Type', key: 'tag_type_name' },
     { header: 'Asset Type', key: 'asset_type_name' },
     { header: 'Location', key: 'location_name' },
+    { header: 'Last Traced At', key: '_lastTracedAt' },
   ];
   const exportAttrColumns = tableAttrColumns.map((col, j) => ({ header: col.name, key: `_attrCol_${j}` }));
   const exportTailColumns = [{ header: 'Inv / Missing', key: '_invLabel' }];
@@ -1441,6 +1462,7 @@ export default function Assets() {
     { header: 'Tag Type', key: 'tag_type_name' },
     { header: 'Asset Type', key: 'asset_type_name' },
     { header: 'Location', key: 'location_name' },
+    { header: 'Last Traced At', key: '_lastTracedAt' },
     ...exportAttrColumns,
     { header: 'Inv / Missing', key: '_invLabel' },
   ];
@@ -1490,6 +1512,7 @@ export default function Assets() {
             <option value="asset_serial">Asset Serial</option>
             <option value="asset_type_name">Asset Type</option>
             <option value="location_name">Location</option>
+            <option value="lastseen">Last Traced At</option>
             <option value="asset_inventory_status">Inv / Missing</option>
             <option value="created_at">Recently Added</option>
           </select>
@@ -1582,7 +1605,7 @@ export default function Assets() {
         overflow: 'hidden',
       }}>
         <div style={{ overflowX: 'auto', width: '100%' }}>
-          <table style={{ width: '100%', borderRadius: 0, boxShadow: 'none', border: 'none', minWidth: 980 + tableAttrColumns.length * 132 }}>
+          <table style={{ width: '100%', borderRadius: 0, boxShadow: 'none', border: 'none', minWidth: 1080 + tableAttrColumns.length * 132 }}>
             <thead>
               <tr>
                 <th style={{ width: 36, padding: '10px 12px' }}>
@@ -1600,6 +1623,7 @@ export default function Assets() {
                 <th>Tag Type</th>
                 <SortTh col="asset_type_name" label="Asset Type" />
                 <SortTh col="location_name" label="Location" />
+                <SortTh col="lastseen" label="Last Traced At" />
                 {tableAttrColumns.map(col => (
                   <th key={col.name} className="assets-attr-th" title={col.attr_type ? `${col.name} (${col.attr_type})` : col.name}>
                     {col.name}
@@ -1682,7 +1706,10 @@ export default function Assets() {
                   {hasFilters ? 'No assets match your search or filters.' : 'No assets yet.'}
                 </td></tr>
               )}
-              {!loading && pagedItems.map((item, i) => (
+              {!loading && pagedItems.map((item, i) => {
+                const lastSeenRaw = item.lastseen ?? item.lastSeen;
+                const lastSeenDisp = formatAssetLastSeenDisplay(lastSeenRaw);
+                return (
                 <tr key={item.id} style={{ background: checkedIds.has(item.id) ? '#f0f4ff' : 'inherit' }}>
                   <td style={{ padding: '10px 12px' }}><input type="checkbox" checked={checkedIds.has(item.id)} onChange={() => toggleCheck(item.id)} /></td>
                   <td style={{ padding: '10px 8px', color: '#9ca3af', fontSize: 12 }}>{(currentPage - 1) * pageSize + i + 1}</td>
@@ -1696,6 +1723,9 @@ export default function Assets() {
                   <td style={{ whiteSpace: 'nowrap' }}>{item.tag_type_name || '—'}</td>
                   <td style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.asset_type_name || ''}>{item.asset_type_name || '—'}</td>
                   <td style={{ maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.location_name || ''}>{item.location_name || '—'}</td>
+                  <td style={{ maxWidth: 152, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12, color: '#475569' }} title={lastSeenDisp === '—' ? undefined : String(lastSeenRaw ?? '')}>
+                    {lastSeenDisp}
+                  </td>
                   {tableAttrColumns.map(col => {
                     const cell = getAssetAttrValueDisplay(item, col.name);
                     return (
@@ -1712,7 +1742,8 @@ export default function Assets() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
