@@ -65,6 +65,7 @@ app.use((req, res, next) => {
 
 app.use('/api/locations', require('./routes/locations'));
 app.use('/api/asset-types', require('./routes/assetTypes'));
+app.use('/api/attribute-list', require('./routes/attributeList'));
 app.use('/api/assets', require('./routes/assets'));
 app.use('/api/movements', require('./routes/movements'));
 app.use('/api/dashboard', require('./routes/dashboard'));

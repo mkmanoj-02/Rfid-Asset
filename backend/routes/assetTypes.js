@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const audit = require('../audit');
+const { trimAttrName } = require('../attributeNameUtil');
 
 // Helper: parse privilege array
 function parsePriv(val) {
@@ -39,13 +40,45 @@ router.get('/:id', async (req, res) => {
 });
 
 router.post('/', async (req, res) => {
-  const { name, description } = req.body;
+  const { name, description, attributes } = req.body;
   const [existing] = await db.query('SELECT id FROM asset_types WHERE LOWER(name) = LOWER(?)', [name]);
   if (existing.length) return res.status(400).json({ message: `Asset type "${name}" already exists` });
   const [result] = await db.query('INSERT INTO asset_types (name, description, parent_id) VALUES (?, ?, ?)',
     [name, description, req.body.parent_id || null]);
+  const typeId = result.insertId;
+
+  if (attributes && Array.isArray(attributes) && attributes.length) {
+    const seenInBatch = new Set();
+    for (const attr of attributes) {
+      const attrName = trimAttrName(attr.name);
+      if (!attrName)
+        return res.status(400).json({ message: 'Each attribute must have a non-empty name' });
+      if (seenInBatch.has(attrName))
+        return res.status(400).json({ message: `Duplicate attribute name in request: "${attrName}"` });
+      seenInBatch.add(attrName);
+    }
+    for (const attr of attributes) {
+      const attrName = trimAttrName(attr.name);
+      const attrType = attr.attr_type || 'string';
+      const defVal = attr.default_value != null ? attr.default_value : null;
+      const [ins] = await db.query(
+        'INSERT INTO asset_type_attributes (asset_type_id, name, attr_type, default_value) VALUES (?, ?, ?, ?)',
+        [typeId, attrName, attrType, defVal]
+      );
+      const attrId = ins.insertId;
+      if (attrType === 'list' && attr.list_options && attr.list_options.length) {
+        for (let i = 0; i < attr.list_options.length; i++) {
+          await db.query(
+            'INSERT INTO attribute_list_options (attribute_id, option_value, sort_order) VALUES (?, ?, ?)',
+            [attrId, attr.list_options[i], i]
+          );
+        }
+      }
+    }
+  }
+
   await audit.log('Asset Type', 'Added', `Asset type "${name}" was created`, req.auditUser, req.auditUserId);
-  res.status(201).json({ id: result.insertId, name, description });
+  res.status(201).json({ id: typeId, name, description });
 });
 
 router.put('/:id', async (req, res) => {
@@ -55,11 +88,80 @@ router.put('/:id', async (req, res) => {
     if (users.length && users[0].profile_type !== 'super_admin' && !users[0].asset_type_can_modify)
       return res.status(403).json({ message: 'You do not have permission to modify asset types' });
   }
-  const { name, description } = req.body;
+  const { name, description, attributes } = req.body;
   const [existing] = await db.query('SELECT id FROM asset_types WHERE LOWER(name) = LOWER(?) AND id != ?', [name, req.params.id]);
   if (existing.length) return res.status(400).json({ message: `Asset type "${name}" already exists` });
   await db.query('UPDATE asset_types SET name = ?, description = ?, parent_id = ? WHERE id = ?',
     [name, description, req.body.parent_id || null, req.params.id]);
+
+  if (attributes && Array.isArray(attributes) && attributes.length) {
+    const seenInBatch = new Set();
+    for (const attr of attributes) {
+      const attrName = trimAttrName(attr.name);
+      if (!attrName)
+        return res.status(400).json({ message: 'Each attribute must have a non-empty name' });
+      if (seenInBatch.has(attrName))
+        return res.status(400).json({ message: `Duplicate attribute name in request: "${attrName}"` });
+      seenInBatch.add(attrName);
+    }
+    const typeId = req.params.id;
+    for (const attr of attributes) {
+      const attrName = trimAttrName(attr.name);
+      const attrType = attr.attr_type || 'string';
+      const defVal = attr.default_value != null ? attr.default_value : null;
+      if (attr.id != null && attr.id !== '') {
+        const [dup] = await db.query(
+          'SELECT id FROM asset_type_attributes WHERE asset_type_id = ? AND BINARY TRIM(name) = BINARY ? AND id != ?',
+          [typeId, attrName, attr.id]
+        );
+        if (dup.length)
+          return res.status(400).json({ message: `An attribute with the exact name "${attrName}" already exists for this asset type` });
+        await db.query(
+          'UPDATE asset_type_attributes SET name = ?, attr_type = ?, default_value = ? WHERE id = ? AND asset_type_id = ?',
+          [attrName, attrType, defVal, attr.id, typeId]
+        );
+        if (attrType === 'list') {
+          await db.query('DELETE FROM attribute_list_options WHERE attribute_id = ?', [attr.id]);
+          if (attr.list_options && attr.list_options.length) {
+            for (let i = 0; i < attr.list_options.length; i++) {
+              await db.query(
+                'INSERT INTO attribute_list_options (attribute_id, option_value, sort_order) VALUES (?, ?, ?)',
+                [attr.id, attr.list_options[i], i]
+              );
+            }
+          }
+        }
+      } else {
+        const [dup] = await db.query(
+          'SELECT id FROM asset_type_attributes WHERE asset_type_id = ? AND BINARY TRIM(name) = BINARY ?',
+          [typeId, attrName]
+        );
+        if (dup.length)
+          return res.status(400).json({ message: `An attribute with the exact name "${attrName}" already exists for this asset type` });
+        const [ins] = await db.query(
+          'INSERT INTO asset_type_attributes (asset_type_id, name, attr_type, default_value) VALUES (?, ?, ?, ?)',
+          [typeId, attrName, attrType, defVal]
+        );
+        const attrId = ins.insertId;
+        if (attrType === 'list' && attr.list_options && attr.list_options.length) {
+          for (let i = 0; i < attr.list_options.length; i++) {
+            await db.query(
+              'INSERT INTO attribute_list_options (attribute_id, option_value, sort_order) VALUES (?, ?, ?)',
+              [attrId, attr.list_options[i], i]
+            );
+          }
+        }
+        const [assets] = await db.query('SELECT id FROM assets WHERE asset_type_id = ?', [typeId]);
+        for (const asset of assets) {
+          await db.query(
+            'INSERT IGNORE INTO asset_attribute_values (asset_id, attribute_id, value) VALUES (?, ?, NULL)',
+            [asset.id, attrId]
+          );
+        }
+      }
+    }
+  }
+
   await audit.log('Asset Type', 'Modified', `Asset type "${name}" was updated`, req.auditUser, req.auditUserId);
   res.json({ message: 'Updated' });
 });
@@ -89,6 +191,7 @@ router.delete('/bulk', async (req, res, next) => {
 });
 
 router.delete('/:id', async (req, res) => {
+  const [rows] = await db.query('SELECT name FROM asset_types WHERE id = ?', [req.params.id]);
   await db.query('DELETE FROM asset_types WHERE id = ?', [req.params.id]);
   if (rows.length) await audit.log('Asset Type', 'Deleted', `Asset type "${rows[0].name}" was deleted`, req.auditUser, req.auditUserId);
   res.json({ message: 'Deleted' });
@@ -102,7 +205,15 @@ router.get('/:id/attributes', async (req, res) => {
     'SELECT * FROM asset_type_attributes WHERE asset_type_id = ? ORDER BY sort_order, id',
     [req.params.id]
   );
+  const seen = new Set();
+  const deduped = [];
   for (const attr of attrs) {
+    const key = trimAttrName(attr.name);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(attr);
+  }
+  for (const attr of deduped) {
     if (attr.attr_type === 'list') {
       const [opts] = await db.query(
         'SELECT * FROM attribute_list_options WHERE attribute_id = ? ORDER BY sort_order, id',
@@ -113,7 +224,7 @@ router.get('/:id/attributes', async (req, res) => {
       attr.list_options = [];
     }
   }
-  res.json(attrs);
+  res.json(deduped);
 });
 
 // Add attribute to asset type
@@ -124,7 +235,18 @@ router.post('/:id/attributes', async (req, res) => {
     if (users.length && users[0].profile_type !== 'super_admin' && !users[0].asset_type_can_modify)
       return res.status(403).json({ message: 'You do not have permission to modify asset types' });
   }
-  const { name, attr_type, default_value, list_options } = req.body;
+  const { attr_type, default_value, list_options } = req.body;
+  const name = trimAttrName(req.body.name);
+  if (!name)
+    return res.status(400).json({ message: 'Attribute name is required' });
+
+  const [dup] = await db.query(
+    'SELECT id FROM asset_type_attributes WHERE asset_type_id = ? AND BINARY TRIM(name) = BINARY ?',
+    [req.params.id, name]
+  );
+  if (dup.length)
+    return res.status(400).json({ message: `An attribute with the exact name "${name}" already exists for this asset type` });
+
   const [result] = await db.query(
     'INSERT INTO asset_type_attributes (asset_type_id, name, attr_type, default_value) VALUES (?, ?, ?, ?)',
     [req.params.id, name, attr_type, default_value || null]
@@ -161,7 +283,18 @@ router.put('/:typeId/attributes/:attrId', async (req, res) => {
     if (users.length && users[0].profile_type !== 'super_admin' && !users[0].asset_type_can_modify)
       return res.status(403).json({ message: 'You do not have permission to modify asset types' });
   }
-  const { name, attr_type, default_value, list_options } = req.body;
+  const { attr_type, default_value, list_options } = req.body;
+  const name = trimAttrName(req.body.name);
+  if (!name)
+    return res.status(400).json({ message: 'Attribute name is required' });
+
+  const [dup] = await db.query(
+    'SELECT id FROM asset_type_attributes WHERE asset_type_id = ? AND BINARY TRIM(name) = BINARY ? AND id != ?',
+    [req.params.typeId, name, req.params.attrId]
+  );
+  if (dup.length)
+    return res.status(400).json({ message: `An attribute with the exact name "${name}" already exists for this asset type` });
+
   await db.query(
     'UPDATE asset_type_attributes SET name = ?, attr_type = ?, default_value = ? WHERE id = ? AND asset_type_id = ?',
     [name, attr_type, default_value || null, req.params.attrId, req.params.typeId]
