@@ -191,7 +191,7 @@ router.get('/missing-by-location', async (req, res) => {
     SELECT l.name AS location, COUNT(a.id) AS missing_count
     FROM assets a
     JOIN locations l ON a.current_location_id = l.id
-    WHERE a.status = 'inactive'
+    WHERE a.asset_inventory_status = 'missing'
       AND a.created_at >= ?
       AND a.created_at < DATE_ADD(?, INTERVAL 1 DAY)
     GROUP BY l.id
