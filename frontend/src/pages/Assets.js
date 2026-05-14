@@ -319,6 +319,105 @@ function AddAssetModal({ types, locations, tagTypes, vendors, onClose, onSaved }
   );
 }
 
+// ── Financial Info Tab ─────────────────────────────────────────
+function FinancialInfoTab({ assetId, assetName }) {
+  const [financials, setFinancials] = useState(null);
+  const [form, setForm] = useState({ purchase_cost: '', salvage_value: '', purchase_date: '' });
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    import('axios').then(({ default: axios }) => {
+      axios.create({ baseURL: '/api' }).get(`/depreciation/financials/${assetId}`)
+        .then(r => {
+          if (r.data) {
+            setFinancials(r.data);
+            setForm({
+              purchase_cost: r.data.purchase_cost || '',
+              salvage_value: r.data.salvage_value || '',
+              purchase_date: r.data.purchase_date?.split('T')[0] || '',
+            });
+          }
+        }).catch(() => {});
+    });
+  }, [assetId]);
+
+  const save = async () => {
+    setSaving(true);
+    const { default: axios } = await import('axios');
+    const api = axios.create({ baseURL: '/api' });
+    await api.post('/depreciation/financials', { asset_id: assetId, ...form });
+    setSaving(false); setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+    // Reload
+    const r = await api.get(`/depreciation/financials/${assetId}`);
+    setFinancials(r.data);
+  };
+
+  const bookValue = financials?.current_book_value;
+  const totalDep = financials?.total_depreciation;
+
+  return (
+    <div className="tab-content">
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+        {/* Input form */}
+        <div>
+          <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 16, color: '#374151' }}>Purchase Details</h3>
+          <div className="add-asset-form">
+            <div className="form-row">
+              <label>Purchase Cost (₹) <span className="required">*</span></label>
+              <div className="field-wrap">
+                <input type="number" value={form.purchase_cost} onChange={e => setForm({ ...form, purchase_cost: e.target.value })} placeholder="e.g. 80000" />
+              </div>
+            </div>
+            <div className="form-row">
+              <label>Salvage Value (₹)</label>
+              <div className="field-wrap">
+                <input type="number" value={form.salvage_value} onChange={e => setForm({ ...form, salvage_value: e.target.value })} placeholder="e.g. 5000" />
+              </div>
+            </div>
+            <div className="form-row">
+              <label>Purchase Date</label>
+              <div className="field-wrap">
+                <input type="date" value={form.purchase_date} onChange={e => setForm({ ...form, purchase_date: e.target.value })} />
+              </div>
+            </div>
+            <div className="form-row">
+              <label />
+              <div className="field-wrap">
+                <button className="btn btn-primary" onClick={save} disabled={saving || !form.purchase_cost}>
+                  {saving ? 'Saving...' : saved ? '✅ Saved!' : 'Save Financial Info'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Current book value summary */}
+        {financials && (
+          <div>
+            <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 16, color: '#374151' }}>Book Value Summary</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {[
+                { label: 'Purchase Cost', value: `₹${parseFloat(financials.purchase_cost).toLocaleString()}`, color: '#1a202c' },
+                { label: 'Total Depreciation', value: `-₹${parseFloat(totalDep || 0).toLocaleString()}`, color: '#ef4444' },
+                { label: 'Current Book Value', value: `₹${parseFloat(bookValue || financials.purchase_cost).toLocaleString()}`, color: '#10b981', bold: true },
+                { label: 'Salvage Value', value: `₹${parseFloat(financials.salvage_value || 0).toLocaleString()}`, color: '#6b7280' },
+                { label: 'Last Depreciation', value: financials.last_depreciation_date?.split('T')[0] || 'Not run yet', color: '#6b7280' },
+              ].map(({ label, value, color, bold }) => (
+                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: '#f8fafc', borderRadius: 8, fontSize: 14 }}>
+                  <span style={{ color: '#6b7280' }}>{label}</span>
+                  <span style={{ color, fontWeight: bold ? 700 : 500 }}>{value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Asset Detail View ──────────────────────────────────────────
 function AssetDetail({ asset, types, locations, tagTypes, vendors, onBack, onRefresh, canModify, canDelete }) {
   const { showToast } = useToast();
@@ -418,6 +517,7 @@ function AssetDetail({ asset, types, locations, tagTypes, vendors, onBack, onRef
       <div className="detail-tabs">
         <button className={`tab-btn ${tab === 'trace' ? 'active' : ''}`} onClick={() => setTab('trace')}>Trace History</button>
         <button className={`tab-btn ${tab === 'attrs' ? 'active' : ''}`} onClick={() => setTab('attrs')}>Attributes</button>
+       <button className={`tab-btn ${tab === 'finance' ? 'active' : ''}`} onClick={() => setTab('finance')}>Financial Info</button>
       </div>
 
       {/* Trace History */}
@@ -500,6 +600,12 @@ function AssetDetail({ asset, types, locations, tagTypes, vendors, onBack, onRef
           )}
         </div>
       )}
+
+      {/* Financial Info Tab */}
+      {tab === 'finance' && (
+        <FinancialInfoTab assetId={asset.id} assetName={asset.name} />
+      )}
+
 
       {/* Edit Modal */}
       {editModal && (
@@ -1151,9 +1257,8 @@ export default function Assets() {
       <div style={{ background: '#fff', borderRadius: 8, padding: '12px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginBottom: 16, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <div style={{ position: 'relative', flex: '1 1 220px', minWidth: 180 }}>
           <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', display: 'flex', alignItems: 'center', pointerEvents: 'none' }}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="7" />
-              <line x1="16.5" y1="16.5" x2="22" y2="22" />
+            <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
             </svg>
           </span>
           <input
