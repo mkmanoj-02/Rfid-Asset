@@ -1,9 +1,9 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   getAssets, createAsset, updateAsset, deleteAsset, bulkDeleteAssets,
   getAssetTypes, getLocations,
   getAssetAttributes, saveAssetAttributes, getAssetMovements,
-  getRfidTags, removeRfidTag, getAttributes,
+  getRfidTags, removeRfidTag, getAttributes, getAttributeList,
   getTagTypes, createTagType, updateTagType, deleteTagType,
   getVendors, createVendor, updateVendor, deleteVendor
 } from '../api';
@@ -950,6 +950,198 @@ function UpdateAttributeModal({ selectedAssets, onClose, onSaved }) {
   );
 }
 
+const ASSET_TABLE_ATTR_STORAGE_KEY = 'rfid_assets_table_attr_columns_v1';
+const MAX_ASSET_TABLE_ATTR_COLUMNS = 5;
+
+function loadStoredAssetTableAttrColumns() {
+  try {
+    const raw = localStorage.getItem(ASSET_TABLE_ATTR_STORAGE_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter(x => x && typeof x.name === 'string')
+      .map(x => ({ id: x.id, name: x.name, attr_type: x.attr_type || '' }))
+      .slice(0, MAX_ASSET_TABLE_ATTR_COLUMNS);
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredAssetTableAttrColumns(cols) {
+  try {
+    localStorage.setItem(ASSET_TABLE_ATTR_STORAGE_KEY, JSON.stringify(cols.slice(0, MAX_ASSET_TABLE_ATTR_COLUMNS)));
+  } catch { /* ignore quota */ }
+}
+
+/** Match list values by attribute name (ids can differ per asset type). */
+function getAssetAttrValueDisplay(asset, attrName) {
+  const attrs = asset.attributes || [];
+  const row = attrs.find(a => a.name === attrName);
+  if (!row) return '—';
+  const v = row.value;
+  if (v === null || v === undefined || String(v).trim() === '') return '—';
+  if (row.attr_type === 'date' && v) {
+    const d = new Date(v);
+    if (!Number.isNaN(d.getTime())) {
+      return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    }
+  }
+  return String(v);
+}
+
+function AssetTableAttrColumnToggle({ expanded, onToggle, selectedCount }) {
+  return (
+    <button
+      type="button"
+      className="assets-attr-toolbar-btn"
+      onClick={onToggle}
+      aria-expanded={expanded}
+      aria-controls="asset-extra-columns-panel"
+      title={expanded ? 'Hide extra column picker' : 'Pick optional columns for this table (up to 5)'}
+    >
+      <span className="assets-attr-toolbar-btn-icon" aria-hidden>
+        <svg className="assets-attr-toolbar-col-svg" width="18" height="18" viewBox="0 0 24 24" aria-hidden>
+          <rect x="3" y="5" width="5" height="14" rx="1.5" fill="currentColor" opacity="0.32" />
+          <rect x="9.5" y="3" width="5" height="18" rx="1.5" fill="currentColor" />
+          <rect x="16" y="5" width="5" height="14" rx="1.5" fill="currentColor" opacity="0.32" />
+        </svg>
+      </span>
+      {selectedCount > 0 && (
+        <span className="assets-attr-toolbar-btn-count" aria-hidden>{selectedCount}</span>
+      )}
+    </button>
+  );
+}
+
+function AssetTableAttrColumnsPanel({ open, onClose, filterType, selectedCols, onSelectedChange, showToast }) {
+  const [catalog, setCatalog] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [q, setQ] = useState('');
+
+  useEffect(() => {
+    if (!open) return undefined;
+    setLoading(true);
+    getAttributeList(filterType ? { asset_type_id: filterType } : {})
+      .then(r => setCatalog(Array.isArray(r.data) ? r.data : []))
+      .catch(() => {
+        showToast('Could not load attribute list.', 'error');
+        setCatalog([]);
+      })
+      .finally(() => setLoading(false));
+  }, [open, filterType, showToast]);
+
+  useEffect(() => {
+    if (!open) setQ('');
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = e => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  const filtered = useMemo(() => {
+    const qq = q.trim().toLowerCase();
+    if (!qq) return catalog;
+    return catalog.filter(r =>
+      String(r.name || '').toLowerCase().includes(qq) ||
+      String(r.attr_type || '').toLowerCase().includes(qq)
+    );
+  }, [catalog, q]);
+
+  const selectedByName = useMemo(() => new Set(selectedCols.map(c => c.name)), [selectedCols]);
+
+  const toggle = (row) => {
+    const name = row.name;
+    if (selectedByName.has(name)) {
+      onSelectedChange(selectedCols.filter(c => c.name !== name));
+      return;
+    }
+    if (selectedCols.length >= MAX_ASSET_TABLE_ATTR_COLUMNS) {
+      showToast('You can show at most 5 attribute columns.', 'error');
+      return;
+    }
+    onSelectedChange([
+      ...selectedCols,
+      { id: row.id, name: row.name, attr_type: row.attr_type || '' },
+    ]);
+  };
+
+  const hasSelection = selectedCols.length > 0;
+
+  return (
+    <div
+      id="asset-extra-columns-panel"
+      className="assets-attr-inline-card"
+      role="region"
+      aria-label="Optional asset attribute columns"
+      aria-hidden={!open}
+    >
+      <div className="assets-attr-inline-head">
+        <div>
+          <h3 className="assets-attr-inline-title">Extra columns in this table</h3>
+          <p className="assets-attr-inline-sub">
+            Choose attributes to show as extra columns (max five). Values come from each asset; empty cells show —.
+            {filterType ? ' Only attributes for the selected asset type are listed.' : ''}
+          </p>
+        </div>
+        <div className="assets-attr-inline-head-actions">
+          <span className="assets-attr-inline-pill" aria-live="polite">
+            <strong>{selectedCols.length}</strong> / {MAX_ASSET_TABLE_ATTR_COLUMNS} selected
+          </span>
+          <button type="button" className="btn btn-secondary btn-sm" disabled={!hasSelection} onClick={() => onSelectedChange([])}>Clear all</button>
+          <button type="button" className="btn btn-primary btn-sm" onClick={onClose}>Done</button>
+        </div>
+      </div>
+      <div className="assets-attr-inline-search">
+        <span className="assets-attr-inline-search-icon" aria-hidden>
+          <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+          </svg>
+        </span>
+        <input
+          type="search"
+          value={q}
+          onChange={e => setQ(e.target.value)}
+          placeholder="Search by attribute name or type…"
+          aria-label="Filter attribute list"
+        />
+      </div>
+      <div className="assets-attr-inline-grid-wrap">
+        {loading && <div className="assets-attr-inline-loading">Loading attributes…</div>}
+        {!loading && filtered.length === 0 && (
+          <div className="assets-attr-inline-loading">
+            {catalog.length === 0 ? 'No attributes are defined yet.' : 'No attributes match your search.'}
+          </div>
+        )}
+        {!loading && filtered.length > 0 && (
+          <div className="assets-attr-inline-grid">
+            {filtered.map(row => {
+              const checked = selectedByName.has(row.name);
+              const atMax = selectedCols.length >= MAX_ASSET_TABLE_ATTR_COLUMNS && !checked;
+              return (
+                <label
+                  key={`${row.id}-${row.name}`}
+                  className={`assets-attr-inline-tile${checked ? ' is-checked' : ''}${atMax ? ' is-max' : ''}`}
+                  title={atMax ? 'Maximum five columns — remove one to add another.' : undefined}
+                >
+                  <input type="checkbox" checked={checked} onChange={() => toggle(row)} />
+                  <span className="assets-attr-inline-tile-name">{row.name}</span>
+                  {row.attr_type && <span className="assets-attr-inline-tile-type">{row.attr_type}</span>}
+                </label>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Assets List ────────────────────────────────────────────────
 export default function Assets() {
   const [tab, setTab] = useState('manage');
@@ -976,6 +1168,8 @@ export default function Assets() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [confirmDialog, setConfirmDialog] = useState(null);
+  const [tableAttrColumns, setTableAttrColumns] = useState(() => loadStoredAssetTableAttrColumns());
+  const [attrColumnsPanelOpen, setAttrColumnsPanelOpen] = useState(false);
   const searchTimer = React.useRef(null);
 
   // Privilege checks
@@ -1209,8 +1403,47 @@ export default function Assets() {
 
   const selectedAssets = pagedItems.filter(i => checkedIds.has(i.id));
   const hasFilters = search || filterLocation || filterType || filterInventoryStatus;
+  const tableColSpan = 10 + tableAttrColumns.length;
 
-  // Fetch all records (no pagination) for export
+  const handleTableAttrColumnsChange = useCallback((next) => {
+    const cleaned = (Array.isArray(next) ? next : []).slice(0, MAX_ASSET_TABLE_ATTR_COLUMNS);
+    setTableAttrColumns(cleaned);
+    saveStoredAssetTableAttrColumns(cleaned);
+  }, []);
+
+  const buildExportRowExtras = useCallback((all) => {
+    return all.map((item, i) => {
+      const row = { ...item, _idx: i + 1, _invLabel: inventoryStatusLabel(item.asset_inventory_status) };
+      tableAttrColumns.forEach((col, j) => {
+        row[`_attrCol_${j}`] = getAssetAttrValueDisplay(item, col.name);
+      });
+      return row;
+    });
+  }, [tableAttrColumns]);
+
+  const exportBaseColumns = [
+    { header: '#', key: '_idx' },
+    { header: 'Asset Serial', key: 'asset_serial' },
+    { header: 'Asset Name', key: 'name' },
+    { header: 'RFID Tag', key: 'rfid_tag' },
+    { header: 'Tag Type', key: 'tag_type_name' },
+    { header: 'Asset Type', key: 'asset_type_name' },
+    { header: 'Location', key: 'location_name' },
+  ];
+  const exportAttrColumns = tableAttrColumns.map((col, j) => ({ header: col.name, key: `_attrCol_${j}` }));
+  const exportTailColumns = [{ header: 'Inv / Missing', key: '_invLabel' }];
+  const exportExcelColumns = [...exportBaseColumns, ...exportAttrColumns, ...exportTailColumns];
+  const exportPDFColumns = [
+    { header: '#', key: '_idx' },
+    { header: 'Asset Serial', key: 'asset_serial' },
+    { header: 'Asset Name', key: 'name' },
+    { header: 'RFID', key: 'rfid_tag' },
+    { header: 'Tag Type', key: 'tag_type_name' },
+    { header: 'Asset Type', key: 'asset_type_name' },
+    { header: 'Location', key: 'location_name' },
+    ...exportAttrColumns,
+    { header: 'Inv / Missing', key: '_invLabel' },
+  ];
   const fetchAllForExport = () => {
     return getAssets({
       search: search || '',
@@ -1243,38 +1476,11 @@ export default function Assets() {
           <ExportButtons
             onExcel={async () => {
               const all = await fetchAllForExport();
-              exportExcel(
-                [
-                  { header: '#',           key: '_idx' },
-                  { header: 'Asset Serial',      key: 'asset_serial' },
-                  { header: 'Asset Name',        key: 'name' },
-                  { header: 'RFID Tag',    key: 'rfid_tag' },
-                  { header: 'Tag Type',    key: 'tag_type_name' },
-                  { header: 'Asset Type',  key: 'asset_type_name' },
-                  { header: 'Location',    key: 'location_name' },
-                  { header: 'Inv / Missing', key: '_invLabel' },
-                ],
-                all.map((item, i) => ({ ...item, _idx: i + 1, _invLabel: inventoryStatusLabel(item.asset_inventory_status) })),
-                'assets'
-              );
+              exportExcel(exportExcelColumns, buildExportRowExtras(all), 'assets');
             }}
             onPDF={async () => {
               const all = await fetchAllForExport();
-              exportPDF(
-                [
-                  { header: '#',           key: '_idx' },
-                  { header: 'Asset Serial',      key: 'asset_serial' },
-                  { header: 'Asset Name',        key: 'name' },
-                  { header: 'RFID',        key: 'rfid_tag' },
-                  { header: 'Tag Type',    key: 'tag_type_name' },
-                  { header: 'Asset Type',        key: 'asset_type_name' },
-                  { header: 'Location',    key: 'location_name' },
-                  { header: 'Inv / Missing', key: '_invLabel' },
-                ],
-                all.map((item, i) => ({ ...item, _idx: i + 1, _invLabel: inventoryStatusLabel(item.asset_inventory_status) })),
-                'Asset List',
-                'assets'
-              );
+              exportPDF(exportPDFColumns, buildExportRowExtras(all), 'Asset List', 'assets');
             }}
           />
           <span style={{ fontSize: 13, color: '#555' }}>Sorted By</span>
@@ -1305,7 +1511,17 @@ export default function Assets() {
       </div>
 
       {/* Search + Filter bar */}
-      <div style={{ background: '#fff', borderRadius: 8, padding: '12px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginBottom: 16, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div style={{
+        background: '#fff',
+        borderRadius: 8,
+        padding: '12px 16px',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+        marginBottom: 16,
+        display: 'flex',
+        gap: 10,
+        alignItems: 'center',
+        flexWrap: 'wrap',
+      }}>
         <div style={{ position: 'relative', flex: '1 1 220px', minWidth: 180 }}>
           <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', display: 'flex', alignItems: 'center', pointerEvents: 'none' }}>
             <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
@@ -1324,15 +1540,38 @@ export default function Assets() {
           <option value="">All Locations</option>
           {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
         </select>
-        <select value={filterType} onChange={e => handleTypeFilter(e.target.value)}
-          style={{ padding: '7px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, minWidth: 150 }}>
-          <option value="">All Asset Types</option>
-          {types.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          <select value={filterType} onChange={e => handleTypeFilter(e.target.value)}
+            style={{ padding: '7px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, minWidth: 150 }}>
+            <option value="">All Asset Types</option>
+            {types.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+          <AssetTableAttrColumnToggle
+            expanded={attrColumnsPanelOpen}
+            onToggle={() => setAttrColumnsPanelOpen(v => !v)}
+            selectedCount={tableAttrColumns.length}
+          />
+        </div>
         {hasFilters && <button className="btn btn-secondary btn-sm" onClick={clearFilters}>✕ Clear</button>}
         <span style={{ fontSize: 12, color: '#888', marginLeft: 'auto' }}>
           {total} asset{total !== 1 ? 's' : ''}{hasFilters ? ' (filtered)' : ''}
         </span>
+      </div>
+
+      <div
+        className={`assets-attr-inline-outer ${attrColumnsPanelOpen ? 'is-open' : ''}`}
+        aria-hidden={!attrColumnsPanelOpen}
+      >
+        <div className="assets-attr-inner">
+          <AssetTableAttrColumnsPanel
+            open={attrColumnsPanelOpen}
+            onClose={() => setAttrColumnsPanelOpen(false)}
+            filterType={filterType}
+            selectedCols={tableAttrColumns}
+            onSelectedChange={handleTableAttrColumnsChange}
+            showToast={showToast}
+          />
+        </div>
       </div>
 
       <div style={{
@@ -1343,7 +1582,7 @@ export default function Assets() {
         overflow: 'hidden',
       }}>
         <div style={{ overflowX: 'auto', width: '100%' }}>
-          <table style={{ width: '100%', borderRadius: 0, boxShadow: 'none', border: 'none', minWidth: 980 }}>
+          <table style={{ width: '100%', borderRadius: 0, boxShadow: 'none', border: 'none', minWidth: 980 + tableAttrColumns.length * 132 }}>
             <thead>
               <tr>
                 <th style={{ width: 36, padding: '10px 12px' }}>
@@ -1361,6 +1600,11 @@ export default function Assets() {
                 <th>Tag Type</th>
                 <SortTh col="asset_type_name" label="Asset Type" />
                 <SortTh col="location_name" label="Location" />
+                {tableAttrColumns.map(col => (
+                  <th key={col.name} className="assets-attr-th" title={col.attr_type ? `${col.name} (${col.attr_type})` : col.name}>
+                    {col.name}
+                  </th>
+                ))}
                 <th
                   style={{
                     textAlign: 'center',
@@ -1431,10 +1675,10 @@ export default function Assets() {
             </thead>
             <tbody>
               {loading && (
-                <tr><td colSpan={10} style={{ textAlign: 'center', color: '#aaa', padding: 40 }}>Loading...</td></tr>
+                <tr><td colSpan={tableColSpan} style={{ textAlign: 'center', color: '#aaa', padding: 40 }}>Loading...</td></tr>
               )}
               {!loading && pagedItems.length === 0 && (
-                <tr><td colSpan={10} style={{ textAlign: 'center', color: '#aaa', padding: 40 }}>
+                <tr><td colSpan={tableColSpan} style={{ textAlign: 'center', color: '#aaa', padding: 40 }}>
                   {hasFilters ? 'No assets match your search or filters.' : 'No assets yet.'}
                 </td></tr>
               )}
@@ -1452,6 +1696,12 @@ export default function Assets() {
                   <td style={{ whiteSpace: 'nowrap' }}>{item.tag_type_name || '—'}</td>
                   <td style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.asset_type_name || ''}>{item.asset_type_name || '—'}</td>
                   <td style={{ maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.location_name || ''}>{item.location_name || '—'}</td>
+                  {tableAttrColumns.map(col => {
+                    const cell = getAssetAttrValueDisplay(item, col.name);
+                    return (
+                      <td key={col.name} className="assets-attr-td" title={cell === '—' ? undefined : cell}>{cell}</td>
+                    );
+                  })}
                   <td style={{ textAlign: 'center', verticalAlign: 'middle' }} title={inventoryStatusLabel(item.asset_inventory_status)}>
                     <InventoryStatusCell status={item.asset_inventory_status} />
                   </td>
