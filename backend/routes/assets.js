@@ -52,7 +52,7 @@ async function expandWithSubLocations(ids) {
 
 router.get('/', async (req, res, next) => {
   try {
-  const { user_id, search, location_id, asset_type_id, page, limit, since, asset_inventory_status } = req.query;
+  const { user_id, search, location_id, asset_type_id, page, limit, since, asset_inventory_status, sort: sortField, sort_dir } = req.query;
 
   // Pagination only applies when both page and limit are explicitly provided
   const paginate = page !== undefined && limit !== undefined;
@@ -165,7 +165,18 @@ router.get('/', async (req, res, next) => {
 
   const whereClause = conditions.length ? ' WHERE ' + conditions.join(' AND ') : '';
 
-  query += whereClause + ' ORDER BY a.created_at DESC';
+  const SORT_MAP = {
+    name: 'a.name',
+    asset_serial: 'a.asset_serial',
+    asset_type_name: 'at.name',
+    location_name: 'l.name',
+    created_at: 'a.created_at',
+    asset_inventory_status: 'a.asset_inventory_status',
+  };
+  const sortCol = SORT_MAP[String(sortField || '').trim()] || 'a.created_at';
+  const sortDirection = String(sort_dir || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+
+  query += whereClause + ` ORDER BY ${sortCol} ${sortDirection}, a.id DESC`;
 
   if (paginate) {
     // Total count (same filters, no LIMIT)

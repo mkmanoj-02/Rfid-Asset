@@ -752,6 +752,45 @@ function AssetDetail({ asset, types, locations, tagTypes, vendors, onBack, onRef
 
 const statusBadge = (s) => <span className={`badge badge-${s}`}>{s}</span>;
 
+const INVENTORY_STATUS_LABELS = {
+  in_inventory: 'Inventory',
+  missing: 'Missing',
+  not_in_inventory: 'Not in inventory',
+};
+
+function inventoryStatusLabel(st) {
+  const k = String(st || 'in_inventory').toLowerCase();
+  return INVENTORY_STATUS_LABELS[k] || k.replace(/_/g, ' ');
+}
+
+function InventoryStatusCell({ status }) {
+  const st = String(status || 'in_inventory').toLowerCase();
+  const base = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 32,
+    height: 30,
+    padding: '0 8px',
+    borderRadius: 8,
+    fontSize: 13,
+    fontWeight: 700,
+  };
+  if (st === 'missing') {
+    return (
+      <span title="Missing" style={{ ...base, background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca' }} aria-label="Missing">!</span>
+    );
+  }
+  if (st === 'not_in_inventory') {
+    return (
+      <span title="Not in inventory" style={{ ...base, background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' }} aria-label="Not in inventory">—</span>
+    );
+  }
+  return (
+    <span title="Inventory" style={{ ...base, background: '#ecfdf5', color: '#047857', border: '1px solid #bbf7d0' }} aria-label="Inventory">✓</span>
+  );
+}
+
 // ── Bulk Change Location Modal ─────────────────────────────────
 function BulkChangeLocationModal({ selectedAssets, locations, onClose, onSaved }) {
   const [newLocationId, setNewLocationId] = useState('');
@@ -932,6 +971,8 @@ export default function Assets() {
   const [search, setSearch] = useState('');
   const [filterLocation, setFilterLocation] = useState('');
   const [filterType, setFilterType] = useState('');
+  /** `''` | `in_inventory` | `missing` — GET `asset_inventory_status` */
+  const [filterInventoryStatus, setFilterInventoryStatus] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [confirmDialog, setConfirmDialog] = useState(null);
@@ -957,7 +998,8 @@ export default function Assets() {
     return currentLimit;
   };
 
-  const fetchAssets = (s, loc, typ, page, limit, sKey, sDir) => {
+  const fetchAssets = (s, loc, typ, page, limit, sKey, sDir, invOverride) => {
+    const inv = invOverride !== undefined ? invOverride : filterInventoryStatus;
     const q = {
       search: s || '',
       location_id: loc || '',
@@ -967,6 +1009,7 @@ export default function Assets() {
       sort: sKey || 'created_at',
       sort_dir: sDir || 'desc',
     };
+    if (inv) q.asset_inventory_status = inv;
     setLoading(true);
     return getAssets(q).then(r => {
       const data = r.data;
@@ -996,7 +1039,7 @@ export default function Assets() {
 
   const load = useCallback(() => {
     fetchAssets(search, filterLocation, filterType, currentPage, pageSize, sortKey, sortDir);
-  }, [search, filterLocation, filterType, currentPage, pageSize, sortKey, sortDir]);
+  }, [search, filterLocation, filterType, filterInventoryStatus, currentPage, pageSize, sortKey, sortDir]);
 
   useEffect(() => {
     fetchAssets('', '', '', 1, 10, 'created_at', 'desc');
@@ -1031,14 +1074,22 @@ export default function Assets() {
     fetchAssets(search, filterLocation, val, 1, pageSize, sortKey, sortDir);
   };
 
-  const clearFilters = () => {
-    setSearch(''); setFilterLocation(''); setFilterType('');
+  const handleInvFilter = (mode) => {
+    const next = filterInventoryStatus === mode ? '' : mode;
+    setFilterInventoryStatus(next);
     setCurrentPage(1);
-    fetchAssets('', '', '', 1, pageSize, sortKey, sortDir);
+    fetchAssets(search, filterLocation, filterType, 1, pageSize, sortKey, sortDir, next);
+  };
+
+  const clearFilters = () => {
+    setSearch(''); setFilterLocation(''); setFilterType(''); setFilterInventoryStatus('');
+    setCurrentPage(1);
+    fetchAssets('', '', '', 1, pageSize, sortKey, sortDir, '');
   };
 
   // Fetch and auto-correct page if current page exceeds new totalPages after a delete
-  const fetchAndClampPage = async (s, loc, typ, page, limit, sKey, sDir) => {
+  const fetchAndClampPage = async (s, loc, typ, page, limit, sKey, sDir, invOverride) => {
+    const inv = invOverride !== undefined ? invOverride : filterInventoryStatus;
     const q = {
       search: s || '',
       location_id: loc || '',
@@ -1048,6 +1099,7 @@ export default function Assets() {
       sort: sKey || 'created_at',
       sort_dir: sDir || 'desc',
     };
+    if (inv) q.asset_inventory_status = inv;
     setLoading(true);
     try {
       const r = await getAssets(q);
@@ -1064,7 +1116,7 @@ export default function Assets() {
       if (page > totPages && totPages >= 1) {
         setCurrentPage(totPages);
         setLoading(false);
-        return fetchAndClampPage(s, loc, typ, totPages, limit, sKey, sDir);
+        return fetchAndClampPage(s, loc, typ, totPages, limit, sKey, sDir, inv);
       }
       setItems(list);
       setTotal(tot);
@@ -1156,7 +1208,7 @@ export default function Assets() {
   );
 
   const selectedAssets = pagedItems.filter(i => checkedIds.has(i.id));
-  const hasFilters = search || filterLocation || filterType;
+  const hasFilters = search || filterLocation || filterType || filterInventoryStatus;
 
   // Fetch all records (no pagination) for export
   const fetchAllForExport = () => {
@@ -1164,6 +1216,7 @@ export default function Assets() {
       search: search || '',
       location_id: filterLocation || '',
       asset_type_id: filterType || '',
+      ...(filterInventoryStatus ? { asset_inventory_status: filterInventoryStatus } : {}),
       page: 1,
       limit: total || 99999,
       sort: sortKey,
@@ -1199,8 +1252,9 @@ export default function Assets() {
                   { header: 'Tag Type',    key: 'tag_type_name' },
                   { header: 'Asset Type',  key: 'asset_type_name' },
                   { header: 'Location',    key: 'location_name' },
+                  { header: 'Inv / Missing', key: '_invLabel' },
                 ],
-                all.map((item, i) => ({ ...item, _idx: i + 1 })),
+                all.map((item, i) => ({ ...item, _idx: i + 1, _invLabel: inventoryStatusLabel(item.asset_inventory_status) })),
                 'assets'
               );
             }}
@@ -1215,8 +1269,9 @@ export default function Assets() {
                   { header: 'Tag Type',    key: 'tag_type_name' },
                   { header: 'Asset Type',        key: 'asset_type_name' },
                   { header: 'Location',    key: 'location_name' },
+                  { header: 'Inv / Missing', key: '_invLabel' },
                 ],
-                all.map((item, i) => ({ ...item, _idx: i + 1 })),
+                all.map((item, i) => ({ ...item, _idx: i + 1, _invLabel: inventoryStatusLabel(item.asset_inventory_status) })),
                 'Asset List',
                 'assets'
               );
@@ -1229,6 +1284,7 @@ export default function Assets() {
             <option value="asset_serial">Asset Serial</option>
             <option value="asset_type_name">Asset Type</option>
             <option value="location_name">Location</option>
+            <option value="asset_inventory_status">Inv / Missing</option>
             <option value="created_at">Recently Added</option>
           </select>
           <button onClick={() => { setSortDir(d => d === 'asc' ? 'desc' : 'asc'); setCurrentPage(1); }}
@@ -1287,7 +1343,7 @@ export default function Assets() {
         overflow: 'hidden',
       }}>
         <div style={{ overflowX: 'auto', width: '100%' }}>
-          <table style={{ width: '100%', borderRadius: 0, boxShadow: 'none', border: 'none', minWidth: 860 }}>
+          <table style={{ width: '100%', borderRadius: 0, boxShadow: 'none', border: 'none', minWidth: 980 }}>
             <thead>
               <tr>
                 <th style={{ width: 36, padding: '10px 12px' }}>
@@ -1305,15 +1361,80 @@ export default function Assets() {
                 <th>Tag Type</th>
                 <SortTh col="asset_type_name" label="Asset Type" />
                 <SortTh col="location_name" label="Location" />
+                <th
+                  style={{
+                    textAlign: 'center',
+                    verticalAlign: 'middle',
+                    textTransform: 'none',
+                    padding: '8px 6px',
+                    minWidth: 112,
+                  }}
+                >
+                  <div
+                    role="presentation"
+                    onClick={() => handleSort('asset_inventory_status')}
+                    style={{
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 4,
+                      marginBottom: 5,
+                      userSelect: 'none',
+                    }}
+                    title="Sort by inventory status"
+                  >
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#4b5563', letterSpacing: '0.02em' }}>Inv / Missing</span>
+                    <SortIcon col="asset_inventory_status" />
+                  </div>
+                  <div style={{ display: 'flex', gap: 4, justifyContent: 'center', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      title="Show inventory only"
+                      onClick={() => handleInvFilter('in_inventory')}
+                      style={{
+                        padding: '2px 8px',
+                        fontSize: 10,
+                        fontWeight: 700,
+                        lineHeight: 1.35,
+                        borderRadius: 5,
+                        border: `1px solid ${filterInventoryStatus === 'in_inventory' ? '#1565c0' : '#e2e8f0'}`,
+                        background: filterInventoryStatus === 'in_inventory' ? '#e8f0fe' : '#fff',
+                        color: filterInventoryStatus === 'in_inventory' ? '#1565c0' : '#64748b',
+                        cursor: 'pointer',
+                        textTransform: 'none',
+                        fontFamily: 'inherit',
+                      }}
+                    >Inventory</button>
+                    <button
+                      type="button"
+                      title="Show missing only"
+                      onClick={() => handleInvFilter('missing')}
+                      style={{
+                        padding: '2px 8px',
+                        fontSize: 10,
+                        fontWeight: 700,
+                        lineHeight: 1.35,
+                        borderRadius: 5,
+                        border: `1px solid ${filterInventoryStatus === 'missing' ? '#b91c1c' : '#e2e8f0'}`,
+                        background: filterInventoryStatus === 'missing' ? '#fef2f2' : '#fff',
+                        color: filterInventoryStatus === 'missing' ? '#b91c1c' : '#64748b',
+                        cursor: 'pointer',
+                        textTransform: 'none',
+                        fontFamily: 'inherit',
+                      }}
+                    >Missing</button>
+                  </div>
+                </th>
                 <th style={{ width: 130, textAlign: 'center' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading && (
-                <tr><td colSpan={9} style={{ textAlign: 'center', color: '#aaa', padding: 40 }}>Loading...</td></tr>
+                <tr><td colSpan={10} style={{ textAlign: 'center', color: '#aaa', padding: 40 }}>Loading...</td></tr>
               )}
               {!loading && pagedItems.length === 0 && (
-                <tr><td colSpan={9} style={{ textAlign: 'center', color: '#aaa', padding: 40 }}>
+                <tr><td colSpan={10} style={{ textAlign: 'center', color: '#aaa', padding: 40 }}>
                   {hasFilters ? 'No assets match your search or filters.' : 'No assets yet.'}
                 </td></tr>
               )}
@@ -1331,6 +1452,9 @@ export default function Assets() {
                   <td style={{ whiteSpace: 'nowrap' }}>{item.tag_type_name || '—'}</td>
                   <td style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.asset_type_name || ''}>{item.asset_type_name || '—'}</td>
                   <td style={{ maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.location_name || ''}>{item.location_name || '—'}</td>
+                  <td style={{ textAlign: 'center', verticalAlign: 'middle' }} title={inventoryStatusLabel(item.asset_inventory_status)}>
+                    <InventoryStatusCell status={item.asset_inventory_status} />
+                  </td>
                   <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                     <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
                       <button className="btn btn-secondary btn-sm" onClick={() => setSelected(item)}>View</button>
