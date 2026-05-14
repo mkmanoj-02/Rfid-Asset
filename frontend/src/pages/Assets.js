@@ -990,7 +990,7 @@ function getAssetAttrValueDisplay(asset, attrName) {
   return String(v);
 }
 
-/** `lastseen` from API — latest movement time for the asset. */
+/** `lastseen` from API — last seen time (latest movement) for the asset. */
 function formatAssetLastSeenDisplay(raw) {
   const v = raw ?? null;
   if (v === null || v === undefined || String(v).trim() === '') return '—';
@@ -1432,7 +1432,7 @@ export default function Assets() {
         ...item,
         _idx: i + 1,
         _invLabel: inventoryStatusLabel(item.asset_inventory_status),
-        _lastTracedAt: formatAssetLastSeenDisplay(item.lastseen ?? item.lastSeen),
+        _lastSeenTime: formatAssetLastSeenDisplay(item.lastseen ?? item.lastSeen),
       };
       tableAttrColumns.forEach((col, j) => {
         row[`_attrCol_${j}`] = getAssetAttrValueDisplay(item, col.name);
@@ -1449,7 +1449,7 @@ export default function Assets() {
     { header: 'Tag Type', key: 'tag_type_name' },
     { header: 'Asset Type', key: 'asset_type_name' },
     { header: 'Location', key: 'location_name' },
-    { header: 'Last Traced At', key: '_lastTracedAt' },
+    { header: 'Last Seen Time', key: '_lastSeenTime' },
   ];
   const exportAttrColumns = tableAttrColumns.map((col, j) => ({ header: col.name, key: `_attrCol_${j}` }));
   const exportTailColumns = [{ header: 'Inv / Missing', key: '_invLabel' }];
@@ -1462,7 +1462,7 @@ export default function Assets() {
     { header: 'Tag Type', key: 'tag_type_name' },
     { header: 'Asset Type', key: 'asset_type_name' },
     { header: 'Location', key: 'location_name' },
-    { header: 'Last Traced At', key: '_lastTracedAt' },
+    { header: 'Last Seen Time', key: '_lastSeenTime' },
     ...exportAttrColumns,
     { header: 'Inv / Missing', key: '_invLabel' },
   ];
@@ -1512,7 +1512,7 @@ export default function Assets() {
             <option value="asset_serial">Asset Serial</option>
             <option value="asset_type_name">Asset Type</option>
             <option value="location_name">Location</option>
-            <option value="lastseen">Last Traced At</option>
+            <option value="lastseen">Last Seen Time</option>
             <option value="asset_inventory_status">Inv / Missing</option>
             <option value="created_at">Recently Added</option>
           </select>
@@ -1623,7 +1623,7 @@ export default function Assets() {
                 <th>Tag Type</th>
                 <SortTh col="asset_type_name" label="Asset Type" />
                 <SortTh col="location_name" label="Location" />
-                <SortTh col="lastseen" label="Last Traced At" />
+                <SortTh col="lastseen" label="Last Seen Time" />
                 {tableAttrColumns.map(col => (
                   <th key={col.name} className="assets-attr-th" title={col.attr_type ? `${col.name} (${col.attr_type})` : col.name}>
                     {col.name}
