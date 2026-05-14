@@ -1,7 +1,51 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import api, { getDashboard, getLocations } from '../api';
 const MAP_STORAGE_KEY = 'rfid_dashboard_map_image';
 const PINS_STORAGE_KEY = 'rfid_dashboard_pins'; // { locationId: { x%, y% } }
+
+function buildLocationTree(items, parentId = null) {
+  return items
+    .filter(i => (i.parent_id || null) == parentId)
+    .map(i => ({ ...i, children: buildLocationTree(items, i.id) }));
+}
+
+/** Flat list → ids to keep: matches, their ancestors (path), and descendants (context under a match). */
+function filterLocationsBySearch(locations, queryNorm) {
+  if (!queryNorm) return locations;
+  const byId = Object.fromEntries(locations.map(l => [l.id, l]));
+  const childrenByParent = {};
+  for (const l of locations) {
+    const p = l.parent_id ?? null;
+    if (!childrenByParent[p]) childrenByParent[p] = [];
+    childrenByParent[p].push(l.id);
+  }
+  const matches = new Set();
+  for (const l of locations) {
+    if (String(l.name || '').toLowerCase().includes(queryNorm)) matches.add(l.id);
+  }
+  if (matches.size === 0) return [];
+  const idsToShow = new Set();
+  const addAncestors = (id) => {
+    let cur = byId[id];
+    while (cur) {
+      idsToShow.add(cur.id);
+      cur = cur.parent_id != null && cur.parent_id !== undefined ? byId[cur.parent_id] : null;
+    }
+  };
+  const addDescendants = (id) => {
+    const stack = [id];
+    while (stack.length) {
+      const n = stack.pop();
+      idsToShow.add(n);
+      for (const c of childrenByParent[n] || []) stack.push(c);
+    }
+  };
+  for (const id of matches) {
+    addAncestors(id);
+    addDescendants(id);
+  }
+  return locations.filter(l => idsToShow.has(l.id));
+}
 
 // ── Location Detail Popup ──────────────────────────────────────
 function LocationPopup({ locationId, locationName, onClose }) {
@@ -106,6 +150,7 @@ export default function Dashboard() {
   const [placingPin, setPlacingPin] = useState(null); // locationId being placed
   const [selectedLocation, setSelectedLocation] = useState(null); // { id, name }
   const [locations, setLocations] = useState([]);
+  const [locationSearch, setLocationSearch] = useState('');
   const [showPinPanel, setShowPinPanel] = useState(false);
   const mapRef = useRef();
 
@@ -151,12 +196,12 @@ export default function Dashboard() {
   const missing      = data ? (data.rfid_breakdown?.untagged || 0) : 0;
   const scannedToday = data?.recent_movements?.length || 0;
 
-  // Build location tree from flat list (only allowed locations are in the list)
-  const buildTree = (items, parentId = null) =>
-    items
-      .filter(i => (i.parent_id || null) == parentId)
-      .map(i => ({ ...i, children: buildTree(items, i.id) }));
-  const locationTree = buildTree(locations);
+  const locationSearchNorm = locationSearch.trim().toLowerCase();
+  const filteredLocations = useMemo(
+    () => filterLocationsBySearch(locations, locationSearchNorm),
+    [locations, locationSearchNorm],
+  );
+  const locationTree = buildLocationTree(filteredLocations);
 
   // Collapsible tree node for dashboard
   function DashLocNode({ loc, depth = 0 }) {
@@ -292,11 +337,31 @@ export default function Dashboard() {
                 </div>
               )}
             </div>
+            <div style={{ padding: '8px 10px', borderBottom: '1px solid #f7f8fc' }}>
+              <div style={{ position: 'relative' }}>
+                <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none', display: 'flex' }}>
+                  <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                    <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+                  </svg>
+                </span>
+                <input
+                  type="search"
+                  value={locationSearch}
+                  onChange={e => setLocationSearch(e.target.value)}
+                  placeholder="Search locations…"
+                  aria-label="Search locations"
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px 6px 28px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, background: '#fafbfc' }}
+                />
+              </div>
+            </div>
             <div style={{ maxHeight: 280, overflowY: 'auto' }}>
-              {locationTree.length === 0
-                ? <div style={{ padding: '16px 14px', fontSize: 13, color: '#aaa' }}>No locations available</div>
-                : locationTree.map(loc => <DashLocNode key={loc.id} loc={loc} depth={0} />)
-              }
+              {locations.length === 0 ? (
+                <div style={{ padding: '16px 14px', fontSize: 13, color: '#aaa' }}>No locations available</div>
+              ) : locationTree.length === 0 ? (
+                <div style={{ padding: '16px 14px', fontSize: 13, color: '#94a3b8' }}>No locations match your search</div>
+              ) : (
+                locationTree.map(loc => <DashLocNode key={loc.id} loc={loc} depth={0} />)
+              )}
             </div>
           </div>
 
