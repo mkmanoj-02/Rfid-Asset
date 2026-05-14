@@ -1016,10 +1016,22 @@ function AssetTableAttrColumnToggle({ expanded, onToggle, selectedCount }) {
       title={expanded ? 'Hide extra column picker' : 'Pick optional columns for this table (up to 5)'}
     >
       <span className="assets-attr-toolbar-btn-icon" aria-hidden>
-        <svg className="assets-attr-toolbar-col-svg" width="18" height="18" viewBox="0 0 24 24" aria-hidden>
-          <rect x="3" y="5" width="5" height="14" rx="1.5" fill="currentColor" opacity="0.32" />
-          <rect x="9.5" y="3" width="5" height="18" rx="1.5" fill="currentColor" />
-          <rect x="16" y="5" width="5" height="14" rx="1.5" fill="currentColor" opacity="0.32" />
+        <svg
+          className="assets-attr-toolbar-attr-svg"
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <rect x="3.5" y="4.5" width="12" height="15" rx="2.25" />
+          <path d="M7 9.25h5.5M7 12.75h4.75M7 16.25h3.75" strokeOpacity="0.4" />
+          <circle cx="17.5" cy="8.75" r="3.85" />
+          <path d="M17.5 6.35v4.8M15.2 8.75h4.6" />
         </svg>
       </span>
       {selectedCount > 0 && (

@@ -182,12 +182,12 @@ tr:hover td { background: #f8fafc; }
 .assets-attr-toolbar-btn[aria-expanded="true"] .assets-attr-toolbar-btn-icon {
   transform: scale(1.08);
 }
-.assets-attr-toolbar-col-svg {
+.assets-attr-toolbar-attr-svg {
   display: block;
   opacity: 0.94;
   transition: opacity 0.2s ease;
 }
-.assets-attr-toolbar-btn:hover .assets-attr-toolbar-col-svg {
+.assets-attr-toolbar-btn:hover .assets-attr-toolbar-attr-svg {
   opacity: 1;
 }
 .assets-attr-toolbar-btn-count {
