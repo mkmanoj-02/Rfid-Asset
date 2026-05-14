@@ -544,16 +544,39 @@ function TaggingReports() {
   );
 }
 
+/* ─── Report tab icons (inline SVG, uses currentColor) ───────── */
+function ReportTabIconDashboard() {
+  /* Bold column bars — reads clearly at tab size (no pie/donut arc confusion). */
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.75" strokeLinecap="round" aria-hidden>
+      <path d="M6.5 19.5V10.5M12 19.5V6.5M17.5 19.5V12" />
+    </svg>
+  );
+}
+
+function ReportTabIconTagging() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M4.5 16.5L9 10.5l4 4L19.5 6" />
+      <circle cx="19.5" cy="6" r="2" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 /* ─── Tab button ─────────────────────────────────────────────── */
 function TabBtn({ active, onClick, children }) {
   const [hov, setHov] = useState(false);
   return (
     <button
+      type="button"
       onClick={onClick}
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
       style={{
         padding: '8px 18px',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 8,
         border: 'none',
         borderBottom: active ? `2px solid ${T.blue}` : '2px solid transparent',
         background: 'transparent',
@@ -598,10 +621,12 @@ export default function Reports() {
         border: `1px solid ${T.border}`,
       }}>
         <TabBtn active={tab === 'dashboard'} onClick={() => setTab('dashboard')}>
-          📊 Dashboard Reports
+          <ReportTabIconDashboard />
+          Dashboard Reports
         </TabBtn>
         <TabBtn active={tab === 'tagging'} onClick={() => setTab('tagging')}>
-          📈 Tagging Progress
+          <ReportTabIconTagging />
+          Tagging Progress
         </TabBtn>
       </div>
 
