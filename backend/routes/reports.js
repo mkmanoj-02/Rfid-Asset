@@ -35,29 +35,82 @@ function formatDate(value) {
   return String(value).split('T')[0];
 }
 
-// ── Dashboard Report data ──────────────────────────────────────
+/** Detail row for report `assets` arrays (table / export / drill-down). */
+function sqlReportAssetsSelect() {
+  return `
+    SELECT
+      a.id AS asset_id,
+      COALESCE(NULLIF(TRIM(a.asset_serial), ''), NULLIF(TRIM(a.rfid_tag), ''), CONCAT('#', a.id)) AS asset_code,
+      a.name AS asset_name,
+      COALESCE(at.name, '') AS asset_type,
+      COALESCE(l.name, '') AS location,
+      CAST(NULL AS CHAR(255)) AS assigned_to,
+      a.status AS asset_status,
+      a.created_at AS created_at
+  `;
+}
 
-// Inventory vs Missing — "missing" = no movement recorded in [from, to]; total = all assets
+function sqlReportAssetsFrom() {
+  return `
+    FROM assets a
+    LEFT JOIN asset_types at ON a.asset_type_id = at.id
+    LEFT JOIN locations l ON a.current_location_id = l.id
+  `;
+}
+
+function mapReportAssetRow(r) {
+  return {
+    asset_id: r.asset_id,
+    asset_code: r.asset_code,
+    asset_name: r.asset_name,
+    asset_type: r.asset_type,
+    location: r.location,
+    assigned_to: r.assigned_to,
+    asset_status: r.asset_status,
+    created_at: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
+  };
+}
+
+// Dashboard report data
+
+// Inventory vs Missing - "missing" = no movement recorded in [from, to]; total = all assets.
 router.get('/inventory-missing', async (req, res) => {
   const range = parseReportRange(req.query);
   if (!range.ok) return res.status(400).json({ message: range.message });
   const { fromDate, toDate } = range;
 
-  const [[{ total }]] = await db.query('SELECT COUNT(*) AS total FROM assets');
-  const [[{ missing }]] = await db.query(
-    `
-    SELECT COUNT(*) AS missing FROM assets a
-    WHERE NOT EXISTS (
+  const missingWhere = `
+    NOT EXISTS (
       SELECT 1 FROM movement_history mh
       WHERE mh.asset_id = a.id
         AND mh.moved_at >= ?
         AND mh.moved_at < DATE_ADD(?, INTERVAL 1 DAY)
     )
-  `,
+  `;
+
+  const [[{ total }]] = await db.query('SELECT COUNT(*) AS total FROM assets');
+  const [[{ missing }]] = await db.query(
+    `SELECT COUNT(*) AS missing FROM assets a WHERE ${missingWhere}`,
     [fromDate, toDate]
   );
   const inventory = total - missing;
-  res.json({ inventory, missing, total, from: fromDate, to: toDate });
+
+  const [assetRows] = await db.query(
+    `${sqlReportAssetsSelect()}
+     ${sqlReportAssetsFrom()}
+     WHERE ${missingWhere}
+     ORDER BY a.id DESC`,
+    [fromDate, toDate]
+  );
+
+  res.json({
+    inventory,
+    missing,
+    total,
+    from: fromDate,
+    to: toDate,
+    assets: assetRows.map(mapReportAssetRow),
+  });
 });
 
 // Most transacted assets (most location changes)
@@ -75,7 +128,7 @@ router.get('/most-transacted', async (req, res) => {
   res.json(rows);
 });
 
-// Top unscanned locations (locations where assets haven't moved recently)
+// Top unscanned locations (locations where assets have not moved recently)
 router.get('/unscanned-locations', async (req, res) => {
   const [rows] = await db.query(`
     SELECT l.name AS location,
@@ -91,7 +144,7 @@ router.get('/unscanned-locations', async (req, res) => {
   res.json(rows);
 });
 
-// Assets by type (for pie chart) — counts assets created in [from, to]
+// Assets by type - counts assets created in [from, to]
 router.get('/assets-by-type', async (req, res) => {
   const range = parseReportRange(req.query);
   if (!range.ok) return res.status(400).json({ message: range.message });
@@ -109,10 +162,25 @@ router.get('/assets-by-type', async (req, res) => {
   `,
     [fromDate, toDate]
   );
-  res.json({ from: fromDate, to: toDate, data: rows });
+
+  const createdClause = ' a.created_at >= ? AND a.created_at < DATE_ADD(?, INTERVAL 1 DAY) ';
+  const [assetRows] = await db.query(
+    `${sqlReportAssetsSelect()}
+     ${sqlReportAssetsFrom()}
+     WHERE ${createdClause}
+     ORDER BY a.id DESC`,
+    [fromDate, toDate]
+  );
+
+  res.json({
+    from: fromDate,
+    to: toDate,
+    data: rows,
+    assets: assetRows.map(mapReportAssetRow),
+  });
 });
 
-// Assets by location — counts assets at that location created in [from, to]
+// Assets by location - counts assets at that location created in [from, to]
 router.get('/assets-by-location', async (req, res) => {
   const range = parseReportRange(req.query);
   if (!range.ok) return res.status(400).json({ message: range.message });
@@ -131,10 +199,25 @@ router.get('/assets-by-location', async (req, res) => {
   `,
     [fromDate, toDate]
   );
-  res.json({ from: fromDate, to: toDate, data: rows });
+
+  const createdClause = ' a.created_at >= ? AND a.created_at < DATE_ADD(?, INTERVAL 1 DAY) ';
+  const [assetRows] = await db.query(
+    `${sqlReportAssetsSelect()}
+     ${sqlReportAssetsFrom()}
+     WHERE ${createdClause}
+     ORDER BY a.id DESC`,
+    [fromDate, toDate]
+  );
+
+  res.json({
+    from: fromDate,
+    to: toDate,
+    data: rows,
+    assets: assetRows.map(mapReportAssetRow),
+  });
 });
 
-// ── Tagging Progress Report ────────────────────────────────────
+// Tagging Progress Report
 router.get('/tagging-progress', async (req, res) => {
   const range = parseReportRange(req.query);
   if (!range.ok) return res.status(400).json({ message: range.message });
@@ -162,7 +245,7 @@ router.get('/tagging-progress', async (req, res) => {
   res.json({ from: fromDate, to: toDate, data: result });
 });
 
-// Movement trend — last 14 days
+// Movement trend - last 14 days
 router.get('/movement-trend', async (req, res) => {
   const [rows] = await db.query(`
     SELECT DATE(moved_at) AS date, COUNT(*) AS count
@@ -176,11 +259,11 @@ router.get('/movement-trend', async (req, res) => {
 
 // Status breakdown
 router.get('/status-breakdown', async (req, res) => {
-  const [rows] = await db.query(`SELECT status, COUNT(*) AS count FROM assets GROUP BY status`);
+  const [rows] = await db.query('SELECT status, COUNT(*) AS count FROM assets GROUP BY status');
   res.json(rows);
 });
 
-// Top locations with missing assets (inactive) — inactive assets created in [from, to]
+// Missing by location - inventory_status = missing, created in [from, to]
 router.get('/missing-by-location', async (req, res) => {
   const range = parseReportRange(req.query);
   if (!range.ok) return res.status(400).json({ message: range.message });
@@ -200,10 +283,28 @@ router.get('/missing-by-location', async (req, res) => {
   `,
     [fromDate, toDate]
   );
-  res.json({ from: fromDate, to: toDate, data: rows });
+
+  const baseWhere = `
+    a.asset_inventory_status = 'missing'
+    AND a.created_at >= ? AND a.created_at < DATE_ADD(?, INTERVAL 1 DAY)
+  `;
+  const [assetRows] = await db.query(
+    `${sqlReportAssetsSelect()}
+     ${sqlReportAssetsFrom()}
+     WHERE ${baseWhere}
+     ORDER BY a.id DESC`,
+    [fromDate, toDate]
+  );
+
+  res.json({
+    from: fromDate,
+    to: toDate,
+    data: rows,
+    assets: assetRows.map(mapReportAssetRow),
+  });
 });
 
-// Most active users — logins in [from, to] on logged_in_at
+// Most active users - logins in [from, to] on logged_in_at
 router.get('/most-active-users', async (req, res) => {
   const range = parseReportRange(req.query);
   if (!range.ok) return res.status(400).json({ message: range.message });
@@ -222,7 +323,13 @@ router.get('/most-active-users', async (req, res) => {
   `,
     [fromDate, toDate]
   );
-  res.json({ from: fromDate, to: toDate, data: rows });
+
+  res.json({
+    from: fromDate,
+    to: toDate,
+    data: rows,
+    assets: [],
+  });
 });
 
 module.exports = router;
