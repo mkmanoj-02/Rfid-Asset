@@ -50,6 +50,49 @@ async function expandWithSubLocations(ids) {
   return [...result];
 }
 
+async function loadListOptionsByAttributeIds(attributeIds) {
+  const map = new Map();
+  if (!attributeIds.length) return map;
+  const ph = attributeIds.map(() => '?').join(',');
+  const [opts] = await db.query(
+    `SELECT * FROM attribute_list_options WHERE attribute_id IN (${ph}) ORDER BY attribute_id, sort_order, id`,
+    attributeIds
+  );
+  for (const o of opts) {
+    if (!map.has(o.attribute_id)) map.set(o.attribute_id, []);
+    map.get(o.attribute_id).push(o);
+  }
+  return map;
+}
+
+/** Adds `attributes` to each row (same shape as GET /api/assets/:id/attributes). */
+async function attachAssetAttributeValues(assetRows) {
+  if (!assetRows.length) return;
+  const ids = [...new Set(assetRows.map((r) => r.id).filter((id) => id != null))];
+  if (!ids.length) return;
+  const ph = ids.map(() => '?').join(',');
+  const [values] = await db.query(
+    `SELECT aav.*, ata.name, ata.attr_type
+     FROM asset_attribute_values aav
+     JOIN asset_type_attributes ata ON aav.attribute_id = ata.id
+     WHERE aav.asset_id IN (${ph})
+     ORDER BY ata.sort_order ASC, ata.id ASC`,
+    ids
+  );
+  const listAttrIds = [...new Set(values.filter((v) => v.attr_type === 'list').map((v) => v.attribute_id))];
+  const optionsByAttrId = await loadListOptionsByAttributeIds(listAttrIds);
+  const byAsset = new Map(ids.map((id) => [id, []]));
+  for (const row of values) {
+    const entry = { ...row };
+    entry.list_options =
+      row.attr_type === 'list' ? optionsByAttrId.get(row.attribute_id) || [] : [];
+    byAsset.get(row.asset_id).push(entry);
+  }
+  for (const a of assetRows) {
+    a.attributes = byAsset.get(a.id) || [];
+  }
+}
+
 router.get('/', async (req, res, next) => {
   try {
   const { user_id, search, location_id, asset_type_id, page, limit, since, asset_inventory_status, sort: sortField, sort_dir } = req.query;
@@ -188,6 +231,8 @@ router.get('/', async (req, res, next) => {
     query += ' LIMIT ? OFFSET ?';
     const [rows] = await db.query(query, [...params, pageSize, offset]);
 
+    await attachAssetAttributeValues(rows);
+
     return res.json({
       data: rows,
       pagination: {
@@ -201,6 +246,7 @@ router.get('/', async (req, res, next) => {
 
   // No pagination — return all records as a plain array
   const [rows] = await db.query(query, params);
+  await attachAssetAttributeValues(rows);
   res.json(rows);
   } catch (err) { next(err); }
 });
@@ -220,6 +266,7 @@ router.get('/:id', async (req, res, next) => {
     WHERE a.id = ?
   `, [id]);
   if (!rows.length) return res.status(404).json({ message: 'Not found' });
+  await attachAssetAttributeValues(rows);
   res.json(rows[0]);
   } catch (err) { next(err); }
 });
