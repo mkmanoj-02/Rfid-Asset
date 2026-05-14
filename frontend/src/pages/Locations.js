@@ -1,7 +1,30 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { getLocationTree, getLocations, createLocation, updateLocation, deleteLocation,
   getLocationTypes, createLocationType, updateLocationType, deleteLocationType } from '../api';
 import { useToast } from '../Toast';
+
+function locationNodeMatches(node, q) {
+  if (!q) return true;
+  const hay = [node.name || '', node.location_type_name || '', node.description || '', node.parent_name || ''].join(' ').toLowerCase();
+  return hay.includes(q);
+}
+
+/** Return tree nodes that match `q` or contain a matching descendant (structure preserved). */
+function filterLocationTree(nodes, q) {
+  if (!q) return nodes || [];
+  const walk = (list) => {
+    if (!list || !list.length) return [];
+    const out = [];
+    for (const node of list) {
+      const children = walk(node.children);
+      if (locationNodeMatches(node, q) || children.length) {
+        out.push({ ...node, children });
+      }
+    }
+    return out;
+  };
+  return walk(nodes || []);
+}
 
 // ── Tree Node ──────────────────────────────────────────────────
 function TreeNode({ node, selectedId, onSelect, level = 0 }) {
@@ -37,7 +60,11 @@ function ManageLocations() {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ name: '', description: '', parent_id: '', location_type_id: '' });
   const [editing, setEditing] = useState(null);
+  const [manageSearch, setManageSearch] = useState('');
   const { showToast } = useToast();
+
+  const manageQuery = manageSearch.trim().toLowerCase();
+  const filteredTree = useMemo(() => filterLocationTree(tree, manageQuery), [tree, manageQuery]);
 
   const currentUser = (() => { try { return JSON.parse(sessionStorage.getItem('rfid_user') || 'null'); } catch { return null; } })();
   const isSuperAdmin = currentUser?.profile_type === 'super_admin';
@@ -89,6 +116,10 @@ function ManageLocations() {
   };
 
   const children = selected ? flatList.filter(l => l.parent_id === selected.id) : [];
+  const filteredChildren = useMemo(() => {
+    if (!manageQuery) return children;
+    return children.filter(c => locationNodeMatches(c, manageQuery));
+  }, [children, manageQuery]);
 
   return (
     <div className="locations-layout">
@@ -97,9 +128,30 @@ function ManageLocations() {
           <span>Locations</span>
           {canModify && <button className="btn btn-primary btn-sm" onClick={() => openAdd()}>+ Add</button>}
         </div>
+        <div style={{ padding: '8px 10px', borderBottom: '1px solid #e2e8f0', background: '#fafbfc' }}>
+          <div style={{ position: 'relative' }}>
+            <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none', display: 'flex' }}>
+              <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+              </svg>
+            </span>
+            <input
+              value={manageSearch}
+              onChange={e => setManageSearch(e.target.value)}
+              placeholder="Search tree & sub-locations…"
+              style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px 6px 28px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12 }}
+            />
+          </div>
+          {manageQuery && (
+            <button type="button" className="btn btn-secondary btn-sm" style={{ marginTop: 6, width: '100%' }} onClick={() => setManageSearch('')}>Clear search</button>
+          )}
+        </div>
         <div className="tree-container">
           {tree.length === 0 && <p style={{ color: '#aaa', padding: 12, fontSize: 13 }}>No locations yet.</p>}
-          {tree.map(node => (
+          {tree.length > 0 && filteredTree.length === 0 && manageQuery && (
+            <p style={{ color: '#aaa', padding: 12, fontSize: 13 }}>No locations match your search.</p>
+          )}
+          {filteredTree.map(node => (
             <TreeNode key={node.id} node={node} selectedId={selected?.id} onSelect={setSelected} />
           ))}
         </div>
@@ -128,11 +180,13 @@ function ManageLocations() {
               </div>
             </div>
             <h3 style={{ marginBottom: 12, fontSize: 15, color: '#555' }}>Sub-locations</h3>
-            {children.length === 0 ? <p style={{ color: '#aaa' }}>No sub-locations.</p> : (
+            {children.length === 0 ? <p style={{ color: '#aaa' }}>No sub-locations.</p> : filteredChildren.length === 0 ? (
+              <p style={{ color: '#aaa' }}>No sub-locations match your search.</p>
+            ) : (
               <table>
                 <thead><tr><th>Name</th><th>Type</th><th>Description</th><th>Actions</th></tr></thead>
                 <tbody>
-                  {children.map(child => (
+                  {filteredChildren.map(child => (
                     <tr key={child.id}>
                       <td><span style={{ cursor: 'pointer', color: '#7c8cf8' }} onClick={() => setSelected(child)}>{child.name}</span></td>
                       <td><span style={{ fontSize: 12, background: '#e9ecff', color: '#5a67d8', padding: '1px 6px', borderRadius: 8 }}>{child.location_type_name || '—'}</span></td>
@@ -196,6 +250,7 @@ function LocationTypes() {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ name: '', description: '' });
   const [editing, setEditing] = useState(null);
+  const [typesSearch, setTypesSearch] = useState('');
   const { showToast } = useToast();
 
   const currentUser = (() => { try { return JSON.parse(sessionStorage.getItem('rfid_user') || 'null'); } catch { return null; } })();
@@ -212,6 +267,19 @@ function LocationTypes() {
   });
 
   useEffect(() => { load(); }, []);
+
+  const typesQuery = typesSearch.trim().toLowerCase();
+  const filteredTypes = useMemo(() => {
+    if (!typesQuery) return types;
+    return types.filter(t => {
+      const hay = [t.name || '', t.description || ''].join(' ').toLowerCase();
+      return hay.includes(typesQuery);
+    });
+  }, [types, typesQuery]);
+
+  useEffect(() => {
+    if (selected && !filteredTypes.some(t => t.id === selected.id)) setSelected(null);
+  }, [filteredTypes, selected]);
 
   const openAdd = () => { setForm({ name: '', description: '' }); setEditing(null); setModal(true); };
   const openEdit = (item) => { setForm({ name: item.name, description: item.description || '' }); setEditing(item.id); setModal(true); };
@@ -244,8 +312,26 @@ function LocationTypes() {
         <div style={{ fontWeight: 600, fontSize: 13, padding: '10px 14px', background: '#f7f8fc', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>
           — Location Type List —
         </div>
+        <div style={{ padding: '8px 10px', borderBottom: '1px solid #e2e8f0', background: '#fafbfc' }}>
+          <div style={{ position: 'relative' }}>
+            <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none', display: 'flex' }}>
+              <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+              </svg>
+            </span>
+            <input
+              value={typesSearch}
+              onChange={e => setTypesSearch(e.target.value)}
+              placeholder="Search name, description…"
+              style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px 6px 28px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12 }}
+            />
+          </div>
+          {typesQuery && (
+            <button type="button" className="btn btn-secondary btn-sm" style={{ marginTop: 6, width: '100%' }} onClick={() => setTypesSearch('')}>Clear search</button>
+          )}
+        </div>
         <div style={{ maxHeight: 400, overflowY: 'auto' }}>
-          {types.map(t => (
+          {filteredTypes.map(t => (
             <div key={t.id} onClick={() => setSelected(t)}
               style={{ padding: '9px 14px', cursor: 'pointer', fontSize: 14, borderBottom: '1px solid #f7f8fc',
                 background: selected?.id === t.id ? '#e9ecff' : 'inherit',
@@ -255,6 +341,9 @@ function LocationTypes() {
             </div>
           ))}
           {types.length === 0 && <div style={{ padding: 16, color: '#aaa', fontSize: 13, textAlign: 'center' }}>No types yet</div>}
+          {types.length > 0 && filteredTypes.length === 0 && typesQuery && (
+            <div style={{ padding: 16, color: '#aaa', fontSize: 13, textAlign: 'center' }}>No types match your search.</div>
+          )}
         </div>
         <div style={{ padding: '10px 14px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end' }}>
           {canModify && <button className="btn btn-primary btn-sm" onClick={openAdd}>+ Add Type</button>}
