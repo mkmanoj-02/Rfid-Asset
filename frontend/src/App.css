@@ -143,6 +143,7 @@ tr:hover td { background: #f8fafc; }
 .field-wrap { flex: 1; display: flex; flex-direction: column; gap: 4px; }
 .field-wrap input, .field-wrap select, .field-wrap textarea { width: 100%; padding: 8px 10px; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 13px; transition: border-color 0.15s; }
 .field-wrap input:focus, .field-wrap select:focus, .field-wrap textarea:focus { outline: none; border-color: #1565c0; }
+.field-wrap textarea { resize: vertical; min-height: 80px; }
 .rfid-field { flex-direction: row; align-items: center; gap: 6px; }
 .rfid-field input, .rfid-field select { flex: 1; }
 .picker-btn { flex-shrink: 0; }
