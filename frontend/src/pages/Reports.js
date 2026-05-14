@@ -7,6 +7,14 @@ import {
 import api from '../api';
 import { exportExcel, exportPDF } from '../export';
 
+/** List endpoints return `{ from, to, data: [...] }` or a bare array. */
+function reportListPayload(body) {
+  if (!body) return [];
+  if (Array.isArray(body)) return body;
+  if (Array.isArray(body.data)) return body.data;
+  return [];
+}
+
 /* ─── Design tokens ──────────────────────────────────────────── */
 const T = {
   blue:    '#2563EB',
@@ -162,45 +170,94 @@ function Empty({ msg = 'No data available' }) {
 
 /* ─── Dashboard Reports ──────────────────────────────────────── */
 function DashboardReports() {
-  const [inventoryMissing, setInventoryMissing] = useState(null);
-  const [assetsByType,     setAssetsByType]     = useState([]);
-  const [assetsByLoc,      setAssetsByLoc]      = useState([]);
-  const [missingByLoc,     setMissingByLoc]     = useState([]);
-  const [activeUsers,      setActiveUsers]      = useState([]);
+  const [fromDate, setFromDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().split('T')[0];
+  });
+  const [toDate, setToDate] = useState(() => new Date().toISOString().split('T')[0]);
 
-  useEffect(() => {
-    api.get('/reports/inventory-missing').then(r => setInventoryMissing(r.data)).catch(() => {});
-    api.get('/reports/assets-by-type').then(r => setAssetsByType(r.data)).catch(() => {});
-    api.get('/reports/assets-by-location').then(r => setAssetsByLoc(r.data)).catch(() => {});
-    api.get('/reports/missing-by-location').then(r => setMissingByLoc(r.data)).catch(() => {});
-    api.get('/reports/most-active-users').then(r => setActiveUsers(r.data)).catch(() => {});
-  }, []);
+  const [inventoryMissing, setInventoryMissing] = useState(null);
+  const [assetsByType, setAssetsByType] = useState([]);
+  const [assetsByLoc, setAssetsByLoc] = useState([]);
+  const [missingByLoc, setMissingByLoc] = useState([]);
+  const [activeUsers, setActiveUsers] = useState([]);
+
+  const load = () => {
+    const params = { from: fromDate, to: toDate };
+    api.get('/reports/inventory-missing', { params }).then(r => setInventoryMissing(r.data)).catch(() => {});
+    api.get('/reports/assets-by-type', { params }).then(r => setAssetsByType(reportListPayload(r.data))).catch(() => {});
+    api.get('/reports/assets-by-location', { params }).then(r => setAssetsByLoc(reportListPayload(r.data))).catch(() => {});
+    api.get('/reports/missing-by-location', { params }).then(r => setMissingByLoc(reportListPayload(r.data))).catch(() => {});
+    api.get('/reports/most-active-users', { params }).then(r => setActiveUsers(reportListPayload(r.data))).catch(() => {});
+  };
+
+  useEffect(() => { load(); }, []);
 
   const invData = inventoryMissing ? [
-    { name: 'In Stock',  value: inventoryMissing.inventory },
-    { name: 'Missing',   value: inventoryMissing.missing   },
+    { name: 'In Stock', value: inventoryMissing.inventory },
+    { name: 'Missing', value: inventoryMissing.missing },
   ] : [];
 
-  const typeH    = Math.max(220, assetsByType.length * 40);
-  const locH     = Math.max(220, assetsByLoc.length * 40);
+  const typeH = Math.max(220, assetsByType.length * 40);
+  const locH = Math.max(220, assetsByLoc.length * 40);
   const missingH = Math.max(180, missingByLoc.length * 40);
 
   const axisStyle = { fontSize: 11, fill: T.muted, fontFamily: 'inherit' };
+  const rangeLabel = `${fromDate} → ${toDate}`;
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{
+        background: T.card, borderRadius: T.radius,
+        boxShadow: T.shadow, border: `1px solid ${T.border}`,
+        padding: '14px 20px',
+        display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+      }}>
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: T.sub }}>Date Range</span>
+        {[
+          { label: 'From', val: fromDate, set: setFromDate },
+          { label: 'To', val: toDate, set: setToDate },
+        ].map(({ label, val, set }) => (
+          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 12, color: T.muted }}>{label}</span>
+            <input
+              type="date"
+              value={val}
+              onChange={e => set(e.target.value)}
+              style={{
+                padding: '5px 10px', border: `1px solid ${T.border}`,
+                borderRadius: 7, fontSize: 12.5, color: T.text,
+                background: '#fff', outline: 'none',
+              }}
+            />
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={load}
+          style={{
+            padding: '6px 16px', borderRadius: 7, fontSize: 12.5, fontWeight: 600,
+            background: T.blue, color: '#fff', border: 'none', cursor: 'pointer',
+          }}
+        >
+          Apply
+        </button>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
 
       {/* ── Inventory vs Missing ── */}
       <ReportCard
         title="Inventory vs Missing"
-        subtitle="Assets in stock vs not scanned in 30 days"
+        subtitle={`With movement in range vs none (${rangeLabel})`}
         onExcel={() => exportExcel(
           [{ header: 'Category', key: 'name' }, { header: 'Count', key: 'value' }],
           invData, 'inventory-missing'
         )}
         onPDF={() => exportPDF(
           [{ header: 'Category', key: 'name' }, { header: 'Count', key: 'value' }],
-          invData, 'Inventory vs Missing', 'inventory-missing'
+          invData, `Inventory vs Missing (${rangeLabel})`, 'inventory-missing'
         )}
         minH={260}
       >
@@ -233,14 +290,14 @@ function DashboardReports() {
       {/* ── Most Active Users ── */}
       <ReportCard
         title="Most Active Users"
-        subtitle="Ranked by total login count"
+        subtitle={`Logins in selected period (${rangeLabel})`}
         onExcel={() => exportExcel(
           [{ header: 'Username', key: 'username' }, { header: 'Logins', key: 'login_count' }],
           activeUsers, 'active-users'
         )}
         onPDF={() => exportPDF(
           [{ header: 'Username', key: 'username' }, { header: 'Logins', key: 'login_count' }],
-          activeUsers, 'Most Active Users', 'active-users'
+          activeUsers, `Most Active Users (${rangeLabel})`, 'active-users'
         )}
         minH={260}
       >
@@ -277,14 +334,14 @@ function DashboardReports() {
       {/* ── Assets by Type ── */}
       <ReportCard
         title="Assets by Type"
-        subtitle="Distribution across all asset categories"
+        subtitle={`Assets created in period (${rangeLabel})`}
         onExcel={() => exportExcel(
           [{ header: 'Asset Type', key: 'type' }, { header: 'Count', key: 'count' }],
           assetsByType, 'assets-by-type'
         )}
         onPDF={() => exportPDF(
           [{ header: 'Asset Type', key: 'type' }, { header: 'Count', key: 'count' }],
-          assetsByType, 'Assets by Type', 'assets-by-type'
+          assetsByType, `Assets by Type (${rangeLabel})`, 'assets-by-type'
         )}
       >
         {assetsByType.length === 0 ? <Empty /> : (
@@ -309,14 +366,14 @@ function DashboardReports() {
       {/* ── Assets by Location ── */}
       <ReportCard
         title="Assets by Location"
-        subtitle="Top 10 locations by asset count"
+        subtitle={`Top locations — assets created in period (${rangeLabel})`}
         onExcel={() => exportExcel(
           [{ header: 'Location', key: 'location' }, { header: 'Count', key: 'count' }],
           assetsByLoc, 'assets-by-location'
         )}
         onPDF={() => exportPDF(
           [{ header: 'Location', key: 'location' }, { header: 'Count', key: 'count' }],
-          assetsByLoc, 'Assets by Location', 'assets-by-location'
+          assetsByLoc, `Assets by Location (${rangeLabel})`, 'assets-by-location'
         )}
       >
         {assetsByLoc.length === 0 ? <Empty /> : (
@@ -340,7 +397,7 @@ function DashboardReports() {
       {/* ── Missing by Location (full width) ── */}
       <ReportCard
         title="Locations with Missing Assets"
-        subtitle="Top locations ranked by inactive asset count"
+        subtitle={`Inactive assets created in period (${rangeLabel})`}
         fullWidth
         onExcel={() => exportExcel(
           [{ header: 'Location', key: 'location' }, { header: 'Missing', key: 'missing_count' }],
@@ -348,7 +405,7 @@ function DashboardReports() {
         )}
         onPDF={() => exportPDF(
           [{ header: 'Location', key: 'location' }, { header: 'Missing', key: 'missing_count' }],
-          missingByLoc, 'Locations with Missing Assets', 'missing-by-location'
+          missingByLoc, `Locations with Missing Assets (${rangeLabel})`, 'missing-by-location'
         )}
       >
         {missingByLoc.length === 0 ? (
@@ -372,6 +429,7 @@ function DashboardReports() {
         )}
       </ReportCard>
 
+      </div>
     </div>
   );
 }
@@ -387,7 +445,8 @@ function TaggingReports() {
 
   const load = () => {
     api.get('/reports/tagging-progress', { params: { from: fromDate, to: toDate } })
-      .then(r => setData(r.data)).catch(() => {});
+      .then(r => setData(reportListPayload(r.data)))
+      .catch(() => {});
   };
   useEffect(() => { load(); }, []);
 
