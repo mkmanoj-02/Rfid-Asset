@@ -2,20 +2,62 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * @returns {{ ok: true, fromDate: string, toDate: string } | { ok: false, message: string }}
+ */
+function parseReportRange(query) {
+  const fromRaw = query.from ?? query.start_date ?? query.start;
+  const toRaw = query.to ?? query.end_date ?? query.end;
+  const defaultTo = new Date().toISOString().split('T')[0];
+  const defaultFrom = new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0];
+
+  const fromStr = String(fromRaw || defaultFrom).trim().split('T')[0];
+  const toStr = String(toRaw || defaultTo).trim().split('T')[0];
+
+  if (!DATE_ONLY.test(fromStr)) return { ok: false, message: 'from must be YYYY-MM-DD' };
+  if (!DATE_ONLY.test(toStr)) return { ok: false, message: 'to must be YYYY-MM-DD' };
+
+  const dFrom = new Date(`${fromStr}T12:00:00Z`);
+  const dTo = new Date(`${toStr}T12:00:00Z`);
+  if (Number.isNaN(dFrom.getTime()) || Number.isNaN(dTo.getTime())) {
+    return { ok: false, message: 'Invalid from or to date' };
+  }
+  if (fromStr > toStr) return { ok: false, message: 'from must be on or before to' };
+
+  return { ok: true, fromDate: fromStr, toDate: toStr };
+}
+
+function formatDate(value) {
+  if (!value) return value;
+  if (value instanceof Date) return value.toISOString().split('T')[0];
+  return String(value).split('T')[0];
+}
+
 // ── Dashboard Report data ──────────────────────────────────────
 
-// Inventory vs Missing (assets with last_seen > 30 days = missing)
+// Inventory vs Missing — "missing" = no movement recorded in [from, to]; total = all assets
 router.get('/inventory-missing', async (req, res) => {
+  const range = parseReportRange(req.query);
+  if (!range.ok) return res.status(400).json({ message: range.message });
+  const { fromDate, toDate } = range;
+
   const [[{ total }]] = await db.query('SELECT COUNT(*) AS total FROM assets');
-  const [[{ missing }]] = await db.query(`
-    SELECT COUNT(*) AS missing FROM assets
-    WHERE id NOT IN (
-      SELECT DISTINCT asset_id FROM movement_history
-      WHERE moved_at > DATE_SUB(NOW(), INTERVAL 30 DAY)
+  const [[{ missing }]] = await db.query(
+    `
+    SELECT COUNT(*) AS missing FROM assets a
+    WHERE NOT EXISTS (
+      SELECT 1 FROM movement_history mh
+      WHERE mh.asset_id = a.id
+        AND mh.moved_at >= ?
+        AND mh.moved_at < DATE_ADD(?, INTERVAL 1 DAY)
     )
-  `);
+  `,
+    [fromDate, toDate]
+  );
   const inventory = total - missing;
-  res.json({ inventory, missing, total });
+  res.json({ inventory, missing, total, from: fromDate, to: toDate });
 });
 
 // Most transacted assets (most location changes)
@@ -49,60 +91,75 @@ router.get('/unscanned-locations', async (req, res) => {
   res.json(rows);
 });
 
-// Assets by type (for pie chart)
+// Assets by type (for pie chart) — counts assets created in [from, to]
 router.get('/assets-by-type', async (req, res) => {
-  const [rows] = await db.query(`
+  const range = parseReportRange(req.query);
+  if (!range.ok) return res.status(400).json({ message: range.message });
+  const { fromDate, toDate } = range;
+
+  const [rows] = await db.query(
+    `
     SELECT at.name AS type, COUNT(a.id) AS count
     FROM asset_types at
     LEFT JOIN assets a ON a.asset_type_id = at.id
+      AND a.created_at >= ?
+      AND a.created_at < DATE_ADD(?, INTERVAL 1 DAY)
     GROUP BY at.id
     ORDER BY count DESC
-  `);
-  res.json(rows);
+  `,
+    [fromDate, toDate]
+  );
+  res.json({ from: fromDate, to: toDate, data: rows });
 });
 
-// Assets by location
+// Assets by location — counts assets at that location created in [from, to]
 router.get('/assets-by-location', async (req, res) => {
-  const [rows] = await db.query(`
+  const range = parseReportRange(req.query);
+  if (!range.ok) return res.status(400).json({ message: range.message });
+  const { fromDate, toDate } = range;
+
+  const [rows] = await db.query(
+    `
     SELECT l.name AS location, COUNT(a.id) AS count
     FROM locations l
     LEFT JOIN assets a ON a.current_location_id = l.id
+      AND a.created_at >= ?
+      AND a.created_at < DATE_ADD(?, INTERVAL 1 DAY)
     GROUP BY l.id
     ORDER BY count DESC
     LIMIT 10
-  `);
-  res.json(rows);
+  `,
+    [fromDate, toDate]
+  );
+  res.json({ from: fromDate, to: toDate, data: rows });
 });
 
 // ── Tagging Progress Report ────────────────────────────────────
-function formatDate(value) {
-  if (!value) return value;
-  if (value instanceof Date) return value.toISOString().split('T')[0];
-  return String(value).split('T')[0];
-}
-// Assets added per day in date range
 router.get('/tagging-progress', async (req, res) => {
-  const { from, to } = req.query;
-  const fromDate = from || new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0];
-  const toDate = to || new Date().toISOString().split('T')[0];
+  const range = parseReportRange(req.query);
+  if (!range.ok) return res.status(400).json({ message: range.message });
+  const { fromDate, toDate } = range;
 
-  const [rows] = await db.query(`
+  const [rows] = await db.query(
+    `
     SELECT DATE(moved_at) AS date, COUNT(DISTINCT asset_id) AS count
     FROM movement_history
     WHERE notes IN ('Initial placement', 'Imported')
-      AND moved_at BETWEEN ? AND DATE_ADD(?, INTERVAL 1 DAY)
+      AND moved_at >= ?
+      AND moved_at < DATE_ADD(?, INTERVAL 1 DAY)
     GROUP BY DATE(moved_at)
     ORDER BY date ASC
-  `, [fromDate, toDate]);
+  `,
+    [fromDate, toDate]
+  );
 
-  // Build cumulative
   let cumulative = 0;
-  const result = rows.map(r => {
+  const result = rows.map((r) => {
     cumulative += r.count;
     return { date: formatDate(r.date), count: r.count, cumulative };
   });
 
-  res.json(result);
+  res.json({ from: fromDate, to: toDate, data: result });
 });
 
 // Movement trend — last 14 days
@@ -123,31 +180,49 @@ router.get('/status-breakdown', async (req, res) => {
   res.json(rows);
 });
 
-// Top locations with missing assets (inactive assets per location)
+// Top locations with missing assets (inactive) — inactive assets created in [from, to]
 router.get('/missing-by-location', async (req, res) => {
-  const [rows] = await db.query(`
+  const range = parseReportRange(req.query);
+  if (!range.ok) return res.status(400).json({ message: range.message });
+  const { fromDate, toDate } = range;
+
+  const [rows] = await db.query(
+    `
     SELECT l.name AS location, COUNT(a.id) AS missing_count
     FROM assets a
     JOIN locations l ON a.current_location_id = l.id
     WHERE a.status = 'inactive'
+      AND a.created_at >= ?
+      AND a.created_at < DATE_ADD(?, INTERVAL 1 DAY)
     GROUP BY l.id
     ORDER BY missing_count DESC
     LIMIT 10
-  `);
-  res.json(rows);
+  `,
+    [fromDate, toDate]
+  );
+  res.json({ from: fromDate, to: toDate, data: rows });
 });
 
-// Most active users — by login count
+// Most active users — logins in [from, to] on logged_in_at
 router.get('/most-active-users', async (req, res) => {
-  const [rows] = await db.query(`
+  const range = parseReportRange(req.query);
+  if (!range.ok) return res.status(400).json({ message: range.message });
+  const { fromDate, toDate } = range;
+
+  const [rows] = await db.query(
+    `
     SELECT u.username, COUNT(l.id) AS login_count
     FROM users u
     LEFT JOIN login_logs l ON l.user_id = u.id
+      AND l.logged_in_at >= ?
+      AND l.logged_in_at < DATE_ADD(?, INTERVAL 1 DAY)
     GROUP BY u.id
     ORDER BY login_count DESC
     LIMIT 10
-  `);
-  res.json(rows);
+  `,
+    [fromDate, toDate]
+  );
+  res.json({ from: fromDate, to: toDate, data: rows });
 });
 
 module.exports = router;
