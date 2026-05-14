@@ -32,6 +32,9 @@ export const createAssetType = (data) => api.post('/asset-types', data);
 export const updateAssetType = (id, data) => api.put(`/asset-types/${id}`, data);
 export const deleteAssetType = (id) => api.delete(`/asset-types/${id}`);
 
+/** Unique attribute definitions (name / type) for column picker — GET /api/attribute-list */
+export const getAttributeList = (params) => api.get('/attribute-list', { params: params || {} });
+
 export const getAttributes = (typeId) => api.get(`/asset-types/${typeId}/attributes`);
 export const createAttribute = (typeId, data) => api.post(`/asset-types/${typeId}/attributes`, data);
 export const updateAttribute = (typeId, attrId, data) => api.put(`/asset-types/${typeId}/attributes/${attrId}`, data);
