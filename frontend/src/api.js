@@ -52,7 +52,11 @@ export const getMovements = (asset_id) =>
   api.get('/movements', { params: asset_id ? { asset_id } : {} });
 export const getAssetMovements = (asset_id) => api.get(`/movements/asset/${asset_id}`);
 
-export const getDashboard = () => api.get('/dashboard');
+/** @param {number|string|null|undefined} locationId - when set, GET /dashboard?location=… scopes metrics to that site */
+export const getDashboard = (locationId) =>
+  api.get('/dashboard', {
+    params: locationId != null && locationId !== '' ? { location: locationId } : {},
+  });
 
 export const previewImport = (type, rows) => api.post(`/import/${type}/preview`, { rows });
 export const executeImport = (type, rows) => api.post(`/import/${type}/execute`, { rows });

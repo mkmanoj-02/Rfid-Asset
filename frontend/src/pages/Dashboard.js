@@ -1,7 +1,15 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import {
+  BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell, LabelList,
+} from 'recharts';
 import api, { getDashboard, getLocations } from '../api';
 const MAP_STORAGE_KEY = 'rfid_dashboard_map_image';
 const PINS_STORAGE_KEY = 'rfid_dashboard_pins'; // { locationId: { x%, y% } }
+
+const CHART_PALETTE = [
+  '#2563EB', '#7C3AED', '#059669', '#D97706', '#DC2626',
+  '#0D9488', '#4F46E5', '#DB2777', '#0891B2', '#65A30D',
+];
 
 function buildLocationTree(items, parentId = null) {
   return items
@@ -47,14 +55,40 @@ function filterLocationsBySearch(locations, queryNorm) {
   return locations.filter(l => idsToShow.has(l.id));
 }
 
+function AssetTypeBarChart({ rows }) {
+  const data = useMemo(
+    () => [...rows].sort((a, b) => b.count - a.count),
+    [rows],
+  );
+  const h = Math.min(400, Math.max(160, data.length * 28 + 48));
+  if (data.length === 0) {
+    return (
+      <div style={{ padding: 28, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
+        No assets in this view yet
+      </div>
+    );
+  }
+  return (
+    <div style={{ overflowY: 'auto', maxHeight: 440 }}>
+      <ResponsiveContainer width="100%" height={h}>
+        <BarChart data={data} layout="vertical" margin={{ top: 8, right: 48, left: 8, bottom: 8 }}>
+          <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+          <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 11, fill: '#334155' }} axisLine={false} tickLine={false} />
+          <Tooltip formatter={(v) => [v, 'Assets']} />
+          <Bar dataKey="count" radius={[0, 5, 5, 0]} maxBarSize={22}>
+            {data.map((_, i) => (
+              <Cell key={`${i}-${data[i].name}`} fill={CHART_PALETTE[i % CHART_PALETTE.length]} />
+            ))}
+            <LabelList dataKey="count" position="right" style={{ fontSize: 11, fill: '#64748b', fontWeight: 600 }} />
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 // ── Location Detail Popup ──────────────────────────────────────
-function LocationPopup({ locationId, locationName, onClose }) {
-  const [detail, setDetail] = useState(null);
-
-  useEffect(() => {
-    api.get(`/dashboard/location/${locationId}`).then(r => setDetail(r.data)).catch(() => {});
-  }, [locationId]);
-
+function LocationPopup({ locationName, detail, loading, onClose }) {
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
@@ -68,8 +102,8 @@ function LocationPopup({ locationId, locationName, onClose }) {
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#888' }}>×</button>
         </div>
 
-        {!detail ? (
-          <div style={{ padding: 32, textAlign: 'center', color: '#aaa' }}>Loading...</div>
+        {loading || !detail ? (
+          <div style={{ padding: 32, textAlign: 'center', color: '#aaa' }}>{loading ? 'Loading...' : 'Could not load location.'}</div>
         ) : (
           <div>
             {/* Top info */}
@@ -148,14 +182,43 @@ export default function Dashboard() {
   const [mapImage, setMapImage] = useState(() => localStorage.getItem(MAP_STORAGE_KEY) || null);
   const [pins, setPins] = useState(() => { try { return JSON.parse(localStorage.getItem(PINS_STORAGE_KEY) || '{}'); } catch { return {}; } });
   const [placingPin, setPlacingPin] = useState(null); // locationId being placed
-  const [selectedLocation, setSelectedLocation] = useState(null); // { id, name }
+  const [selectedLocation, setSelectedLocation] = useState(null); // scopes dashboard + chart (tree or pin)
+  const [popupLocation, setPopupLocation] = useState(null); // modal only — set from map pin click
   const [locations, setLocations] = useState([]);
   const [locationSearch, setLocationSearch] = useState('');
   const [showPinPanel, setShowPinPanel] = useState(false);
+  const [popupDetail, setPopupDetail] = useState(null);
+  const [popupLoading, setPopupLoading] = useState(false);
+  const [dashboardLoading, setDashboardLoading] = useState(true);
   const mapRef = useRef();
 
   useEffect(() => {
-    getDashboard().then(r => setData(r.data)).catch(console.error);
+    if (!popupLocation) {
+      setPopupDetail(null);
+      setPopupLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setPopupDetail(null);
+    setPopupLoading(true);
+    api.get(`/dashboard/location/${popupLocation.id}`)
+      .then(r => { if (!cancelled) setPopupDetail(r.data); })
+      .catch(() => { if (!cancelled) setPopupDetail(null); })
+      .finally(() => { if (!cancelled) setPopupLoading(false); });
+    return () => { cancelled = true; };
+  }, [popupLocation]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setDashboardLoading(true);
+    getDashboard(selectedLocation?.id ?? null)
+      .then(r => { if (!cancelled) setData(r.data); })
+      .catch(console.error)
+      .finally(() => { if (!cancelled) setDashboardLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedLocation?.id]);
+
+  useEffect(() => {
     api.get('/alerts').then(r => setRecentAlerts(r.data.slice(0, 3))).catch(() => {});
     // Use getLocations() so user_id is automatically attached → server filters by privilege
     getLocations().then(r => setLocations(r.data)).catch(() => {});
@@ -203,11 +266,23 @@ export default function Dashboard() {
   );
   const locationTree = buildLocationTree(filteredLocations);
 
+  const distributionRows = useMemo(() => {
+    if (!data?.assets_by_type) return [];
+    return data.assets_by_type
+      .map(r => ({ name: r.type, count: Number(r.count) || 0 }))
+      .filter(r => r.count > 0)
+      .sort((a, b) => b.count - a.count);
+  }, [data]);
+
+  /** Remount chart when dashboard payload or scope changes */
+  const distributionChartKey = `chart-${selectedLocation?.id ?? 'all'}-${data?.total_assets ?? 0}-${dashboardLoading ? 'l' : 'r'}`;
+
   // Collapsible tree node for dashboard
   function DashLocNode({ loc, depth = 0 }) {
     const [expanded, setExpanded] = useState(true);
     const hasChildren = loc.children && loc.children.length > 0;
     const hasPinned = !!pins[loc.id];
+    const isSelected = selectedLocation && String(selectedLocation.id) === String(loc.id);
 
     return (
       <div>
@@ -217,9 +292,10 @@ export default function Dashboard() {
             padding: `7px 14px 7px ${14 + depth * 16}px`,
             borderBottom: '1px solid #f7f8fc', fontSize: 13,
             transition: 'background 0.1s',
+            background: isSelected ? '#eff6ff' : undefined,
           }}
-          onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
-          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+          onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#f8fafc'; }}
+          onMouseLeave={e => { e.currentTarget.style.background = isSelected ? '#eff6ff' : 'transparent'; }}
         >
           <span style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
             {/* Single expand/collapse toggle — only shown when has children */}
@@ -234,9 +310,12 @@ export default function Dashboard() {
               <span style={{ width: 14, flexShrink: 0 }} />
             )}
             <span
-              onClick={() => hasPinned && setSelectedLocation({ id: loc.id, name: loc.name })}
+              onClick={() => {
+                setSelectedLocation({ id: loc.id, name: loc.name });
+                setPopupLocation(null);
+              }}
               style={{
-                cursor: hasPinned ? 'pointer' : 'default',
+                cursor: 'pointer',
                 color: hasPinned ? '#2563EB' : depth === 0 ? '#0f172a' : '#475569',
                 fontWeight: depth === 0 ? 600 : 400,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -251,12 +330,12 @@ export default function Dashboard() {
           {showPinPanel && (
             hasPinned ? (
               <button
-                onClick={() => removePin(loc.id)}
+                onClick={e => { e.stopPropagation(); removePin(loc.id); }}
                 style={{ fontSize: 10, padding: '2px 6px', background: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 5, cursor: 'pointer', flexShrink: 0 }}
               >✕</button>
             ) : (
               <button
-                onClick={() => setPlacingPin(placingPin === String(loc.id) ? null : String(loc.id))}
+                onClick={e => { e.stopPropagation(); setPlacingPin(placingPin === String(loc.id) ? null : String(loc.id)); }}
                 style={{
                   fontSize: 10, padding: '2px 6px', borderRadius: 5, cursor: 'pointer', flexShrink: 0,
                   background: placingPin === String(loc.id) ? '#2563EB' : '#f1f5f9',
@@ -278,16 +357,23 @@ export default function Dashboard() {
 
   return (
     <div>
-      <div className="page-header"><h1>Dashboard</h1></div>
+      <div className="page-header">
+        <h1>Dashboard</h1>
+        {selectedLocation && (
+          <p style={{ margin: '6px 0 0', fontSize: 14, color: '#64748b', fontWeight: 500 }}>
+            Showing metrics for <strong style={{ color: '#1a1f36' }}>{data?.location_filter?.name || selectedLocation.name}</strong>
+          </p>
+        )}
+      </div>
 
       {/* Stat cards */}
       <div className="stat-cards" style={{ marginBottom: 20 }}>
         {[
-          { label: 'Total Assets', value: data?.total_assets ?? '—', icon: '📦' },
-          { label: 'Locations', value: data?.total_locations ?? '—', icon: '📍' },
-          { label: 'Asset Types', value: data?.total_types ?? '—', icon: '🏷️' },
-          { label: 'Tagged', value: data?.rfid_breakdown?.tagged ?? '—', icon: '🔖' },
-          { label: 'Untagged', value: data?.rfid_breakdown?.untagged ?? '—', icon: '🚫' },
+          { label: 'Total Assets', value: dashboardLoading ? '...' : (data?.total_assets ?? '—'), icon: '📦' },
+          { label: 'Locations', value: dashboardLoading ? '...' : (data?.total_locations ?? '—'), icon: '📍' },
+          { label: 'Asset Types', value: dashboardLoading ? '...' : (data?.total_types ?? '—'), icon: '🏷️' },
+          { label: 'Tagged', value: dashboardLoading ? '...' : (data?.rfid_breakdown?.tagged ?? '—'), icon: '🔖' },
+          { label: 'Untagged', value: dashboardLoading ? '...' : (data?.rfid_breakdown?.untagged ?? '—'), icon: '🚫' },
         ].map(({ label, value, icon }) => (
           <div className="stat-card" key={label}>
             <span className="stat-icon">{icon}</span>
@@ -308,10 +394,10 @@ export default function Dashboard() {
           <div style={{ background: '#fff', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', padding: 18 }}>
             <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12, color: '#1a1f36' }}>Inventory Summary</div>
             {[
-              { label: 'Total Inventory', value: data?.total_assets ?? '—', color: '#1a1f36' },
-              { label: 'Missing Inventory', value: missing, color: '#e53e3e' },
-              { label: 'Scanned Today', value: scannedToday, color: '#276749' },
-              { label: 'Asset Types', value: data?.total_types ?? '—', color: '#5a67d8' },
+              { label: 'Total Inventory', value: dashboardLoading ? '...' : (data?.total_assets ?? '—'), color: '#1a1f36' },
+              { label: 'Missing Inventory', value: dashboardLoading ? '...' : missing, color: '#e53e3e' },
+              { label: 'Scanned Today', value: dashboardLoading ? '...' : scannedToday, color: '#276749' },
+              { label: 'Asset Types', value: dashboardLoading ? '...' : (data?.total_types ?? '—'), color: '#5a67d8' },
             ].map(({ label, value, color }) => (
               <div key={label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '5px 0', borderBottom: '1px solid #f7f8fc' }}>
                 <span style={{ color: '#555' }}>{label}</span>
@@ -370,7 +456,9 @@ export default function Dashboard() {
         {/* Map panel */}
         <div style={{ background: '#fff', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #f0f2f5' }}>
-            <div style={{ fontWeight: 700, fontSize: 15, color: '#1a1f36' }}>Global Asset Map</div>
+            <div style={{ fontWeight: 700, fontSize: 15, color: '#1a1f36' }}>
+              {selectedLocation ? 'Location map' : 'Global Asset Map'}
+            </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               {placingPin && (
                 <span style={{ fontSize: 12, color: '#7c8cf8', fontWeight: 500 }}>
@@ -411,7 +499,12 @@ export default function Dashboard() {
               return (
                 <div
                   key={locId}
-                  onClick={e => { e.stopPropagation(); if (!placingPin) setSelectedLocation({ id: locId, name: loc.name }); }}
+                  onClick={e => {
+                    e.stopPropagation();
+                    if (placingPin) return;
+                    setSelectedLocation({ id: loc.id, name: loc.name });
+                    setPopupLocation({ id: loc.id, name: loc.name });
+                  }}
                   style={{
                     position: 'absolute',
                     left: `${pos.x}%`, top: `${pos.y}%`,
@@ -439,12 +532,50 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Location detail popup */}
-      {selectedLocation && (
+      {/* Asset type distribution — global until you pick a location (tree or map pin) */}
+      <div style={{ marginTop: 16, background: '#fff', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+          gap: 12, padding: '12px 16px', borderBottom: '1px solid #f0f2f5', background: '#fafbfc',
+        }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: '#1a1f36' }}>Asset Type Distribution</div>
+            <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>
+              {data?.location_filter?.name || selectedLocation?.name || 'All Locations'}
+            </div>
+          </div>
+          {selectedLocation && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              style={{ fontSize: 11, flexShrink: 0, marginTop: 2 }}
+              onClick={() => {
+                setSelectedLocation(null);
+                setPopupLocation(null);
+              }}
+            >
+              All locations
+            </button>
+          )}
+        </div>
+        <div style={{ padding: '8px 16px 20px' }}>
+          {dashboardLoading && !data ? (
+            <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Loading chart...</div>
+          ) : dashboardLoading ? (
+            <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Updating chart...</div>
+          ) : (
+            <AssetTypeBarChart key={distributionChartKey} rows={distributionRows} />
+          )}
+        </div>
+      </div>
+
+      {/* Location detail modal — map pin only */}
+      {popupLocation && (
         <LocationPopup
-          locationId={selectedLocation.id}
-          locationName={selectedLocation.name}
-          onClose={() => setSelectedLocation(null)}
+          locationName={popupLocation.name}
+          detail={popupDetail}
+          loading={popupLoading}
+          onClose={() => setPopupLocation(null)}
         />
       )}
     </div>
