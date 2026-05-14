@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { getLocationTree, getLocations, createLocation, updateLocation, deleteLocation,
   getLocationTypes, createLocationType, updateLocationType, deleteLocationType } from '../api';
 import { useToast } from '../Toast';
@@ -47,6 +47,16 @@ function TreeNode({ node, selectedId, onSelect, level = 0 }) {
       {expanded && hasChildren && node.children.map(child => (
         <TreeNode key={child.id} node={child} selectedId={selectedId} onSelect={onSelect} level={level + 1} />
       ))}
+    </div>
+  );
+}
+
+function LocationPageEmpty({ icon, title, hint }) {
+  return (
+    <div className="empty-state" role="status">
+      <div className="empty-state-icon" aria-hidden>{icon}</div>
+      <p className="empty-state-title">{title}</p>
+      <p className="empty-state-hint">{hint}</p>
     </div>
   );
 }
@@ -159,9 +169,18 @@ function ManageLocations() {
 
       <div className="location-detail-panel">
         {!selected ? (
-          <div className="empty-state">Select a location from the tree to view details</div>
+          <LocationPageEmpty
+            title="Select a location from the tree to view details"
+            hint="Choose a location in the tree on the left to see its details, sub-locations, and actions."
+            icon={(
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 21s-8-4.5-8-11a8 8 0 1116 0c0 6.5-8 11-8 11z" />
+                <circle cx="12" cy="10" r="3" />
+              </svg>
+            )}
+          />
         ) : (
-          <>
+          <div className="location-detail-body">
             <div className="page-header">
               <div>
                 <h1>{selected.name}</h1>
@@ -200,7 +219,7 @@ function ManageLocations() {
                 </tbody>
               </table>
             )}
-          </>
+          </div>
         )}
       </div>
 
@@ -305,10 +324,27 @@ function LocationTypes() {
     }
   };
 
+  const typesLeftRef = useRef(null);
+  const typesRightRef = useRef(null);
+
+  useLayoutEffect(() => {
+    const L = typesLeftRef.current;
+    const R = typesRightRef.current;
+    if (!L || !R) return;
+    const sync = () => { R.style.minHeight = `${L.offsetHeight}px`; };
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(L);
+    window.addEventListener('resize', sync);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', sync);
+    };
+  }, [types.length, filteredTypes.length, typesQuery, selected?.id, canModify, canDelete]);
+
   return (
-    <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
-      {/* Left list */}
-      <div style={{ width: 240, flexShrink: 0, background: '#fff', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+    <div className="location-types-split">
+      <div ref={typesLeftRef} style={{ width: 240, flexShrink: 0, background: '#fff', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
         <div style={{ fontWeight: 600, fontSize: 13, padding: '10px 14px', background: '#f7f8fc', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>
           — Location Type List —
         </div>
@@ -350,32 +386,40 @@ function LocationTypes() {
         </div>
       </div>
 
-      {/* Right detail */}
-      {selected ? (
-        <div style={{ flex: 1, background: '#fff', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', padding: 28 }}>
-          <div style={{ fontWeight: 700, fontSize: 15, textAlign: 'center', marginBottom: 24, borderBottom: '1px solid #f0f2f5', paddingBottom: 12 }}>
-            Location Type Details
-          </div>
-          {[
-            { label: 'Location Type', value: selected.name },
-            { label: 'Description', value: selected.description || '—' },
-            { label: 'Created', value: new Date(selected.created_at).toLocaleString() },
-          ].map(({ label, value }) => (
-            <div key={label} style={{ display: 'flex', fontSize: 14, marginBottom: 14 }}>
-              <span style={{ minWidth: 160, fontWeight: 500, color: '#555' }}>{label}</span>
-              <span>: {value}</span>
+      <div ref={typesRightRef} className="location-types-main">
+        {selected ? (
+          <div className="location-types-main-body">
+            <div style={{ fontWeight: 700, fontSize: 15, textAlign: 'center', marginBottom: 24, borderBottom: '1px solid #f0f2f5', paddingBottom: 12 }}>
+              Location Type Details
             </div>
-          ))}
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 24 }}>
-            {canModify && <button className="btn btn-secondary btn-sm" onClick={() => openEdit(selected)}>Edit</button>}
-            {canDelete && <button className="btn btn-danger btn-sm" onClick={() => remove(selected.id)}>Delete</button>}
+            {[
+              { label: 'Location Type', value: selected.name },
+              { label: 'Description', value: selected.description || '—' },
+              { label: 'Created', value: new Date(selected.created_at).toLocaleString() },
+            ].map(({ label, value }) => (
+              <div key={label} style={{ display: 'flex', fontSize: 14, marginBottom: 14 }}>
+                <span style={{ minWidth: 160, fontWeight: 500, color: '#555' }}>{label}</span>
+                <span>: {value}</span>
+              </div>
+            ))}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 24 }}>
+              {canModify && <button className="btn btn-secondary btn-sm" onClick={() => openEdit(selected)}>Edit</button>}
+              {canDelete && <button className="btn btn-danger btn-sm" onClick={() => remove(selected.id)}>Delete</button>}
+            </div>
           </div>
-        </div>
-      ) : (
-        <div style={{ flex: 1, background: '#fff', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, color: '#aaa' }}>
-          Select a location type to view details
-        </div>
-      )}
+        ) : (
+          <LocationPageEmpty
+            title="Select a location type to view details"
+            hint="Pick a type from the list on the left to view its description and edit or delete options."
+            icon={(
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
+              </svg>
+            )}
+          />
+        )}
+      </div>
 
       {modal && (
         <div className="modal-overlay">
