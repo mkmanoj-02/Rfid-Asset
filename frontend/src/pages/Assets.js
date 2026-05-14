@@ -1198,9 +1198,7 @@ export default function Assets() {
                   { header: 'RFID Tag',    key: 'rfid_tag' },
                   { header: 'Tag Type',    key: 'tag_type_name' },
                   { header: 'Asset Type',  key: 'asset_type_name' },
-                  { header: 'Vendor',      key: 'vendor_name' },
                   { header: 'Location',    key: 'location_name' },
-                  { header: 'Status',      key: 'status' },
                 ],
                 all.map((item, i) => ({ ...item, _idx: i + 1 })),
                 'assets'
@@ -1216,9 +1214,7 @@ export default function Assets() {
                   { header: 'RFID',        key: 'rfid_tag' },
                   { header: 'Tag Type',    key: 'tag_type_name' },
                   { header: 'Asset Type',        key: 'asset_type_name' },
-                  { header: 'Vendor',      key: 'vendor_name' },
                   { header: 'Location',    key: 'location_name' },
-                  { header: 'Status',      key: 'status' },
                 ],
                 all.map((item, i) => ({ ...item, _idx: i + 1 })),
                 'Asset List',
@@ -1233,7 +1229,6 @@ export default function Assets() {
             <option value="asset_serial">Asset Serial</option>
             <option value="asset_type_name">Asset Type</option>
             <option value="location_name">Location</option>
-            <option value="status">Status</option>
             <option value="created_at">Recently Added</option>
           </select>
           <button onClick={() => { setSortDir(d => d === 'asc' ? 'desc' : 'asc'); setCurrentPage(1); }}
@@ -1309,18 +1304,16 @@ export default function Assets() {
                 <th>RFID</th>
                 <th>Tag Type</th>
                 <SortTh col="asset_type_name" label="Asset Type" />
-                <th>Vendor</th>
                 <SortTh col="location_name" label="Location" />
-                <SortTh col="status" label="Status" />
                 <th style={{ width: 130, textAlign: 'center' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading && (
-                <tr><td colSpan={11} style={{ textAlign: 'center', color: '#aaa', padding: 40 }}>Loading...</td></tr>
+                <tr><td colSpan={9} style={{ textAlign: 'center', color: '#aaa', padding: 40 }}>Loading...</td></tr>
               )}
               {!loading && pagedItems.length === 0 && (
-                <tr><td colSpan={11} style={{ textAlign: 'center', color: '#aaa', padding: 40 }}>
+                <tr><td colSpan={9} style={{ textAlign: 'center', color: '#aaa', padding: 40 }}>
                   {hasFilters ? 'No assets match your search or filters.' : 'No assets yet.'}
                 </td></tr>
               )}
@@ -1337,9 +1330,7 @@ export default function Assets() {
                   </td>
                   <td style={{ whiteSpace: 'nowrap' }}>{item.tag_type_name || '—'}</td>
                   <td style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.asset_type_name || ''}>{item.asset_type_name || '—'}</td>
-                  <td style={{ maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.vendor_name || ''}>{item.vendor_name || '—'}</td>
                   <td style={{ maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.location_name || ''}>{item.location_name || '—'}</td>
-                  <td>{statusBadge(item.status)}</td>
                   <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                     <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
                       <button className="btn btn-secondary btn-sm" onClick={() => setSelected(item)}>View</button>
