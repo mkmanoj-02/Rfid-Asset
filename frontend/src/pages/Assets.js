@@ -198,6 +198,16 @@ function AddAssetModal({ types, locations, tagTypes, vendors, onClose, onSaved }
             </div>
           </div>
           <div className="form-row">
+            <label>Asset Type <span className="required">*</span></label>
+            <div className="field-wrap rfid-field">
+              <select value={form.asset_type_id} onChange={e => setForm({ ...form, asset_type_id: e.target.value })}>
+                <option value="">-- Select --</option>
+                {types.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+              {errors.asset_type_id && <span className="field-error">{errors.asset_type_id}</span>}
+            </div>
+          </div>
+          <div className="form-row">
             <label>Tag Type <span className="required">*</span></label>
             <div className="field-wrap">
               <select value={form.tag_type_id} onChange={e => setForm({ ...form, tag_type_id: e.target.value })}>
@@ -225,16 +235,6 @@ function AddAssetModal({ types, locations, tagTypes, vendors, onClose, onSaved }
                 {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
               </select>
               {errors.current_location_id && <span className="field-error">{errors.current_location_id}</span>}
-            </div>
-          </div>
-          <div className="form-row">
-            <label>Asset Type <span className="required">*</span></label>
-            <div className="field-wrap rfid-field">
-              <select value={form.asset_type_id} onChange={e => setForm({ ...form, asset_type_id: e.target.value })}>
-                <option value="">-- Select --</option>
-                {types.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-              {errors.asset_type_id && <span className="field-error">{errors.asset_type_id}</span>}
             </div>
           </div>
           <div className="form-row">
@@ -504,9 +504,9 @@ function AssetDetail({ asset, types, locations, tagTypes, vendors, onBack, onRef
         <div className="detail-fields">
           <div className="detail-row"><span className="detail-label">Asset Name</span><span>: {asset.name}</span></div>
           <div className="detail-row"><span className="detail-label">RFID Tag</span><span>: <code>{asset.rfid_tag}</code></span></div>
+          <div className="detail-row"><span className="detail-label">Asset Type</span><span>: {typeName}</span></div>
           <div className="detail-row"><span className="detail-label">Tag Type</span><span>: {tagTypeName}</span></div>
           <div className="detail-row"><span className="detail-label">Vendor</span><span>: {vendorName}</span></div>
-          <div className="detail-row"><span className="detail-label">Asset Type</span><span>: {typeName}</span></div>
           <div className="detail-row"><span className="detail-label">Last Known Location</span><span>: {locationName}</span></div>
           <div className="detail-row"><span className="detail-label">Status</span><span>: {statusBadge(asset.status)}</span></div>
           <div className="detail-row"><span className="detail-label">Created</span><span>: {new Date(asset.created_at).toLocaleString()}</span></div>
@@ -643,6 +643,16 @@ function AssetDetail({ asset, types, locations, tagTypes, vendors, onBack, onRef
                 </div>
               </div>
               <div className="form-row">
+                <label>Asset Type <span className="required">*</span></label>
+                <div className="field-wrap">
+                  <select value={editForm.asset_type_id} onChange={e => setEditForm({ ...editForm, asset_type_id: e.target.value })}>
+                    <option value="">-- Select --</option>
+                    {types.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                  {editErrors.asset_type_id && <span className="field-error">{editErrors.asset_type_id}</span>}
+                </div>
+              </div>
+              <div className="form-row">
                 <label>Tag Type <span className="required">*</span></label>
                 <div className="field-wrap">
                   <select value={editForm.tag_type_id} onChange={e => setEditForm({ ...editForm, tag_type_id: e.target.value })}>
@@ -670,16 +680,6 @@ function AssetDetail({ asset, types, locations, tagTypes, vendors, onBack, onRef
                     {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                   </select>
                   {editErrors.current_location_id && <span className="field-error">{editErrors.current_location_id}</span>}
-                </div>
-              </div>
-              <div className="form-row">
-                <label>Asset Type <span className="required">*</span></label>
-                <div className="field-wrap">
-                  <select value={editForm.asset_type_id} onChange={e => setEditForm({ ...editForm, asset_type_id: e.target.value })}>
-                    <option value="">-- Select --</option>
-                    {types.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                  </select>
-                  {editErrors.asset_type_id && <span className="field-error">{editErrors.asset_type_id}</span>}
                 </div>
               </div>
               <div className="form-row">

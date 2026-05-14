@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, NavLink, useNavigate } from 'react-router
 import {
   LayoutDashboard, Package, Tag, MapPin, Users, History,
   Bell, BarChart2, ClipboardList, Upload, ChevronDown,
-  Menu, X, LogOut, Settings, Truck, TrendingDown,
+  Menu, X, LogOut, Settings as SettingsIcon, Truck, TrendingDown,
 } from 'lucide-react';
 import Dashboard         from './pages/Dashboard';
 import Locations         from './pages/Locations';
@@ -18,6 +18,7 @@ import Reports           from './pages/Reports';
 import AuditLog          from './pages/AuditLog';
 import TagTypesSettings  from './pages/TagTypesSettings';
 import VendorsSettings   from './pages/VendorsSettings';
+import AppSettings       from './pages/Settings';
 import Depreciation      from './pages/Depreciation';
 import { AuthProvider, useAuth } from './AuthContext';
 import { ToastProvider }         from './Toast';
@@ -198,8 +199,8 @@ function SettingsDropdown() {
   }, []);
 
   const items = [
-    { icon: Tag,   label: 'Tag Types', path: '/settings/tag-types', desc: 'Manage RFID, Barcode, QR types' },
-    { icon: Truck, label: 'Vendors',   path: '/settings/vendors',   desc: 'Manage asset vendors & suppliers' },
+    { icon: SettingsIcon, label: 'Settings', path: '/settings', desc: 'Tag types & tag recommendations' },
+    { icon: Truck, label: 'Vendors', path: '/settings/vendors', desc: 'Manage asset vendors & suppliers' },
   ];
 
   const go = (path) => { navigate(path); setOpen(false); };
@@ -220,7 +221,7 @@ function SettingsDropdown() {
         }}
         className="settings-gear-btn"
       >
-        <Settings
+        <SettingsIcon
           size={17}
           strokeWidth={2}
           style={{
@@ -469,6 +470,7 @@ function AppShell() {
             <Route path="/rules-alerts"          element={<RulesAlerts />} />
             <Route path="/reports"               element={<Reports />} />
             <Route path="/audit-log"             element={<AuditLog />} />
+            <Route path="/settings"                element={<AppSettings />} />
             <Route path="/settings/tag-types"    element={<TagTypesSettings />} />
             <Route path="/settings/vendors"      element={<VendorsSettings />} />
             <Route path="/depreciation"          element={<Depreciation />} />
