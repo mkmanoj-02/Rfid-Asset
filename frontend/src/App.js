@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, NavLink, useNavigate } from 'react-router
 import {
   LayoutDashboard, Package, Tag, MapPin, Users, History,
   Bell, BarChart2, ClipboardList, Upload, ChevronDown,
-  Menu, X, LogOut, Settings, Truck,
+  Menu, X, LogOut, Settings, Truck, TrendingDown,
 } from 'lucide-react';
 import Dashboard         from './pages/Dashboard';
 import Locations         from './pages/Locations';
@@ -18,6 +18,7 @@ import Reports           from './pages/Reports';
 import AuditLog          from './pages/AuditLog';
 import TagTypesSettings  from './pages/TagTypesSettings';
 import VendorsSettings   from './pages/VendorsSettings';
+import Depreciation      from './pages/Depreciation';
 import { AuthProvider, useAuth } from './AuthContext';
 import { ToastProvider }         from './Toast';
 import './App.css';
@@ -366,8 +367,12 @@ function Sidebar({ mobileOpen, onMobileClose }) {
 
           <SidebarDivider />
           <SectionLabel label="Reports" />
-          <NavItem to="/reports"   icon={BarChart2}     label="Reports"        />
-          <NavItem to="/audit-log" icon={ClipboardList} label="User Audit Log" />
+          <NavItem to="/reports"       icon={BarChart2}     label="Reports"        />
+          <NavItem to="/audit-log"     icon={ClipboardList} label="User Audit Log" />
+
+          <SidebarDivider />
+          <SectionLabel label="Finance" />
+          <NavItem to="/depreciation"  icon={TrendingDown}  label="Depreciation"   />
         </div>
 
         {/* User card */}
@@ -466,6 +471,7 @@ function AppShell() {
             <Route path="/audit-log"             element={<AuditLog />} />
             <Route path="/settings/tag-types"    element={<TagTypesSettings />} />
             <Route path="/settings/vendors"      element={<VendorsSettings />} />
+            <Route path="/depreciation"          element={<Depreciation />} />
           </Routes>
         </main>
       </div>
