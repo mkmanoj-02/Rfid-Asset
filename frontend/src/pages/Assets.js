@@ -1283,11 +1283,10 @@ export default function Assets() {
     fetchAssets(search, filterLocation, val, 1, pageSize, sortKey, sortDir);
   };
 
-  const handleInvFilter = (mode) => {
-    const next = filterInventoryStatus === mode ? '' : mode;
-    setFilterInventoryStatus(next);
+  const handleInventoryStatusFilter = (val) => {
+    setFilterInventoryStatus(val);
     setCurrentPage(1);
-    fetchAssets(search, filterLocation, filterType, 1, pageSize, sortKey, sortDir, next);
+    fetchAssets(search, filterLocation, filterType, 1, pageSize, sortKey, sortDir, val);
   };
 
   const clearFilters = () => {
@@ -1410,8 +1409,17 @@ export default function Assets() {
     return <span style={{ color: '#7c8cf8', marginLeft: 4 }}>{sortDir === 'asc' ? '↑' : '↓'}</span>;
   };
 
-  const SortTh = ({ col, label }) => (
-    <th onClick={() => handleSort(col)} style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
+  const SortTh = ({ col, label, align = 'left' }) => (
+    <th
+      onClick={() => handleSort(col)}
+      style={{
+        cursor: 'pointer',
+        userSelect: 'none',
+        whiteSpace: 'nowrap',
+        textAlign: align === 'center' ? 'center' : undefined,
+        ...(align === 'center' ? { minWidth: 108 } : {}),
+      }}
+    >
       {label}<SortIcon col={col} />
     </th>
   );
@@ -1464,7 +1472,7 @@ export default function Assets() {
     { header: 'Location', key: 'location_name' },
     { header: 'Last Seen Time', key: '_lastSeenTime' },
     ...exportAttrColumns,
-    { header: 'Inv / Missing', key: '_invLabel' },
+    { header: 'Inventory / Missing', key: '_invLabel' },
   ];
   const fetchAllForExport = () => {
     return getAssets({
@@ -1563,12 +1571,22 @@ export default function Assets() {
           <option value="">All Locations</option>
           {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
         </select>
+        <select value={filterType} onChange={e => handleTypeFilter(e.target.value)}
+          style={{ padding: '7px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, minWidth: 150 }}>
+          <option value="">All Asset Types</option>
+          {types.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+        <select
+          value={filterInventoryStatus}
+          onChange={e => handleInventoryStatusFilter(e.target.value)}
+          style={{ padding: '7px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, minWidth: 158 }}
+          aria-label="Filter by inventory status"
+        >
+          <option value="">Inventory status</option>
+          <option value="in_inventory">Inventory</option>
+          <option value="missing">Missing</option>
+        </select>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-          <select value={filterType} onChange={e => handleTypeFilter(e.target.value)}
-            style={{ padding: '7px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, minWidth: 150 }}>
-            <option value="">All Asset Types</option>
-            {types.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
           <AssetTableAttrColumnToggle
             expanded={attrColumnsPanelOpen}
             onToggle={() => setAttrColumnsPanelOpen(v => !v)}
@@ -1629,71 +1647,7 @@ export default function Assets() {
                     {col.name}
                   </th>
                 ))}
-                <th
-                  style={{
-                    textAlign: 'center',
-                    verticalAlign: 'middle',
-                    textTransform: 'none',
-                    padding: '8px 6px',
-                    minWidth: 112,
-                  }}
-                >
-                  <div
-                    role="presentation"
-                    onClick={() => handleSort('asset_inventory_status')}
-                    style={{
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 4,
-                      marginBottom: 5,
-                      userSelect: 'none',
-                    }}
-                    title="Sort by inventory status"
-                  >
-                    <span style={{ fontSize: 11, fontWeight: 700, color: '#4b5563', letterSpacing: '0.02em' }}>Inv / Missing</span>
-                    <SortIcon col="asset_inventory_status" />
-                  </div>
-                  <div style={{ display: 'flex', gap: 4, justifyContent: 'center', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
-                    <button
-                      type="button"
-                      title="Show inventory only"
-                      onClick={() => handleInvFilter('in_inventory')}
-                      style={{
-                        padding: '2px 8px',
-                        fontSize: 10,
-                        fontWeight: 700,
-                        lineHeight: 1.35,
-                        borderRadius: 5,
-                        border: `1px solid ${filterInventoryStatus === 'in_inventory' ? '#1565c0' : '#e2e8f0'}`,
-                        background: filterInventoryStatus === 'in_inventory' ? '#e8f0fe' : '#fff',
-                        color: filterInventoryStatus === 'in_inventory' ? '#1565c0' : '#64748b',
-                        cursor: 'pointer',
-                        textTransform: 'none',
-                        fontFamily: 'inherit',
-                      }}
-                    >Inventory</button>
-                    <button
-                      type="button"
-                      title="Show missing only"
-                      onClick={() => handleInvFilter('missing')}
-                      style={{
-                        padding: '2px 8px',
-                        fontSize: 10,
-                        fontWeight: 700,
-                        lineHeight: 1.35,
-                        borderRadius: 5,
-                        border: `1px solid ${filterInventoryStatus === 'missing' ? '#b91c1c' : '#e2e8f0'}`,
-                        background: filterInventoryStatus === 'missing' ? '#fef2f2' : '#fff',
-                        color: filterInventoryStatus === 'missing' ? '#b91c1c' : '#64748b',
-                        cursor: 'pointer',
-                        textTransform: 'none',
-                        fontFamily: 'inherit',
-                      }}
-                    >Missing</button>
-                  </div>
-                </th>
+                <SortTh col="asset_inventory_status" label="Inv / Missing" align="center" />
                 <th style={{ width: 130, textAlign: 'center' }}>Actions</th>
               </tr>
             </thead>
