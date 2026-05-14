@@ -7,8 +7,100 @@ import { useToast } from '../Toast';
 
 const ATTR_TYPES = ['string', 'double', 'date', 'list'];
 
+// ── Confirm Dialog (same pattern as Assets delete modal) ────────
+function ConfirmModal({ title, message, subMessage, confirmLabel = 'Delete', confirmStyle = 'danger', onConfirm, onCancel }) {
+  return (
+    <div className="modal-overlay" style={{ zIndex: 300 }}>
+      <div style={{
+        background: '#fff',
+        borderRadius: 16,
+        width: 420,
+        maxWidth: '92vw',
+        boxShadow: '0 24px 64px rgba(0,0,0,0.22)',
+        overflow: 'hidden',
+        animation: 'confirmPop 0.18s ease',
+      }}>
+        <div style={{
+          height: 5,
+          background: confirmStyle === 'danger'
+            ? 'linear-gradient(90deg,#ef4444,#dc2626)'
+            : 'linear-gradient(90deg,#1565c0,#1976d2)',
+        }} />
+        <div style={{ padding: '28px 28px 24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14 }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: confirmStyle === 'danger' ? '#fef2f2' : '#eff6ff',
+              fontSize: 22,
+            }}>
+              {confirmStyle === 'danger' ? '🗑️' : '⚠️'}
+            </div>
+            <h3 style={{ fontSize: 17, fontWeight: 700, color: '#111827', margin: 0 }}>{title}</h3>
+          </div>
+          <p style={{ fontSize: 14, color: '#374151', margin: '0 0 8px', lineHeight: 1.6 }}>{message}</p>
+          {subMessage && (
+            <div style={{
+              display: 'flex', alignItems: 'flex-start', gap: 8,
+              background: '#fffbeb', border: '1px solid #fde68a',
+              borderRadius: 8, padding: '10px 12px', marginTop: 10,
+            }}>
+              <span style={{ fontSize: 15, flexShrink: 0 }}>⚠️</span>
+              <p style={{ fontSize: 13, color: '#92400e', margin: 0, lineHeight: 1.5 }}>{subMessage}</p>
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 24 }}>
+            <button type="button" className="btn btn-secondary" onClick={onCancel} style={{ minWidth: 90 }}>Cancel</button>
+            <button
+              type="button"
+              className={`btn btn-${confirmStyle === 'danger' ? 'danger' : 'primary'}`}
+              onClick={onConfirm}
+              style={{ minWidth: 90 }}
+            >{confirmLabel}</button>
+          </div>
+        </div>
+      </div>
+      <style>{`@keyframes confirmPop { from { opacity:0; transform:scale(0.93) translateY(10px); } to { opacity:1; transform:scale(1) translateY(0); } }`}</style>
+    </div>
+  );
+}
+
+/** Single-action dialog (replaces browser `alert` for messages). */
+function InfoModal({ title, message, onClose }) {
+  return (
+    <div className="modal-overlay" style={{ zIndex: 300 }}>
+      <div style={{
+        background: '#fff',
+        borderRadius: 16,
+        width: 420,
+        maxWidth: '92vw',
+        boxShadow: '0 24px 64px rgba(0,0,0,0.22)',
+        overflow: 'hidden',
+        animation: 'confirmPop 0.18s ease',
+      }}>
+        <div style={{ height: 5, background: 'linear-gradient(90deg,#2563EB,#1d4ed8)' }} />
+        <div style={{ padding: '28px 28px 24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14 }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: '#eff6ff', fontSize: 22,
+            }}>ℹ️</div>
+            <h3 style={{ fontSize: 17, fontWeight: 700, color: '#111827', margin: 0 }}>{title}</h3>
+          </div>
+          <p style={{ fontSize: 14, color: '#374151', margin: 0, lineHeight: 1.6 }}>{message}</p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 24 }}>
+            <button type="button" className="btn btn-primary" onClick={onClose} style={{ minWidth: 90 }}>OK</button>
+          </div>
+        </div>
+      </div>
+      <style>{`@keyframes confirmPop { from { opacity:0; transform:scale(0.93) translateY(10px); } to { opacity:1; transform:scale(1) translateY(0); } }`}</style>
+    </div>
+  );
+}
+
 // ── Attribute Row ──────────────────────────────────────────────
-function AttributeRow({ attr, typeId, onSaved, onDeleted, canModify, canDelete }) {
+function AttributeRow({ attr, typeId, onSaved, onRequestDelete, showInfo, canModify, canDelete }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ name: attr.name, attr_type: attr.attr_type, default_value: attr.default_value || '', list_options: (attr.list_options || []).map(o => o.option_value) });
   const [newOption, setNewOption] = useState('');
@@ -16,18 +108,22 @@ function AttributeRow({ attr, typeId, onSaved, onDeleted, canModify, canDelete }
 
   const save = async () => {
     if (!canModify) { showToast('You do not have permission to modify asset types', 'error'); return; }
-    await updateAttribute(typeId, attr.id, form);
-    setEditing(false);
-    showToast('Attribute updated', 'success');
-    onSaved();
-  };
-  const remove = async () => {
-    if (!canDelete) { showToast('You do not have permission to delete asset types', 'error'); return; }
-    if (window.confirm('Delete this attribute?')) {
-      await deleteAttribute(typeId, attr.id);
-      showToast('Attribute deleted', 'success');
-      onDeleted();
+    if (!form.name.trim()) {
+      showInfo('Missing name', 'Please enter an attribute name before saving.');
+      return;
     }
+    try {
+      await updateAttribute(typeId, attr.id, form);
+      setEditing(false);
+      showToast('Attribute updated', 'success');
+      onSaved();
+    } catch (e) {
+      showInfo('Save failed', e.response?.data?.message || e.message || 'Could not update attribute.');
+    }
+  };
+  const requestRemove = () => {
+    if (!canDelete) { showToast('You do not have permission to delete asset types', 'error'); return; }
+    onRequestDelete();
   };
   const addOption = () => { if (newOption.trim()) { setForm({ ...form, list_options: [...form.list_options, newOption.trim()] }); setNewOption(''); } };
   const removeOption = (i) => setForm({ ...form, list_options: form.list_options.filter((_, idx) => idx !== i) });
@@ -42,7 +138,7 @@ function AttributeRow({ attr, typeId, onSaved, onDeleted, canModify, canDelete }
       )}
       <div className="attr-actions">
         {canModify && <button className="btn btn-secondary btn-sm" onClick={() => setEditing(true)}>Edit</button>}
-        {canDelete && <button className="btn btn-danger btn-sm" onClick={remove}>Delete</button>}
+        {canDelete && <button type="button" className="btn btn-danger btn-sm" onClick={requestRemove}>Delete</button>}
       </div>
     </div>
   );
@@ -78,7 +174,7 @@ function AttributeRow({ attr, typeId, onSaved, onDeleted, canModify, canDelete }
 }
 
 // ── Add Attribute Form ─────────────────────────────────────────
-function AddAttributeForm({ typeId, onSaved }) {
+function AddAttributeForm({ typeId, onSaved, showInfo }) {
   const [show, setShow] = useState(false);
   const [form, setForm] = useState({ name: '', attr_type: 'string', default_value: '', list_options: [] });
   const [newOption, setNewOption] = useState('');
@@ -87,11 +183,19 @@ function AddAttributeForm({ typeId, onSaved }) {
   const addOption = () => { if (newOption.trim()) { setForm({ ...form, list_options: [...form.list_options, newOption.trim()] }); setNewOption(''); } };
   const removeOption = (i) => setForm({ ...form, list_options: form.list_options.filter((_, idx) => idx !== i) });
   const save = async () => {
-    if (!form.name.trim()) return;
-    await createAttribute(typeId, form);
-    showToast('Attribute added', 'success');
-    setForm({ name: '', attr_type: 'string', default_value: '', list_options: [] });
-    setShow(false); onSaved();
+    if (!form.name.trim()) {
+      showInfo?.('Attribute name required', 'Please enter a name before saving.');
+      return;
+    }
+    try {
+      await createAttribute(typeId, form);
+      showToast('Attribute added', 'success');
+      setForm({ name: '', attr_type: 'string', default_value: '', list_options: [] });
+      setShow(false);
+      onSaved();
+    } catch (e) {
+      showInfo?.('Save failed', e.response?.data?.message || e.message || 'Could not add attribute.');
+    }
   };
 
   if (!show) return <button className="btn btn-secondary btn-sm" style={{ marginTop: 8 }} onClick={() => setShow(true)}>+ Add Attribute</button>;
@@ -127,7 +231,7 @@ function AddAttributeForm({ typeId, onSaved }) {
 }
 
 // ── Asset Type Card (with attributes + sub-types) ──────────────
-function AssetTypeCard({ item, allTypes, onEdit, onDelete, onAddSub, level = 0, canModify, canDelete }) {
+function AssetTypeCard({ item, allTypes, onEdit, onDelete, onAddSub, onAttributeDeleteRequest, showInfo, level = 0, canModify, canDelete }) {
   const [expanded, setExpanded] = useState(false);
   const [attrs, setAttrs] = useState([]);
 
@@ -168,7 +272,15 @@ function AssetTypeCard({ item, allTypes, onEdit, onDelete, onAddSub, level = 0, 
           <div className="attr-list">
             {attrs.length === 0 && <p style={{ color: '#aaa', fontSize: 13 }}>No attributes yet.</p>}
             {attrs.map(attr => (
-              <AttributeRow key={attr.id} attr={attr} typeId={item.id} onSaved={loadAttrs} onDeleted={loadAttrs} canModify={canModify} canDelete={canDelete} />
+              <AttributeRow
+                key={attr.id}
+                attr={attr}
+                typeId={item.id}
+                onSaved={loadAttrs}
+                onRequestDelete={() => onAttributeDeleteRequest(item.id, attr, loadAttrs)}
+                canModify={canModify}
+                canDelete={canDelete}
+              />
             ))}
             {canModify && <AddAttributeForm typeId={item.id} onSaved={loadAttrs} />}
           </div>
@@ -177,7 +289,8 @@ function AssetTypeCard({ item, allTypes, onEdit, onDelete, onAddSub, level = 0, 
 
       {children.map(child => (
         <AssetTypeCard key={child.id} item={child} allTypes={allTypes}
-          onEdit={onEdit} onDelete={onDelete} onAddSub={onAddSub} level={level + 1}
+          onEdit={onEdit} onDelete={onDelete} onAddSub={onAddSub} onAttributeDeleteRequest={onAttributeDeleteRequest}
+          level={level + 1}
           canModify={canModify} canDelete={canDelete} />
       ))}
     </div>
@@ -190,6 +303,7 @@ export default function AssetTypes() {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ name: '', description: '', parent_id: '' });
   const [editing, setEditing] = useState(null);
+  const [confirmDialog, setConfirmDialog] = useState(null);
   const { showToast } = useToast();
 
   const currentUser = (() => { try { return JSON.parse(sessionStorage.getItem('rfid_user') || 'null'); } catch { return null; } })();
@@ -222,13 +336,46 @@ export default function AssetTypes() {
     setModal(false); load();
   };
 
-  const remove = async (id) => {
+  const openAttributeDeleteConfirm = (typeId, attr, reloadAttrs) => {
+    setConfirmDialog({
+      title: 'Delete Attribute',
+      message: `Are you sure you want to delete the attribute "${attr.name}"?`,
+      subMessage: 'This action cannot be undone. All values saved on assets for this attribute will also be removed.',
+      confirmLabel: 'Delete',
+      confirmStyle: 'danger',
+      onConfirm: async () => {
+        try {
+          await deleteAttribute(typeId, attr.id);
+          showToast('Attribute deleted', 'success');
+          reloadAttrs();
+        } catch (e) {
+          showToast(e.response?.data?.message || 'Delete failed', 'error');
+        }
+      },
+    });
+  };
+
+  const removeAssetType = (id) => {
     if (!canDelete) { showToast('You do not have permission to delete asset types', 'error'); return; }
-    if (window.confirm('Delete this asset type?')) {
-      await deleteAssetType(id);
-      showToast('Asset type deleted', 'success');
-      load();
-    }
+    const item = items.find(t => t.id === id);
+    setConfirmDialog({
+      title: 'Delete Asset Type',
+      message: item?.name
+        ? `Are you sure you want to delete «${item.name}»?`
+        : 'Are you sure you want to delete this asset type?',
+      subMessage: 'This action cannot be undone. Sub-types, attributes, and assets using this type may be affected.',
+      confirmLabel: 'Delete',
+      confirmStyle: 'danger',
+      onConfirm: async () => {
+        try {
+          await deleteAssetType(id);
+          showToast('Asset type deleted', 'success');
+          load();
+        } catch (e) {
+          showToast(e.response?.data?.message || 'Delete failed', 'error');
+        }
+      },
+    });
   };
 
   const rootTypes = items.filter(t => !t.parent_id);
@@ -246,7 +393,8 @@ export default function AssetTypes() {
         )}
         {rootTypes.map(item => (
           <AssetTypeCard key={item.id} item={item} allTypes={items}
-            onEdit={openEdit} onDelete={remove} onAddSub={(parentId) => openAdd(parentId)}
+            onEdit={openEdit} onDelete={removeAssetType} onAddSub={(parentId) => openAdd(parentId)}
+            onAttributeDeleteRequest={openAttributeDeleteConfirm}
             canModify={canModify} canDelete={canDelete} />
         ))}
       </div>
@@ -283,6 +431,18 @@ export default function AssetTypes() {
             </div>
           </div>
         </div>
+      )}
+
+      {confirmDialog && (
+        <ConfirmModal
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          subMessage={confirmDialog.subMessage}
+          confirmLabel={confirmDialog.confirmLabel}
+          confirmStyle={confirmDialog.confirmStyle}
+          onConfirm={() => { confirmDialog.onConfirm(); setConfirmDialog(null); }}
+          onCancel={() => setConfirmDialog(null)}
+        />
       )}
     </div>
   );
