@@ -311,6 +311,157 @@ function LocationTypes() {
   );
 }
 
+// ── Reorganize Tab ─────────────────────────────────────────────
+function ReorganizeLocations() {
+  const [flatList, setFlatList] = useState([]);
+  const [selectedLocations, setSelectedLocations] = useState([]);
+  const [newParentId, setNewParentId] = useState('');
+  const [locPickerOpen, setLocPickerOpen] = useState(false);
+  const [parentPickerOpen, setParentPickerOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const load = () => getLocations().then(r => setFlatList(r.data));
+  useEffect(() => { load(); }, []);
+
+  const toggleSelect = (loc) => {
+    setSelectedLocations(prev =>
+      prev.find(l => l.id === loc.id) ? prev.filter(l => l.id !== loc.id) : [...prev, loc]
+    );
+  };
+
+  const update = async () => {
+    if (!selectedLocations.length) { alert('Please select at least one location.'); return; }
+    setSaving(true);
+    try {
+      for (const loc of selectedLocations) {
+        await updateLocation(loc.id, { ...loc, parent_id: newParentId || null });
+      }
+      alert(`${selectedLocations.length} location(s) moved successfully.`);
+      setSelectedLocations([]);
+      setNewParentId('');
+      load();
+    } catch (e) {
+      alert(e.response?.data?.message || 'Update failed');
+    }
+    setSaving(false);
+  };
+
+  const newParentName = newParentId ? flatList.find(l => l.id == newParentId)?.name : '(Top Level)';
+
+  return (
+    <div style={{ maxWidth: 560 }}>
+      <div style={{ background: '#fff', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', padding: 32 }}>
+        <h3 style={{ marginBottom: 24, fontSize: 16, fontWeight: 600 }}>Reorganize Locations</h3>
+
+        {/* Selected Locations */}
+        <div className="form-row" style={{ marginBottom: 20 }}>
+          <label style={{ minWidth: 160, paddingTop: 8, fontWeight: 500, color: '#555' }}>Selected Location(s) :</label>
+          <div className="field-wrap rfid-field">
+            <input
+              readOnly
+              value={selectedLocations.map(l => l.name).join(', ') || ''}
+              placeholder="Click ... to select"
+              style={{ flex: 1 }}
+            />
+            <button className="btn btn-secondary btn-sm picker-btn" onClick={() => setLocPickerOpen(true)}>...</button>
+          </div>
+        </div>
+
+        {/* Move to new parent */}
+        <div className="form-row" style={{ marginBottom: 28 }}>
+          <label style={{ minWidth: 160, paddingTop: 8, fontWeight: 500, color: '#555' }}>Move to new parent :</label>
+          <div className="field-wrap rfid-field">
+            <input
+              readOnly
+              value={newParentId ? (flatList.find(l => l.id == newParentId)?.name || '') : ''}
+              placeholder="Click ... to select (blank = top level)"
+              style={{ flex: 1 }}
+            />
+            <button className="btn btn-secondary btn-sm picker-btn" onClick={() => setParentPickerOpen(true)}>...</button>
+          </div>
+        </div>
+
+        <div style={{ textAlign: 'center' }}>
+          <button className="btn btn-primary" onClick={update} disabled={saving} style={{ minWidth: 120 }}>
+            {saving ? 'Updating...' : 'Update'}
+          </button>
+        </div>
+      </div>
+
+      {/* Location picker modal */}
+      {locPickerOpen && (
+        <div className="modal-overlay">
+          <div className="modal" style={{ width: 420 }}>
+            <h2>Select Location(s)</h2>
+            <p style={{ fontSize: 13, color: '#888', marginBottom: 12 }}>Click to toggle selection. Multiple allowed.</p>
+            <div style={{ maxHeight: 320, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 6 }}>
+              {flatList.map(loc => {
+                const isSelected = selectedLocations.find(l => l.id === loc.id);
+                return (
+                  <div key={loc.id} onClick={() => toggleSelect(loc)}
+                    style={{
+                      padding: '10px 14px', cursor: 'pointer', fontSize: 14,
+                      borderBottom: '1px solid #f7f8fc',
+                      background: isSelected ? '#e9ecff' : 'inherit',
+                      color: isSelected ? '#5a67d8' : '#333',
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                    }}>
+                    <span>{loc.name}</span>
+                    {loc.parent_name && <span style={{ fontSize: 12, color: '#aaa' }}>under {loc.parent_name}</span>}
+                    {isSelected && <span style={{ color: '#5a67d8', fontWeight: 700 }}>✓</span>}
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ marginTop: 12, fontSize: 13, color: '#666' }}>
+              {selectedLocations.length} selected
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setSelectedLocations([])}>Clear</button>
+              <button className="btn btn-primary" onClick={() => setLocPickerOpen(false)}>Done</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Parent picker modal */}
+      {parentPickerOpen && (
+        <div className="modal-overlay">
+          <div className="modal" style={{ width: 420 }}>
+            <h2>Select New Parent</h2>
+            <p style={{ fontSize: 13, color: '#888', marginBottom: 12 }}>Select a parent location, or choose Top Level.</p>
+            <div style={{ maxHeight: 320, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 6 }}>
+              <div onClick={() => { setNewParentId(''); setParentPickerOpen(false); }}
+                style={{ padding: '10px 14px', cursor: 'pointer', fontSize: 14, borderBottom: '1px solid #f7f8fc',
+                  background: !newParentId ? '#e9ecff' : 'inherit', color: !newParentId ? '#5a67d8' : '#333', fontWeight: !newParentId ? 600 : 400 }}>
+                — Top Level (no parent) —
+              </div>
+              {flatList
+                .filter(l => !selectedLocations.find(s => s.id === l.id)) // can't move to itself
+                .map(loc => (
+                  <div key={loc.id} onClick={() => { setNewParentId(loc.id); setParentPickerOpen(false); }}
+                    style={{
+                      padding: '10px 14px', cursor: 'pointer', fontSize: 14,
+                      borderBottom: '1px solid #f7f8fc',
+                      background: newParentId == loc.id ? '#e9ecff' : 'inherit',
+                      color: newParentId == loc.id ? '#5a67d8' : '#333',
+                      display: 'flex', justifyContent: 'space-between'
+                    }}>
+                    <span>{loc.name}</span>
+                    {loc.parent_name && <span style={{ fontSize: 12, color: '#aaa' }}>under {loc.parent_name}</span>}
+                  </div>
+                ))}
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setParentPickerOpen(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Locations Page ────────────────────────────────────────
 export default function Locations() {
   const [tab, setTab] = useState('manage');
@@ -320,9 +471,11 @@ export default function Locations() {
       <div className="detail-tabs" style={{ marginBottom: 20 }}>
         <button className={`tab-btn ${tab === 'manage' ? 'active' : ''}`} onClick={() => setTab('manage')}>Manage Location</button>
         <button className={`tab-btn ${tab === 'types' ? 'active' : ''}`} onClick={() => setTab('types')}>Location Type</button>
+        <button className={`tab-btn ${tab === 'reorganize' ? 'active' : ''}`} onClick={() => setTab('reorganize')}>Reorganize</button>
       </div>
       {tab === 'manage' && <ManageLocations />}
       {tab === 'types' && <LocationTypes />}
+      {tab === 'reorganize' && <ReorganizeLocations />}
     </div>
   );
 }
