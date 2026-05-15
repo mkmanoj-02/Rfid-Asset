@@ -2,39 +2,138 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-/* ─── Excel export ───────────────────────────────────────────── */
-export function exportExcel(columns, rows, filename = 'export') {
-  // columns: [{ header, key }]
-  // rows: array of objects
+function cellValue(row, key) {
+  const v = row[key];
+  return v === null || v === undefined || v === '' ? '—' : v;
+}
+
+function columnWidths(columns, rows) {
+  return columns.map((c) => {
+    let maxLen = c.header.length;
+    for (const r of rows) {
+      const len = String(cellValue(r, c.key)).length;
+      if (len > maxLen) maxLen = len;
+    }
+    return { wch: Math.min(maxLen + 2, 72) };
+  });
+}
+
+function sheetFromTable(columns, rows) {
+  const safeRows = rows || [];
   const wsData = [
-    columns.map(c => c.header),
-    ...rows.map(row => columns.map(c => {
-      const v = row[c.key];
-      return v === null || v === undefined || v === '' ? '—' : v;
-    })),
+    columns.map((c) => c.header),
+    ...safeRows.map((row) => columns.map((c) => cellValue(row, c.key))),
   ];
   const ws = XLSX.utils.aoa_to_sheet(wsData);
+  ws['!cols'] = columnWidths(columns, safeRows);
+  return ws;
+}
 
-  // Auto column widths
-  const colWidths = columns.map((c, i) => ({
-    wch: Math.max(
-      c.header.length,
-      ...rows.map(r => String(r[c.key] === null || r[c.key] === undefined || r[c.key] === '' ? '—' : r[c.key]).length)
-    ) + 2,
-  }));
-  ws['!cols'] = colWidths;
+function sanitizeSheetName(name) {
+  const safe = String(name || 'Sheet').replace(/[\\/*?:[\]]/g, ' ').trim() || 'Sheet';
+  return safe.slice(0, 31);
+}
 
+/* ─── Excel export ───────────────────────────────────────────── */
+export function exportExcel(columns, rows, filename = 'export') {
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+  XLSX.utils.book_append_sheet(wb, sheetFromTable(columns, rows), 'Sheet1');
   XLSX.writeFile(wb, `${filename}.xlsx`);
 }
 
-/* ─── PDF export ─────────────────────────────────────────────── */
-export function exportPDF(columns, rows, title = 'Report', filename = 'export') {
-  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+/** Excel workbook with one sheet per section: [{ name, columns, rows }]. */
+export function exportExcelMultiSheet(sheets, filename = 'export') {
+  const wb = XLSX.utils.book_new();
+  const used = new Set();
+  (sheets || []).forEach((sheet) => {
+    let name = sanitizeSheetName(sheet.name);
+    let suffix = 2;
+    while (used.has(name)) {
+      const base = name.slice(0, 28);
+      name = `${base} (${suffix++})`;
+    }
+    used.add(name);
+    XLSX.utils.book_append_sheet(wb, sheetFromTable(sheet.columns || [], sheet.rows || []), name);
+  });
+  XLSX.writeFile(wb, `${filename}.xlsx`);
+}
 
-  // Header bar
-  doc.setFillColor(37, 99, 235);          // #2563EB
+/**
+ * One worksheet with stacked sections (matches PDF layout).
+ * sections: [{ title, columns, rows }]
+ */
+export function exportExcelSections(sections, filename = 'export', options = {}) {
+  const { sheetName = 'Report', reportTitle = '' } = options;
+  const aoa = [];
+  const allRows = [];
+
+  if (reportTitle) {
+    aoa.push([reportTitle]);
+    aoa.push([
+      `Generated: ${new Date().toLocaleString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })}`,
+    ]);
+    aoa.push([]);
+  }
+
+  (sections || []).forEach((section, index) => {
+    const columns = section.columns || [];
+    const rows = section.rows || [];
+    if (index > 0) aoa.push([]);
+    const count = rows.length;
+    aoa.push([`${section.title} (${count} asset${count === 1 ? '' : 's'})`]);
+    aoa.push(columns.map((c) => c.header));
+    rows.forEach((row) => {
+      aoa.push(columns.map((c) => cellValue(row, c.key)));
+      allRows.push(row);
+    });
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const flatColumns = (sections || []).find((s) => s.columns?.length)?.columns || [];
+  if (flatColumns.length) {
+    ws['!cols'] = columnWidths(flatColumns, allRows);
+  }
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sanitizeSheetName(sheetName));
+  XLSX.writeFile(wb, `${filename}.xlsx`);
+}
+
+const PDF_TABLE_OPTS = {
+  styles: {
+    fontSize: 8,
+    cellPadding: 3,
+    overflow: 'linebreak',
+    textColor: [15, 23, 42],
+  },
+  headStyles: {
+    fillColor: [37, 99, 235],
+    textColor: 255,
+    fontStyle: 'bold',
+    fontSize: 8.5,
+  },
+  alternateRowStyles: { fillColor: [248, 250, 252] },
+  tableLineColor: [226, 232, 240],
+  tableLineWidth: 0.1,
+  margin: { left: 14, right: 14 },
+};
+
+function pdfColumnHeaders(columns) {
+  return (columns || []).map((c) => (c?.header != null ? String(c.header) : String(c?.key ?? '')));
+}
+
+function pdfTableBody(columns, rows) {
+  return rows.map((row) => columns.map((c) => String(cellValue(row, c.key))));
+}
+
+function drawPdfHeader(doc, title) {
+  doc.setFillColor(37, 99, 235);
   doc.rect(0, 0, 297, 22, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(14);
@@ -43,42 +142,15 @@ export function exportPDF(columns, rows, title = 'Report', filename = 'export') 
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
   doc.text(title, 14, 17);
-
-  // Timestamp top-right
   const now = new Date().toLocaleString('en-GB', {
     day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
   doc.setFontSize(8);
   doc.text(`Generated: ${now}`, 297 - 14, 17, { align: 'right' });
+}
 
-  // Table
-  autoTable(doc, {
-    startY: 26,
-    head: [columns.map(c => c.header)],
-    body: rows.map(row => columns.map(c => {
-      const v = row[c.key];
-      return v === null || v === undefined ? '—' : String(v);
-    })),
-    styles: {
-      fontSize: 8,
-      cellPadding: 3,
-      overflow: 'linebreak',
-      textColor: [15, 23, 42],
-    },
-    headStyles: {
-      fillColor: [37, 99, 235],
-      textColor: 255,
-      fontStyle: 'bold',
-      fontSize: 8.5,
-    },
-    alternateRowStyles: { fillColor: [248, 250, 252] },
-    tableLineColor: [226, 232, 240],
-    tableLineWidth: 0.1,
-    margin: { left: 14, right: 14 },
-  });
-
-  // Footer on each page
+function drawPdfFooters(doc) {
   const pageCount = doc.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
@@ -89,7 +161,54 @@ export function exportPDF(columns, rows, title = 'Report', filename = 'export') 
       297 / 2, 205, { align: 'center' }
     );
   }
+}
 
+/* ─── PDF export ─────────────────────────────────────────────── */
+export function exportPDF(columns, rows, title = 'Report', filename = 'export') {
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  drawPdfHeader(doc, title);
+  autoTable(doc, {
+    startY: 26,
+    head: [pdfColumnHeaders(columns)],
+    body: pdfTableBody(columns, rows),
+    ...PDF_TABLE_OPTS,
+  });
+  drawPdfFooters(doc);
+  doc.save(`${filename}.pdf`);
+}
+
+/** PDF with multiple titled tables: [{ title, columns, rows }]. */
+export function exportPDFSections(sections, title = 'Report', filename = 'export') {
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  drawPdfHeader(doc, title);
+  let startY = 28;
+
+  sections.forEach((section, index) => {
+    const rows = section.rows || [];
+    const columns = section.columns || [];
+    const countLabel = ` (${rows.length} asset${rows.length === 1 ? '' : 's'})`;
+
+    if (index > 0 && startY > 165) {
+      doc.addPage();
+      startY = 20;
+    }
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(15, 23, 42);
+    doc.text(`${section.title}${countLabel}`, 14, startY);
+    startY += 5;
+
+    autoTable(doc, {
+      startY,
+      head: [pdfColumnHeaders(columns)],
+      body: pdfTableBody(columns, rows),
+      ...PDF_TABLE_OPTS,
+    });
+    startY = (doc.lastAutoTable?.finalY ?? startY) + 10;
+  });
+
+  drawPdfFooters(doc);
   doc.save(`${filename}.pdf`);
 }
 

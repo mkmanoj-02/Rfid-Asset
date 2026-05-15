@@ -5,7 +5,7 @@ import {
   CartesianGrid, BarChart, Bar, LabelList,
 } from 'recharts';
 import api from '../api';
-import { exportExcel, exportPDF } from '../export';
+import { exportExcel, exportPDF, exportExcelSections, exportPDFSections } from '../export';
 
 /** List endpoints return `{ from, to, data: [...] }` or a bare array. */
 function reportListPayload(body) {
@@ -23,33 +23,114 @@ function reportAssetsPayload(body) {
   return [];
 }
 
-/** Columns aligned with backend `mapReportAssetRow` / `sqlReportAssetsSelect`. */
+/** Shared column defs — same headers for Excel and PDF. */
 const REPORT_ASSET_EXPORT_COLUMNS = [
+  { header: 'S.No', key: 's_no' },
   { header: 'Asset ID', key: 'asset_id' },
-  { header: 'Code', key: 'asset_code' },
-  { header: 'Name', key: 'asset_name' },
-  { header: 'Type', key: 'asset_type' },
+  { header: 'Asset Serial', key: 'asset_serial' },
+  { header: 'Asset Name', key: 'asset_name' },
+  { header: 'Tag Type', key: 'tag_type_name' },
   { header: 'Location', key: 'location' },
   { header: 'Assigned To', key: 'assigned_to' },
   { header: 'Status', key: 'asset_status' },
   { header: 'Created', key: 'created_at' },
 ];
 
+const INVENTORY_MISSING_EXPORT_COLUMNS = [
+  ...REPORT_ASSET_EXPORT_COLUMNS,
+  { header: 'Report Status', key: 'report_status' },
+  { header: 'Movements in Period', key: 'movement_count' },
+  { header: 'Last Movement', key: 'last_movement_at' },
+];
+
+function formatExportDate(value) {
+  if (value == null || value === '') return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 function formatAssetRowsForExport(assets) {
   if (!Array.isArray(assets)) return [];
-  return assets.map((a) => ({
+  return assets.map((a, index) => ({
     ...a,
-    created_at:
-      a && a.created_at != null && a.created_at !== ''
-        ? new Date(a.created_at).toLocaleString('en-GB', {
-            day: '2-digit',
-            month: 'short',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-          })
-        : '—',
+    s_no: index + 1,
+    asset_serial: (a?.asset_serial || a?.asset_code || '').toString().trim() || '—',
+    tag_type_name: (a?.tag_type_name || a?.asset_type || '').toString().trim() || '—',
+    created_at: formatExportDate(a?.created_at),
+    last_movement_at: formatExportDate(a?.last_movement_at),
+    movement_count: a?.movement_count ?? 0,
   }));
+}
+
+function exportReportAssetsExcel(rows, filename) {
+  exportExcel(REPORT_ASSET_EXPORT_COLUMNS, formatAssetRowsForExport(rows), filename);
+}
+
+function exportReportAssetsPDF(rows, title, filename) {
+  exportPDF(REPORT_ASSET_EXPORT_COLUMNS, formatAssetRowsForExport(rows), title, filename);
+}
+
+/** Inventory vs Missing — backend `inventory_assets` + `missing_assets`. */
+function inventoryMissingAssetLists(body) {
+  if (!body || typeof body !== 'object') {
+    return { inventory: [], missing: [] };
+  }
+  if (Array.isArray(body.inventory_assets) || Array.isArray(body.missing_assets)) {
+    return {
+      inventory: Array.isArray(body.inventory_assets) ? body.inventory_assets : [],
+      missing: Array.isArray(body.missing_assets) ? body.missing_assets : [],
+    };
+  }
+  const assets = Array.isArray(body.assets) ? body.assets : [];
+  return {
+    inventory: assets.filter((a) => a.report_status === 'In Stock'),
+    missing: assets.filter((a) => a.report_status === 'Missing'),
+  };
+}
+
+function inventoryMissingExportSections(body) {
+  const { inventory: inventoryRaw, missing: missingRaw } = inventoryMissingAssetLists(body);
+  const inventory = formatAssetRowsForExport(inventoryRaw);
+  const missing = formatAssetRowsForExport(missingRaw);
+  const columns = INVENTORY_MISSING_EXPORT_COLUMNS;
+  return [
+    { name: 'In Stock', title: 'In Stock (movement in period)', columns, rows: inventory },
+    { name: 'Missing Assets', title: 'Missing (no movement in period)', columns, rows: missing },
+  ];
+}
+
+function exportInventoryMissingExcel(body, filename, rangeLabel) {
+  exportExcelSections(
+    inventoryMissingExportSections(body).map(({ title, columns, rows }) => ({
+      title,
+      columns,
+      rows,
+    })),
+    filename,
+    {
+      sheetName: 'Inventory vs Missing',
+      reportTitle: rangeLabel ? `Inventory vs Missing (${rangeLabel})` : 'Inventory vs Missing',
+    }
+  );
+}
+
+function exportInventoryMissingPDF(body, title, filename) {
+  exportPDFSections(
+    inventoryMissingExportSections(body).map(({ title: sectionTitle, columns, rows }) => ({
+      title: sectionTitle,
+      columns,
+      rows,
+    })),
+    title,
+    filename
+  );
 }
 
 /* ─── Design tokens ──────────────────────────────────────────── */
@@ -303,16 +384,15 @@ function DashboardReports() {
       <ReportCard
         title="Inventory vs Missing"
         subtitle={`With movement in range vs none (${rangeLabel})`}
-        onExcel={() => exportExcel(
-          REPORT_ASSET_EXPORT_COLUMNS,
-          formatAssetRowsForExport(reportAssetsPayload(inventoryMissing)),
-          'inventory-missing-assets'
+        onExcel={() => exportInventoryMissingExcel(
+          inventoryMissing,
+          'inventory-vs-missing',
+          rangeLabel
         )}
-        onPDF={() => exportPDF(
-          REPORT_ASSET_EXPORT_COLUMNS,
-          formatAssetRowsForExport(reportAssetsPayload(inventoryMissing)),
-          `Missing assets — no movement in period (${rangeLabel})`,
-          'inventory-missing-assets'
+        onPDF={() => exportInventoryMissingPDF(
+          inventoryMissing,
+          `Inventory vs Missing (${rangeLabel})`,
+          'inventory-vs-missing'
         )}
         minH={260}
       >
@@ -390,14 +470,12 @@ function DashboardReports() {
       <ReportCard
         title="Assets by Type"
         subtitle={`Assets created in period (${rangeLabel})`}
-        onExcel={() => exportExcel(
-          REPORT_ASSET_EXPORT_COLUMNS,
-          formatAssetRowsForExport(exportAssetsByType),
+        onExcel={() => exportReportAssetsExcel(
+          exportAssetsByType,
           'assets-by-type-detail'
         )}
-        onPDF={() => exportPDF(
-          REPORT_ASSET_EXPORT_COLUMNS,
-          formatAssetRowsForExport(exportAssetsByType),
+        onPDF={() => exportReportAssetsPDF(
+          exportAssetsByType,
           `Assets by type — full detail (${rangeLabel})`,
           'assets-by-type-detail'
         )}
@@ -425,14 +503,12 @@ function DashboardReports() {
       <ReportCard
         title="Assets by Location"
         subtitle={`Top locations — assets created in period (${rangeLabel})`}
-        onExcel={() => exportExcel(
-          REPORT_ASSET_EXPORT_COLUMNS,
-          formatAssetRowsForExport(exportAssetsByLocation),
+        onExcel={() => exportReportAssetsExcel(
+          exportAssetsByLocation,
           'assets-by-location-detail'
         )}
-        onPDF={() => exportPDF(
-          REPORT_ASSET_EXPORT_COLUMNS,
-          formatAssetRowsForExport(exportAssetsByLocation),
+        onPDF={() => exportReportAssetsPDF(
+          exportAssetsByLocation,
           `Assets by location — full detail (${rangeLabel})`,
           'assets-by-location-detail'
         )}
@@ -460,14 +536,12 @@ function DashboardReports() {
         title="Locations with Missing Assets"
         subtitle={`Inactive assets created in period (${rangeLabel})`}
         fullWidth
-        onExcel={() => exportExcel(
-          REPORT_ASSET_EXPORT_COLUMNS,
-          formatAssetRowsForExport(exportAssetsMissingByLocation),
+        onExcel={() => exportReportAssetsExcel(
+          exportAssetsMissingByLocation,
           'missing-by-location-detail'
         )}
-        onPDF={() => exportPDF(
-          REPORT_ASSET_EXPORT_COLUMNS,
-          formatAssetRowsForExport(exportAssetsMissingByLocation),
+        onPDF={() => exportReportAssetsPDF(
+          exportAssetsMissingByLocation,
           `Missing assets by location — full detail (${rangeLabel})`,
           'missing-by-location-detail'
         )}
