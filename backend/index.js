@@ -2,6 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
+const verifyToken = require('./middleware/verifyToken');
+
 
 const app = express();
 
@@ -57,14 +59,19 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Attach username from header to req for audit logging
+// Optional JWT: sets req.user when Bearer token is valid (backward-compatible with x-user-id)
+const optionalVerifyToken = require('./middleware/optionalVerifyToken');
+app.use(optionalVerifyToken);
+
+// Audit context: prefer JWT user, fall back to legacy headers
 app.use((req, res, next) => {
-  req.auditUser = req.headers['x-username'] || 'system';
-  req.auditUserId = req.headers['x-user-id'] || null;
+  req.auditUser = req.user?.username || req.headers['x-username'] || 'system';
+  req.auditUserId = req.user?.id || req.headers['x-user-id'] || null;
   next();
 });
+app.use('/api/auth', require('./routes/auth'));
 
-
+app.use(verifyToken); 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/locations', require('./routes/locations'));
@@ -76,7 +83,6 @@ app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/rfid', require('./routes/rfid'));
 app.use('/api/import', require('./routes/import'));
 app.use('/api/users', require('./routes/users'));
-app.use('/api/auth', require('./routes/auth'));
 app.use('/api/rules', require('./routes/rules'));
 app.use('/api/alerts', require('./routes/alerts'));
 app.use('/api/reports', require('./routes/reports'));
