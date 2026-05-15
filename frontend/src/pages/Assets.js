@@ -4,13 +4,27 @@ import {
   getAssetTypes, getLocations,
   getAssetAttributes, saveAssetAttributes, getAssetMovements,
   getRfidTags, removeRfidTag, getAttributes, getAttributeList,
-  getTagTypes, createTagType, updateTagType, deleteTagType,
+  getTagTypes, createTagType, updateTagType, deleteTagType, getTagRecommendationForAssetType,
   getVendors, createVendor, updateVendor, deleteVendor
 } from '../api';
 import { useToast } from '../Toast';
 import { exportExcel, exportPDF, ExportButtons } from '../export';
 import ImageUploadField from '../components/ImageUploadField';
 import { resolveImageUrl } from '../utils/imageUrl';
+
+async function resolveRecommendedTagTypeId(assetTypeId, tagTypesList) {
+  if (!assetTypeId) return null;
+  try {
+    const { data } = await getTagRecommendationForAssetType(assetTypeId);
+    if (!data) return null;
+    const recId = String(data.id ?? data.tag_type_id ?? '');
+    if (!recId) return null;
+    const inList = (tagTypesList || []).some((t) => String(t.id) === recId);
+    return inList ? recId : null;
+  } catch {
+    return null;
+  }
+}
 
 // ── Confirm Dialog ─────────────────────────────────────────────
 function ConfirmModal({ title, message, subMessage, confirmLabel = 'Delete', confirmStyle = 'danger', onConfirm, onCancel }) {
@@ -122,6 +136,23 @@ function AddAssetModal({ types, locations, tagTypes, vendors, onClose, onSaved }
     setRfidPickerOpen(false);
   };
 
+  const pickAssetType = async (assetTypeId) => {
+    const id = assetTypeId ? String(assetTypeId) : '';
+    setCustomImageFile(null);
+    const recTagId = id ? await resolveRecommendedTagTypeId(id, tagTypes) : null;
+    setForm((prev) => ({
+      ...prev,
+      asset_type_id: id,
+      ...(recTagId ? { tag_type_id: recTagId } : {}),
+    }));
+  };
+
+  const handleAssetTypeChange = (e) => pickAssetType(e.target.value);
+
+  const handleAssetTypeOptionPick = (typeId) => {
+    if (String(form.asset_type_id) === String(typeId)) pickAssetType(typeId);
+  };
+
   const validate = () => {
     const e = {};
     if (!form.asset_serial.trim()) e.asset_serial = 'Asset Serial is required';
@@ -220,13 +251,18 @@ function AddAssetModal({ types, locations, tagTypes, vendors, onClose, onSaved }
             <div className="field-wrap rfid-field">
               <select
                 value={form.asset_type_id}
-                onChange={e => {
-                  setForm({ ...form, asset_type_id: e.target.value });
-                  setCustomImageFile(null);
-                }}
+                onChange={handleAssetTypeChange}
               >
                 <option value="">-- Select --</option>
-                {types.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                {types.map((t) => (
+                  <option
+                    key={t.id}
+                    value={t.id}
+                    onMouseDown={() => handleAssetTypeOptionPick(t.id)}
+                  >
+                    {t.name}
+                  </option>
+                ))}
               </select>
               {errors.asset_type_id && <span className="field-error">{errors.asset_type_id}</span>}
             </div>
@@ -537,6 +573,24 @@ function AssetDetail({ asset, types, locations, tagTypes, vendors, onBack, onRef
     showToast('Attributes saved successfully', 'success');
   };
 
+  const pickEditAssetType = async (assetTypeId) => {
+    const id = assetTypeId ? String(assetTypeId) : '';
+    setEditImageFile(null);
+    setRevertToInherited(false);
+    const recTagId = id ? await resolveRecommendedTagTypeId(id, tagTypes) : null;
+    setEditForm((prev) => ({
+      ...prev,
+      asset_type_id: id,
+      ...(recTagId ? { tag_type_id: recTagId } : {}),
+    }));
+  };
+
+  const handleEditAssetTypeChange = (e) => pickEditAssetType(e.target.value);
+
+  const handleEditAssetTypeOptionPick = (typeId) => {
+    if (String(editForm.asset_type_id) === String(typeId)) pickEditAssetType(typeId);
+  };
+
   const changeLocation = async () => {
     if (!newLocationId) return;
     await updateAsset(asset.id, { ...editForm, current_location_id: newLocationId, notes: locationNotes });
@@ -721,14 +775,18 @@ function AssetDetail({ asset, types, locations, tagTypes, vendors, onBack, onRef
                 <div className="field-wrap">
                   <select
                     value={editForm.asset_type_id}
-                    onChange={e => {
-                      setEditForm({ ...editForm, asset_type_id: e.target.value });
-                      setEditImageFile(null);
-                      setRevertToInherited(false);
-                    }}
+                    onChange={handleEditAssetTypeChange}
                   >
                     <option value="">-- Select --</option>
-                    {types.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    {types.map((t) => (
+                      <option
+                        key={t.id}
+                        value={t.id}
+                        onMouseDown={() => handleEditAssetTypeOptionPick(t.id)}
+                      >
+                        {t.name}
+                      </option>
+                    ))}
                   </select>
                   {editErrors.asset_type_id && <span className="field-error">{editErrors.asset_type_id}</span>}
                 </div>

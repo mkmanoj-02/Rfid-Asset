@@ -144,6 +144,8 @@ export const deleteTagType = (id) => api.delete(`/tag-types/${id}`);
 
 /** Asset type → recommended tag type — backend: tagTypes.js */
 export const getTagRecommendations = () => api.get('/tag-types/recommendations');
+export const getTagRecommendationForAssetType = (assetTypeId) =>
+  api.get(`/tag-types/recommend/${assetTypeId}`);
 export const saveTagRecommendation = (data) => api.post('/tag-types/recommendations', data);
 export const deleteTagRecommendation = (assetTypeId) =>
   api.delete(`/tag-types/recommendations/${assetTypeId}`);
