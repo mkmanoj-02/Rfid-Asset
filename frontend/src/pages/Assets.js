@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
-  getAssets, createAsset, updateAsset, deleteAsset, bulkDeleteAssets,
+  getAssets, createAssetMultipart, updateAsset, updateAssetMultipart, deleteAsset, bulkDeleteAssets,
   getAssetTypes, getLocations,
   getAssetAttributes, saveAssetAttributes, getAssetMovements,
   getRfidTags, removeRfidTag, getAttributes, getAttributeList,
@@ -9,6 +9,8 @@ import {
 } from '../api';
 import { useToast } from '../Toast';
 import { exportExcel, exportPDF, ExportButtons } from '../export';
+import ImageUploadField from '../components/ImageUploadField';
+import { resolveImageUrl } from '../utils/imageUrl';
 
 // ── Confirm Dialog ─────────────────────────────────────────────
 function ConfirmModal({ title, message, subMessage, confirmLabel = 'Delete', confirmStyle = 'danger', onConfirm, onCancel }) {
@@ -91,6 +93,8 @@ function AddAssetModal({ types, locations, tagTypes, vendors, onClose, onSaved }
   const [errors, setErrors] = useState({});
   const [typeAttrs, setTypeAttrs] = useState([]);
   const [attrValues, setAttrValues] = useState({});
+  const [customImageFile, setCustomImageFile] = useState(null);
+  const [saving, setSaving] = useState(false);
 
   // Fetch attributes when asset type changes
   useEffect(() => {
@@ -130,9 +134,17 @@ function AddAssetModal({ types, locations, tagTypes, vendors, onClose, onSaved }
     return Object.keys(e).length === 0;
   };
 
+  const selectedType = types.find(t => String(t.id) === String(form.asset_type_id));
+  const inheritedPreviewUrl = selectedType?.image_url ? resolveImageUrl(selectedType.image_url) : null;
+  const imageSourceLabel = customImageFile
+    ? 'Custom Image'
+    : (inheritedPreviewUrl ? 'Inherited Image' : null);
+
   const save = async () => {
     if (!validate()) return;
-    const result = await createAsset(form);
+    setSaving(true);
+    try {
+    const result = await createAssetMultipart(form, customImageFile);
     const assetId = result.data.id;
     // Save attribute values if any
     if (typeAttrs.length > 0) {
@@ -141,12 +153,18 @@ function AddAssetModal({ types, locations, tagTypes, vendors, onClose, onSaved }
     }
     onSaved();
     onClose();
+    } catch (e) {
+      showToast(e.response?.data?.message || 'Failed to create asset', 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const reset = () => {
-    setForm({ asset_serial: '', name: '', rfid_tag: '', tag_type_id: '', asset_type_id: '', current_location_id: '', status: 'active', description: '' });
+    setForm({ asset_serial: '', name: '', rfid_tag: '', tag_type_id: '', vendor_id: '', asset_type_id: '', current_location_id: '', status: 'active', description: '' });
     setTypeAttrs([]);
     setAttrValues({});
+    setCustomImageFile(null);
   };
 
   const saveRef = React.useRef(null);
@@ -200,11 +218,32 @@ function AddAssetModal({ types, locations, tagTypes, vendors, onClose, onSaved }
           <div className="form-row">
             <label>Asset Type <span className="required">*</span></label>
             <div className="field-wrap rfid-field">
-              <select value={form.asset_type_id} onChange={e => setForm({ ...form, asset_type_id: e.target.value })}>
+              <select
+                value={form.asset_type_id}
+                onChange={e => {
+                  setForm({ ...form, asset_type_id: e.target.value });
+                  setCustomImageFile(null);
+                }}
+              >
                 <option value="">-- Select --</option>
                 {types.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
               {errors.asset_type_id && <span className="field-error">{errors.asset_type_id}</span>}
+            </div>
+          </div>
+          <div className="form-row">
+            <label>Asset Image</label>
+            <div className="field-wrap" style={{ maxWidth: 420 }}>
+              <ImageUploadField
+                label=""
+                previewUrl={!customImageFile ? inheritedPreviewUrl : null}
+                sourceLabel={imageSourceLabel}
+                file={customImageFile}
+                onFileChange={setCustomImageFile}
+                onClear={() => setCustomImageFile(null)}
+                disabled={!form.asset_type_id}
+                hint={form.asset_type_id ? 'Optional — inherits type image if empty' : 'Select asset type first'}
+              />
             </div>
           </div>
           <div className="form-row">
@@ -282,7 +321,9 @@ function AddAssetModal({ types, locations, tagTypes, vendors, onClose, onSaved }
         <div className="modal-actions">
           <button className="btn btn-secondary" onClick={reset}>Reset</button>
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button ref={saveRef} className="btn btn-primary" onClick={save}>Save</button>
+          <button ref={saveRef} className="btn btn-primary" onClick={save} disabled={saving}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
         </div>
       </div>
 
@@ -440,6 +481,9 @@ function AssetDetail({ asset, types, locations, tagTypes, vendors, onBack, onRef
   const [newLocationId, setNewLocationId] = useState('');
   const [locationNotes, setLocationNotes] = useState('');
   const [editErrors, setEditErrors] = useState({});
+  const [editImageFile, setEditImageFile] = useState(null);
+  const [revertToInherited, setRevertToInherited] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState(null); // { onConfirm }
 
   useEffect(() => {
@@ -463,11 +507,29 @@ function AssetDetail({ asset, types, locations, tagTypes, vendors, onBack, onRef
     if (!editForm.asset_type_id) e.asset_type_id = 'Asset Type is required';
     setEditErrors(e);
     if (Object.keys(e).length > 0) return;
-    await updateAsset(asset.id, editForm);
-    showToast('Asset updated successfully', 'success');
-    setEditModal(false);
-    onRefresh();
+    setEditSaving(true);
+    try {
+      await updateAssetMultipart(asset.id, editForm, editImageFile, { removeCustomImage: revertToInherited });
+      showToast('Asset updated successfully', 'success');
+      setEditModal(false);
+      setEditImageFile(null);
+      setRevertToInherited(false);
+      onRefresh();
+    } catch (e) {
+      showToast(e.response?.data?.message || 'Update failed', 'error');
+    } finally {
+      setEditSaving(false);
+    }
   };
+
+  const editSelectedType = types.find(t => String(t.id) === String(editForm.asset_type_id));
+  const editInheritedUrl = editSelectedType?.image_url ? resolveImageUrl(editSelectedType.image_url) : null;
+  const editPreviewUrl = asset.image_url && Number(asset.is_custom_image) === 1 && !revertToInherited && !editImageFile
+    ? resolveImageUrl(asset.image_url)
+    : (!editImageFile && !revertToInherited ? (editInheritedUrl || resolveImageUrl(asset.image_url)) : null);
+  const editImageSource = editImageFile
+    ? 'Custom Image'
+    : (Number(asset.is_custom_image) === 1 && !revertToInherited ? 'Custom Image' : (editInheritedUrl ? 'Inherited Image' : null));
 
   const saveAttrValues = async () => {
     const payload = Object.entries(attrValues).map(([attribute_id, value]) => ({ attribute_id, value }));
@@ -500,8 +562,20 @@ function AssetDetail({ asset, types, locations, tagTypes, vendors, onBack, onRef
       </div>
 
       {/* Asset info card */}
-      <div className="detail-info-card">
-        <div className="detail-fields">
+      <div className="detail-info-card" style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+        {asset.image_url && (
+          <div style={{ flexShrink: 0 }}>
+            <img
+              src={resolveImageUrl(asset.image_url)}
+              alt={asset.name}
+              style={{ width: 140, height: 105, objectFit: 'cover', borderRadius: 10, border: '1px solid #e2e8f0' }}
+            />
+            <div style={{ fontSize: 11, color: '#6b7280', marginTop: 6, textAlign: 'center' }}>
+              {Number(asset.is_custom_image) === 1 ? 'Custom Image' : 'Inherited Image'}
+            </div>
+          </div>
+        )}
+        <div className="detail-fields" style={{ flex: 1, minWidth: 240 }}>
           <div className="detail-row"><span className="detail-label">Asset Name</span><span>: {asset.name}</span></div>
           <div className="detail-row"><span className="detail-label">RFID Tag</span><span>: <code>{asset.rfid_tag}</code></span></div>
           <div className="detail-row"><span className="detail-label">Asset Type</span><span>: {typeName}</span></div>
@@ -645,11 +719,36 @@ function AssetDetail({ asset, types, locations, tagTypes, vendors, onBack, onRef
               <div className="form-row">
                 <label>Asset Type <span className="required">*</span></label>
                 <div className="field-wrap">
-                  <select value={editForm.asset_type_id} onChange={e => setEditForm({ ...editForm, asset_type_id: e.target.value })}>
+                  <select
+                    value={editForm.asset_type_id}
+                    onChange={e => {
+                      setEditForm({ ...editForm, asset_type_id: e.target.value });
+                      setEditImageFile(null);
+                      setRevertToInherited(false);
+                    }}
+                  >
                     <option value="">-- Select --</option>
                     {types.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                   {editErrors.asset_type_id && <span className="field-error">{editErrors.asset_type_id}</span>}
+                </div>
+              </div>
+              <div className="form-row">
+                <label>Asset Image</label>
+                <div className="field-wrap" style={{ maxWidth: 420 }}>
+                  <ImageUploadField
+                    label=""
+                    previewUrl={editPreviewUrl}
+                    sourceLabel={editImageSource}
+                    file={editImageFile}
+                    onFileChange={(f) => { setEditImageFile(f); setRevertToInherited(false); }}
+                    onClear={() => {
+                      if (Number(asset.is_custom_image) === 1 || editImageFile) {
+                        setEditImageFile(null);
+                        setRevertToInherited(true);
+                      }
+                    }}
+                  />
                 </div>
               </div>
               <div className="form-row">
@@ -694,8 +793,15 @@ function AssetDetail({ asset, types, locations, tagTypes, vendors, onBack, onRef
               </div>
             </div>
             <div className="modal-actions">
-              <button className="btn btn-secondary" onClick={() => { setEditModal(false); setEditErrors({}); }}>Cancel</button>
-              <button className="btn btn-primary" onClick={saveEdit}>Save</button>
+              <button className="btn btn-secondary" onClick={() => {
+                setEditModal(false);
+                setEditErrors({});
+                setEditImageFile(null);
+                setRevertToInherited(false);
+              }}>Cancel</button>
+              <button className="btn btn-primary" onClick={saveEdit} disabled={editSaving}>
+                {editSaving ? 'Saving…' : 'Save'}
+              </button>
             </div>
           </div>
         </div>

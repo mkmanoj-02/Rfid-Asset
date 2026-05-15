@@ -28,9 +28,55 @@ export const updateLocation = (id, data) => api.put(`/locations/${id}`, data);
 export const deleteLocation = (id) => api.delete(`/locations/${id}`);
 
 export const getAssetTypes = () => api.get('/asset-types');
+export const getAssetType = (id) => api.get(`/asset-types/${id}`);
 export const createAssetType = (data) => api.post('/asset-types', data);
 export const updateAssetType = (id, data) => api.put(`/asset-types/${id}`, data);
 export const deleteAssetType = (id) => api.delete(`/asset-types/${id}`);
+
+/** Build FormData for asset type create/update with optional image file. */
+export function buildAssetTypeFormData(fields, imageFile, { removeImage } = {}) {
+  const fd = new FormData();
+  if (fields.name != null) fd.append('name', fields.name);
+  if (fields.description != null) fd.append('description', fields.description);
+  if (fields.parent_id != null && fields.parent_id !== '') fd.append('parent_id', fields.parent_id);
+  if (fields.attributes) fd.append('attributes', JSON.stringify(fields.attributes));
+  if (removeImage) fd.append('remove_image', 'true');
+  if (imageFile) fd.append('image', imageFile);
+  return fd;
+}
+
+export const createAssetTypeMultipart = (fields, imageFile) =>
+  api.post('/asset-types', buildAssetTypeFormData(fields, imageFile));
+
+export const updateAssetTypeMultipart = (id, fields, imageFile, opts) =>
+  api.put(`/asset-types/${id}`, buildAssetTypeFormData(fields, imageFile, opts));
+
+/** Build FormData for asset create/update with optional custom image. */
+export function buildAssetFormData(fields, imageFile, { removeCustomImage } = {}) {
+  const fd = new FormData();
+  const keys = [
+    'rfid_tag', 'tag_type_id', 'vendor_id', 'asset_serial', 'name',
+    'asset_type_id', 'current_location_id', 'status', 'description',
+    'asset_inventory_status', 'notes',
+  ];
+  keys.forEach((k) => {
+    if (fields[k] !== undefined && fields[k] !== null && fields[k] !== '') {
+      fd.append(k, fields[k]);
+    }
+  });
+  if (removeCustomImage) fd.append('remove_custom_image', 'true');
+  if (imageFile) fd.append('image', imageFile);
+  return fd;
+}
+
+export const createAssetMultipart = (fields, imageFile) =>
+  api.post('/assets', buildAssetFormData(fields, imageFile));
+
+export const updateAssetMultipart = (id, fields, imageFile, opts) =>
+  api.put(`/assets/${id}`, buildAssetFormData(fields, imageFile, opts));
+
+/** JSON update (no image) — e.g. location-only changes */
+export const updateAsset = (id, data) => api.put(`/assets/${id}`, data);
 
 /** Unique attribute definitions (name / type) for column picker — GET /api/attribute-list */
 export const getAttributeList = (params) => api.get('/attribute-list', { params: params || {} });
@@ -41,8 +87,8 @@ export const updateAttribute = (typeId, attrId, data) => api.put(`/asset-types/$
 export const deleteAttribute = (typeId, attrId) => api.delete(`/asset-types/${typeId}/attributes/${attrId}`);
 
 export const getAssets = (params) => api.get('/assets', { params });
+/** JSON create (no image) — prefer createAssetMultipart when uploading images */
 export const createAsset = (data) => api.post('/assets', data);
-export const updateAsset = (id, data) => api.put(`/assets/${id}`, data);
 export const deleteAsset = (id) => api.delete(`/assets/${id}`);
 export const bulkDeleteAssets = (ids) => axios.delete(`${API_BASE_URL}/api/assets/bulk`, { data: { ids } });
 export const getAssetAttributes = (id) => api.get(`/assets/${id}/attributes`);

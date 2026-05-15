@@ -5,6 +5,16 @@ const audit = require('../audit');
 const { trimAttrName } = require('../attributeNameUtil');
 const resourceImages = require('../controllers/resourceImages');
 const { uploadImageMiddleware, handleMulterImageError } = require('../helper/upload');
+const { optionalImageUpload } = require('../middleware/optionalImageUpload');
+const {
+  applyAssetTypeImageUpdate,
+  cleanupAssetTypeImageOnDelete,
+  parseAttributesField,
+  truthyFormFlag,
+  safeUnlinkImageUrl,
+  propagateTypeImageToInheritedAssets,
+} = require('../controllers/imageInheritance');
+const { publicUrlForStoredFile, ENTITY_UPLOAD_SUBDIR } = require('../helper/upload');
 
 // Helper: parse privilege array
 function parsePriv(val) {
@@ -50,12 +60,25 @@ router.get('/:id', async (req, res) => {
   res.json(rows[0]);
 });
 
-router.post('/', async (req, res) => {
-  const { name, description, attributes } = req.body;
+router.post('/', optionalImageUpload('asset_types'), async (req, res, next) => {
+  try {
+  const { name, description } = req.body;
+  const attributes = parseAttributesField(req.body) ?? req.body.attributes;
+  if (!name || !String(name).trim()) {
+    return res.status(400).json({ message: 'Name is required' });
+  }
   const [existing] = await db.query('SELECT id FROM asset_types WHERE LOWER(name) = LOWER(?)', [name]);
   if (existing.length) return res.status(400).json({ message: `Asset type "${name}" already exists` });
-  const [result] = await db.query('INSERT INTO asset_types (name, description, parent_id) VALUES (?, ?, ?)',
-    [name, description, req.body.parent_id || null]);
+
+  let imageUrl = null;
+  if (req.file) {
+    imageUrl = publicUrlForStoredFile(ENTITY_UPLOAD_SUBDIR.asset_types, req.file.filename);
+  }
+
+  const [result] = await db.query(
+    'INSERT INTO asset_types (name, description, parent_id, image_url) VALUES (?, ?, ?, ?)',
+    [name, description || null, req.body.parent_id || null, imageUrl]
+  );
   const typeId = result.insertId;
 
   if (attributes && Array.isArray(attributes) && attributes.length) {
@@ -89,21 +112,38 @@ router.post('/', async (req, res) => {
   }
 
   await audit.log('Asset Type', 'Added', `Asset type "${name}" was created`, req.auditUser, req.auditUserId);
-  res.status(201).json({ id: typeId, name, description });
+  res.status(201).json({ id: typeId, name, description, image_url: imageUrl });
+  } catch (err) { next(err); }
 });
 
-router.put('/:id', async (req, res) => {
+router.put('/:id', optionalImageUpload('asset_types'), async (req, res, next) => {
+  try {
   const userId = req.headers['x-user-id'];
   if (userId) {
     const [users] = await db.query('SELECT asset_type_can_modify, profile_type FROM users WHERE id = ?', [userId]);
     if (users.length && users[0].profile_type !== 'super_admin' && !users[0].asset_type_can_modify)
       return res.status(403).json({ message: 'You do not have permission to modify asset types' });
   }
-  const { name, description, attributes } = req.body;
-  const [existing] = await db.query('SELECT id FROM asset_types WHERE LOWER(name) = LOWER(?) AND id != ?', [name, req.params.id]);
+  const typeId = req.params.id;
+  const { name, description } = req.body;
+  const attributes = parseAttributesField(req.body) ?? req.body.attributes;
+  const [existing] = await db.query('SELECT id FROM asset_types WHERE LOWER(name) = LOWER(?) AND id != ?', [name, typeId]);
   if (existing.length) return res.status(400).json({ message: `Asset type "${name}" already exists` });
-  await db.query('UPDATE asset_types SET name = ?, description = ?, parent_id = ? WHERE id = ?',
-    [name, description, req.body.parent_id || null, req.params.id]);
+
+  const [[typeRow]] = await db.query('SELECT image_url FROM asset_types WHERE id = ?', [typeId]);
+  if (!typeRow) return res.status(404).json({ message: 'Not found' });
+
+  let imageUrl = typeRow.image_url;
+  if (truthyFormFlag(req.body.remove_image)) {
+    if (imageUrl) await safeUnlinkImageUrl(imageUrl);
+    imageUrl = null;
+    await propagateTypeImageToInheritedAssets(typeId, null);
+  } else if (req.file) {
+    imageUrl = await applyAssetTypeImageUpdate(typeId, typeRow.image_url, req.file);
+  }
+
+  await db.query('UPDATE asset_types SET name = ?, description = ?, parent_id = ?, image_url = ? WHERE id = ?',
+    [name, description, req.body.parent_id || null, imageUrl, typeId]);
 
   if (attributes && Array.isArray(attributes) && attributes.length) {
     const seenInBatch = new Set();
@@ -115,7 +155,6 @@ router.put('/:id', async (req, res) => {
         return res.status(400).json({ message: `Duplicate attribute name in request: "${attrName}"` });
       seenInBatch.add(attrName);
     }
-    const typeId = req.params.id;
     for (const attr of attributes) {
       const attrName = trimAttrName(attr.name);
       const attrType = attr.attr_type || 'string';
@@ -174,7 +213,8 @@ router.put('/:id', async (req, res) => {
   }
 
   await audit.log('Asset Type', 'Modified', `Asset type "${name}" was updated`, req.auditUser, req.auditUserId);
-  res.json({ message: 'Updated' });
+  res.json({ message: 'Updated', image_url: imageUrl });
+  } catch (err) { next(err); }
 });
 
 router.delete('/bulk', async (req, res, next) => {
@@ -201,11 +241,25 @@ router.delete('/bulk', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.delete('/:id', async (req, res) => {
-  const [rows] = await db.query('SELECT name FROM asset_types WHERE id = ?', [req.params.id]);
-  await db.query('DELETE FROM asset_types WHERE id = ?', [req.params.id]);
-  if (rows.length) await audit.log('Asset Type', 'Deleted', `Asset type "${rows[0].name}" was deleted`, req.auditUser, req.auditUserId);
-  res.json({ message: 'Deleted' });
+router.delete('/:id', async (req, res, next) => {
+  try {
+    const id = req.params.id;
+    const [[{ assetCount }]] = await db.query(
+      'SELECT COUNT(*) AS assetCount FROM assets WHERE asset_type_id = ?',
+      [id]
+    );
+    if (assetCount > 0) {
+      return res.status(400).json({
+        message: `Cannot delete asset type: ${assetCount} asset(s) are assigned to it.`,
+      });
+    }
+    const [rows] = await db.query('SELECT name, image_url FROM asset_types WHERE id = ?', [id]);
+    if (!rows.length) return res.status(404).json({ message: 'Not found' });
+    await cleanupAssetTypeImageOnDelete(rows[0]);
+    await db.query('DELETE FROM asset_types WHERE id = ?', [id]);
+    await audit.log('Asset Type', 'Deleted', `Asset type "${rows[0].name}" was deleted`, req.auditUser, req.auditUserId);
+    res.json({ message: 'Deleted' });
+  } catch (err) { next(err); }
 });
 
 // --- Attributes ---

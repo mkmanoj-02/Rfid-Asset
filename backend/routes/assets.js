@@ -5,6 +5,14 @@ const { runRules } = require('../ruleEngine');
 const audit = require('../audit');
 const resourceImages = require('../controllers/resourceImages');
 const { uploadImageMiddleware, handleMulterImageError } = require('../helper/upload');
+const { optionalImageUpload } = require('../middleware/optionalImageUpload');
+const {
+  resolveAssetImageOnCreate,
+  resolveAssetImageOnUpdate,
+  cleanupAssetImageOnDelete,
+  safeUnlinkCustomAssetFile,
+  truthyFormFlag,
+} = require('../controllers/imageInheritance');
 
 // Helper: parse privilege array from user record
 function parsePriv(val) {
@@ -339,7 +347,7 @@ router.put('/:id/attributes', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post('/', async (req, res, next) => {
+router.post('/', optionalImageUpload('assets'), async (req, res, next) => {
   try {
   const { rfid_tag, tag_type_id, vendor_id, asset_serial, name, asset_type_id, current_location_id, status, description, asset_inventory_status } = req.body;
 
@@ -356,13 +364,36 @@ router.post('/', async (req, res, next) => {
   const invStatus = normalizeAssetInventoryStatus(asset_inventory_status, 'in_inventory');
   if (asset_inventory_status !== undefined && asset_inventory_status !== null && asset_inventory_status !== '' && !invStatus)
     errors.push(`asset_inventory_status must be one of: ${ASSET_INVENTORY_STATUSES.join(', ')}`);
-  if (errors.length) return res.status(400).json({ message: errors.join('; ') });
+  if (errors.length) {
+    if (req.file?.path) {
+      try { await require('fs').promises.unlink(req.file.path); } catch {}
+    }
+    return res.status(400).json({ message: errors.join('; ') });
+  }
 
   const locationId = current_location_id;
 
+  let imageUrl;
+  let isCustom;
+  try {
+    const resolved = await resolveAssetImageOnCreate(asset_type_id, req.file || null);
+    imageUrl = resolved.imageUrl;
+    isCustom = resolved.isCustom;
+  } catch (imgErr) {
+    if (req.file?.path) {
+      try { await require('fs').promises.unlink(req.file.path); } catch {}
+    }
+    return next(imgErr);
+  }
+
   const [result] = await db.query(
-    'INSERT INTO assets (rfid_tag, tag_type_id, vendor_id, asset_serial, name, asset_type_id, current_location_id, status, description, asset_inventory_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [rfid_tag || null, tag_type_id || null, vendor_id || null, asset_serial, name, asset_type_id, locationId, status || 'active', description || null, invStatus]
+    `INSERT INTO assets (rfid_tag, tag_type_id, vendor_id, asset_serial, name, asset_type_id,
+      current_location_id, status, description, asset_inventory_status, image_url, is_custom_image)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      rfid_tag || null, tag_type_id || null, vendor_id || null, asset_serial, name, asset_type_id,
+      locationId, status || 'active', description || null, invStatus, imageUrl, isCustom,
+    ]
   );
   const assetId = result.insertId;
 
@@ -380,11 +411,11 @@ router.post('/', async (req, res, next) => {
   // Trigger rule engine for is_added rules
   setImmediate(() => runRules().catch(e => console.error('Rule engine error:', e.message)));
   await audit.log('Asset', 'Added', `Asset "${name}" (Serial: ${asset_serial || 'N/A'}) was added`, req.auditUser, req.auditUserId);
-  res.status(201).json({ id: assetId });
+  res.status(201).json({ id: assetId, image_url: imageUrl, is_custom_image: isCustom });
   } catch (err) { next(err); }
 });
 
-router.put('/:id', async (req, res, next) => {
+router.put('/:id', optionalImageUpload('assets'), async (req, res, next) => {
   try {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) return res.status(400).json({ message: 'Invalid asset ID' });
@@ -430,7 +461,7 @@ router.put('/:id', async (req, res, next) => {
   if (editErrors.length) return res.status(400).json({ message: editErrors.join('; ') });
 
   const [existing] = await db.query(
-    'SELECT current_location_id, asset_inventory_status FROM assets WHERE id = ?',
+    'SELECT current_location_id, asset_inventory_status, image_url, is_custom_image, asset_type_id FROM assets WHERE id = ?',
     [id]
   );
   if (!existing.length) return res.status(404).json({ message: 'Not found' });
@@ -440,9 +471,22 @@ router.put('/:id', async (req, res, next) => {
       ? normalizeAssetInventoryStatus(asset_inventory_status, 'in_inventory')
       : existing[0].asset_inventory_status || 'in_inventory';
 
+  const imagePatch = await resolveAssetImageOnUpdate({
+    existing: existing[0],
+    file: req.file || null,
+    removeCustomImage: truthyFormFlag(req.body.remove_custom_image),
+    newAssetTypeId: asset_type_id,
+  });
+
   await db.query(
-    'UPDATE assets SET rfid_tag = ?, tag_type_id = ?, vendor_id = ?, asset_serial = ?, name = ?, asset_type_id = ?, current_location_id = ?, status = ?, description = ?, asset_inventory_status = ? WHERE id = ?',
-    [rfid_tag || null, tag_type_id || null, vendor_id || null, asset_serial, name, asset_type_id, current_location_id || null, status, description || null, invStatus, id]
+    `UPDATE assets SET rfid_tag = ?, tag_type_id = ?, vendor_id = ?, asset_serial = ?, name = ?,
+      asset_type_id = ?, current_location_id = ?, status = ?, description = ?, asset_inventory_status = ?,
+      image_url = ?, is_custom_image = ? WHERE id = ?`,
+    [
+      rfid_tag || null, tag_type_id || null, vendor_id || null, asset_serial, name, asset_type_id,
+      current_location_id || null, status, description || null, invStatus,
+      imagePatch.imageUrl, imagePatch.isCustom, id,
+    ]
   );
 
   const oldLocation = existing[0].current_location_id;
@@ -455,7 +499,11 @@ router.put('/:id', async (req, res, next) => {
     setImmediate(() => runRules().catch(e => console.error('Rule engine error:', e.message)));
   }
   await audit.log('Asset', 'Modified', `Asset ID ${id} was updated`, req.auditUser, req.auditUserId);
-  res.json({ message: 'Updated' });
+  res.json({
+    message: 'Updated',
+    image_url: imagePatch.imageUrl,
+    is_custom_image: imagePatch.isCustom,
+  });
   } catch (err) { next(err); }
 });
 
@@ -481,9 +529,13 @@ router.delete('/:id', async (req, res, next) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) return res.status(400).json({ message: 'Invalid asset ID' });
 
-  const [rows] = await db.query('SELECT name, asset_serial FROM assets WHERE id = ?', [id]);
+  const [rows] = await db.query(
+    'SELECT name, asset_serial, image_url, is_custom_image FROM assets WHERE id = ?',
+    [id]
+  );
   if (!rows.length) return res.status(404).json({ message: 'Asset not found' });
 
+  await cleanupAssetImageOnDelete(rows[0]);
   await db.query('DELETE FROM assets WHERE id = ?', [id]);
   await audit.log('Asset', 'Deleted', `Asset "${rows[0].name}" (Serial: ${rows[0].asset_serial || 'N/A'}) was deleted`, req.auditUser, req.auditUserId);
   res.json({ message: 'Deleted' });

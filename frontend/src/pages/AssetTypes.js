@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  getAssetTypes, createAssetType, updateAssetType, deleteAssetType,
+  getAssetTypes, createAssetTypeMultipart, updateAssetTypeMultipart, deleteAssetType,
   getAttributes, createAttribute, updateAttribute, deleteAttribute
 } from '../api';
 import { useToast } from '../Toast';
+import ImageUploadField from '../components/ImageUploadField';
+import { resolveImageUrl } from '../utils/imageUrl';
 
 const ATTR_TYPES = ['string', 'double', 'date', 'list'];
 
@@ -319,6 +321,9 @@ export default function AssetTypes() {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ name: '', description: '', parent_id: '' });
   const [editing, setEditing] = useState(null);
+  const [imageFile, setImageFile] = useState(null);
+  const [removeImage, setRemoveImage] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState(null);
   const { showToast } = useToast();
 
@@ -332,24 +337,44 @@ export default function AssetTypes() {
 
   const openAdd = (parentId = '') => {
     setForm({ name: '', description: '', parent_id: parentId });
-    setEditing(null); setModal(true);
+    setEditing(null);
+    setImageFile(null);
+    setRemoveImage(false);
+    setModal(true);
   };
 
   const openEdit = (item) => {
     setForm({ name: item.name, description: item.description || '', parent_id: item.parent_id || '' });
-    setEditing(item.id); setModal(true);
+    setEditing(item.id);
+    setImageFile(null);
+    setRemoveImage(false);
+    setModal(true);
   };
 
+  const editingItem = editing ? items.find(t => t.id === editing) : null;
+  const typePreviewUrl = editingItem?.image_url ? resolveImageUrl(editingItem.image_url) : null;
+
   const save = async () => {
-    try {
-      if (editing) { await updateAssetType(editing, form); showToast('Asset type updated', 'success'); }
-      else { await createAssetType(form); showToast('Asset type added', 'success'); }
-    } catch (e) {
-      const msg = e.response?.data?.message || 'Save failed';
-      showToast(msg, 'error');
+    if (!form.name?.trim()) {
+      showToast('Name is required', 'error');
       return;
     }
-    setModal(false); load();
+    setSaving(true);
+    try {
+      if (editing) {
+        await updateAssetTypeMultipart(editing, form, imageFile, { removeImage });
+        showToast('Asset type updated', 'success');
+      } else {
+        await createAssetTypeMultipart(form, imageFile);
+        showToast('Asset type added', 'success');
+      }
+      setModal(false);
+      load();
+    } catch (e) {
+      showToast(e.response?.data?.message || 'Save failed', 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const openAttributeDeleteConfirm = (typeId, attr, reloadAttrs) => {
@@ -476,9 +501,21 @@ export default function AssetTypes() {
                 ))}
               </select>
             </div>
+            <div className="form-group" style={{ marginTop: 16 }}>
+              <ImageUploadField
+                label="Default type image"
+                previewUrl={!imageFile && !removeImage ? typePreviewUrl : null}
+                sourceLabel={imageFile ? 'New upload' : (typePreviewUrl ? 'Current image' : null)}
+                file={imageFile}
+                onFileChange={(f) => { setImageFile(f); setRemoveImage(false); }}
+                onClear={() => { setImageFile(null); setRemoveImage(true); }}
+              />
+            </div>
             <div className="modal-actions">
-              <button className="btn btn-secondary" onClick={() => setModal(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={save}>Save</button>
+              <button className="btn btn-secondary" onClick={() => setModal(false)} disabled={saving}>Cancel</button>
+              <button className="btn btn-primary" onClick={save} disabled={saving}>
+                {saving ? 'Saving…' : 'Save'}
+              </button>
             </div>
           </div>
         </div>
