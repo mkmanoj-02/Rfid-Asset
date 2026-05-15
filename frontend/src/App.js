@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, NavLink, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, useNavigate, Navigate } from 'react-router-dom';
 import {
   LayoutDashboard, Package, Tag, MapPin, Users, History,
   Bell, BarChart2, ClipboardList, Upload, ChevronDown,
@@ -289,6 +289,9 @@ function SettingsDropdown() {
 
 /* ─── Top bar (inside main content) ─────────────────────────── */
 function TopBar() {
+  const { currentUser } = useAuth();
+  const isSuperAdmin = currentUser?.profile_type === 'super_admin';
+
   return (
     <div style={{
       display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
@@ -297,10 +300,32 @@ function TopBar() {
       background: '#fff',
       flexShrink: 0,
       gap: 8,
+      boxSizing: 'border-box',
+      minHeight: 56,
+      height: 56,
     }}>
-      <SettingsDropdown />
+      <div
+        style={{
+          width: 36,
+          height: 36,
+          flexShrink: 0,
+          visibility: isSuperAdmin ? 'visible' : 'hidden',
+          pointerEvents: isSuperAdmin ? 'auto' : 'none',
+        }}
+        aria-hidden={!isSuperAdmin}
+      >
+        <SettingsDropdown />
+      </div>
     </div>
   );
+}
+
+function SuperAdminRoute({ children }) {
+  const { currentUser } = useAuth();
+  if (currentUser?.profile_type !== 'super_admin') {
+    return <Navigate to="/" replace />;
+  }
+  return children;
 }
 
 /* ─── Sidebar ────────────────────────────────────────────────── */
@@ -470,9 +495,9 @@ function AppShell() {
             <Route path="/rules-alerts"          element={<RulesAlerts />} />
             <Route path="/reports"               element={<Reports />} />
             <Route path="/audit-log"             element={<AuditLog />} />
-            <Route path="/settings"                element={<AppSettings />} />
-            <Route path="/settings/tag-types"    element={<TagTypesSettings />} />
-            <Route path="/settings/vendors"      element={<VendorsSettings />} />
+            <Route path="/settings"             element={<SuperAdminRoute><AppSettings /></SuperAdminRoute>} />
+            <Route path="/settings/tag-types" element={<SuperAdminRoute><TagTypesSettings /></SuperAdminRoute>} />
+            <Route path="/settings/vendors"   element={<SuperAdminRoute><VendorsSettings /></SuperAdminRoute>} />
             <Route path="/depreciation"          element={<Depreciation />} />
           </Routes>
         </main>
