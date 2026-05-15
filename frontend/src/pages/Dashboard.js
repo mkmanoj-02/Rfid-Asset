@@ -6,8 +6,8 @@ import api, { getDashboard, getDashboardLocation, getLocations } from '../api';
 import {
   DashboardChartCard,
   LocationDistributionBarChart,
-  LocationDistributionPieChart,
   MonthlyDistributionAreaChart,
+  chartLoadingShellStyle,
 } from '../components/dashboard/DistributionCharts';
 import LocationDetailPopup from '../components/LocationDetailPopup';
 const MAP_STORAGE_KEY = 'rfid_dashboard_map_image';
@@ -470,7 +470,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Charts — asset type, location bar/pie, monthly trend */}
+      {/* Charts — asset type, location bar, monthly trend */}
       <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
         <DashboardChartCard
           title="Asset Type Distribution"
@@ -486,14 +486,14 @@ export default function Dashboard() {
           )}
         </DashboardChartCard>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(440px, 1fr))', gap: 16, alignItems: 'stretch' }}>
           <DashboardChartCard
             title="Location Based Distribution"
             subtitle={scopeLabel}
             action={chartScopeAction}
           >
             {dashboardLoading ? (
-              <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
+              <div style={chartLoadingShellStyle}>
                 {data ? 'Updating chart...' : 'Loading chart...'}
               </div>
             ) : (
@@ -505,39 +505,22 @@ export default function Dashboard() {
           </DashboardChartCard>
 
           <DashboardChartCard
-            title="Location Share"
-            subtitle={`Percentage of assets by location · ${scopeLabel}`}
+            title="Monthly Asset Distribution"
+            subtitle={`Assets created per month (current year) · ${scopeLabel}`}
             action={chartScopeAction}
           >
             {dashboardLoading ? (
-              <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
+              <div style={chartLoadingShellStyle}>
                 {data ? 'Updating chart...' : 'Loading chart...'}
               </div>
             ) : (
-              <LocationDistributionPieChart
-                key={`loc-pie-${distributionChartKey}`}
-                rows={locationDistRows}
+              <MonthlyDistributionAreaChart
+                key={`monthly-${distributionChartKey}`}
+                rows={monthlyDistRows}
               />
             )}
           </DashboardChartCard>
         </div>
-
-        <DashboardChartCard
-          title="Monthly Asset Distribution"
-          subtitle={`Assets created per month (current year) · ${scopeLabel}`}
-          action={chartScopeAction}
-        >
-          {dashboardLoading ? (
-            <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
-              {data ? 'Updating chart...' : 'Loading chart...'}
-            </div>
-          ) : (
-            <MonthlyDistributionAreaChart
-              key={`monthly-${distributionChartKey}`}
-              rows={monthlyDistRows}
-            />
-          )}
-        </DashboardChartCard>
       </div>
 
       {popupLocation && (

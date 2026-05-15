@@ -24,6 +24,37 @@ const PASTEL_BARS = ['#bfdbfe', '#fecaca', '#fed7aa', '#bbf7d0', '#ddd6fe', '#a5
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+/** Fixed plot height for dashboard location + monthly charts (keeps cards aligned). */
+export const DASHBOARD_DIST_CHART_HEIGHT = 260;
+
+export const chartPlotShellStyle = {
+  width: '100%',
+  height: DASHBOARD_DIST_CHART_HEIGHT,
+  minHeight: DASHBOARD_DIST_CHART_HEIGHT,
+};
+
+export const chartLoadingShellStyle = {
+  ...chartPlotShellStyle,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: '#94a3b8',
+  fontSize: 13,
+};
+
+/** Shared plot insets so location + monthly charts align visually. */
+const DIST_CHART_MARGIN = { top: 12, right: 16, left: 8, bottom: 12 };
+const DIST_Y_AXIS_WIDTH = 40;
+
+function truncateAxisLabel(name, maxLen = 11) {
+  const s = String(name ?? '');
+  return s.length > maxLen ? `${s.slice(0, maxLen - 1)}…` : s;
+}
+
+function ChartViewport({ children }) {
+  return <div style={chartPlotShellStyle}>{children}</div>;
+}
+
 const TICK = { fontSize: 11, fill: '#94a3b8', fontFamily: 'inherit' };
 const TICK_DARK = { fontSize: 11, fill: '#64748b', fontFamily: 'inherit' };
 
@@ -91,7 +122,9 @@ function PieTooltip({ active, payload }) {
 
 function ChartEmpty({ message = 'No data for this view' }) {
   return (
-    <div style={{ padding: 48, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>{message}</div>
+    <div style={{ ...chartPlotShellStyle, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <span style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center' }}>{message}</span>
+    </div>
   );
 }
 
@@ -109,8 +142,9 @@ export function LocationDistributionBarChart({ rows, maxCategories = 12 }) {
   if (data.length === 0) return <ChartEmpty />;
 
   return (
-    <ResponsiveContainer width="100%" height={320}>
-      <BarChart data={data} margin={{ top: 12, right: 12, left: 4, bottom: 64 }}>
+    <ChartViewport>
+      <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={data} margin={DIST_CHART_MARGIN}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
         <XAxis
           dataKey="name"
@@ -118,11 +152,14 @@ export function LocationDistributionBarChart({ rows, maxCategories = 12 }) {
           axisLine={false}
           tickLine={false}
           interval={0}
-          angle={-28}
+          angle={-32}
           textAnchor="end"
-          height={72}
+          height={36}
+          tickMargin={4}
+          tickFormatter={truncateAxisLabel}
         />
         <YAxis
+          width={DIST_Y_AXIS_WIDTH}
           tick={TICK}
           axisLine={false}
           tickLine={false}
@@ -146,7 +183,8 @@ export function LocationDistributionBarChart({ rows, maxCategories = 12 }) {
           ))}
         </Bar>
       </BarChart>
-    </ResponsiveContainer>
+      </ResponsiveContainer>
+    </ChartViewport>
   );
 }
 
@@ -224,8 +262,9 @@ export function MonthlyDistributionAreaChart({ rows }) {
   if (!hasData) return <ChartEmpty message="No assets created this year for this view" />;
 
   return (
-    <ResponsiveContainer width="100%" height={320}>
-      <AreaChart data={data} margin={{ top: 12, right: 16, left: 4, bottom: 8 }}>
+    <ChartViewport>
+      <ResponsiveContainer width="100%" height="100%">
+      <AreaChart data={data} margin={DIST_CHART_MARGIN}>
         <defs>
           <linearGradient id={`monthArea-${gradId}`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#38bdf8" stopOpacity={0.35} />
@@ -233,8 +272,16 @@ export function MonthlyDistributionAreaChart({ rows }) {
           </linearGradient>
         </defs>
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-        <XAxis dataKey="month" tick={TICK_DARK} axisLine={false} tickLine={false} />
+        <XAxis
+          dataKey="month"
+          tick={TICK_DARK}
+          axisLine={false}
+          tickLine={false}
+          height={36}
+          tickMargin={4}
+        />
         <YAxis
+          width={DIST_Y_AXIS_WIDTH}
           tick={TICK}
           axisLine={false}
           tickLine={false}
@@ -253,7 +300,8 @@ export function MonthlyDistributionAreaChart({ rows }) {
           activeDot={{ r: 6, fill: '#0ea5e9', stroke: '#fff', strokeWidth: 2 }}
         />
       </AreaChart>
-    </ResponsiveContainer>
+      </ResponsiveContainer>
+    </ChartViewport>
   );
 }
 
