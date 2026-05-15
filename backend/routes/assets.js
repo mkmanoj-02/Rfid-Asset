@@ -3,6 +3,8 @@ const router = express.Router();
 const db = require('../db');
 const { runRules } = require('../ruleEngine');
 const audit = require('../audit');
+const resourceImages = require('../controllers/resourceImages');
+const { uploadImageMiddleware, handleMulterImageError } = require('../helper/upload');
 
 // Helper: parse privilege array from user record
 function parsePriv(val) {
@@ -254,6 +256,15 @@ router.get('/', async (req, res, next) => {
   res.json(rows);
   } catch (err) { next(err); }
 });
+
+// --- Image: multipart field "image" (jpg, jpeg, png, webp; max 5MB) ---
+router.post(
+  '/:id/image',
+  uploadImageMiddleware('assets'),
+  handleMulterImageError,
+  resourceImages.upload('assets')
+);
+router.delete('/:id/image', resourceImages.remove('assets'));
 
 router.get('/:id', async (req, res, next) => {
   try {

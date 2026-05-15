@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 require('dotenv').config();
 
 const app = express();
@@ -63,6 +64,9 @@ app.use((req, res, next) => {
   next();
 });
 
+
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/api/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/locations', require('./routes/locations'));
 app.use('/api/asset-types', require('./routes/assetTypes'));
 app.use('/api/attribute-list', require('./routes/attributeList'));

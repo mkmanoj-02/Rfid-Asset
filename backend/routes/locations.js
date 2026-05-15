@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const audit = require('../audit');
+const resourceImages = require('../controllers/resourceImages');
+const { uploadImageMiddleware, handleMulterImageError } = require('../helper/upload');
 
 // Helper: parse privilege array from user record
 function parsePriv(val) {
@@ -76,6 +78,15 @@ router.get('/tree', async (req, res) => {
     items.filter(i => (i.parent_id || null) == parentId).map(i => ({ ...i, children: buildTree(items, i.id) }));
   res.json(buildTree(rows));
 });
+
+// --- Image: multipart field "image" (jpg, jpeg, png, webp; max 5MB) ---
+router.post(
+  '/:id/image',
+  uploadImageMiddleware('locations'),
+  handleMulterImageError,
+  resourceImages.upload('locations')
+);
+router.delete('/:id/image', resourceImages.remove('locations'));
 
 router.get('/:id', async (req, res) => {
   const [rows] = await db.query(`
