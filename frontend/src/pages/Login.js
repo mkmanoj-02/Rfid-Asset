@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import api from '../api';
+import { loginRequest } from '../api';
 import { useAuth } from '../AuthContext';
 import { useToast } from '../Toast';
 
@@ -270,9 +270,13 @@ export default function Login() {
     setError('');
     setLoading(true);
     try {
-      const res = await api.post('/auth/login', form);
-      showToast(`Welcome, ${res.data.user.username}!`, 'success');
-      login(res.data.user);
+      const res = await loginRequest(form);
+      const { user, accessToken, refreshToken } = res.data;
+      if (!accessToken || !refreshToken) {
+        throw new Error('Login response missing tokens');
+      }
+      showToast(`Welcome, ${user.username}!`, 'success');
+      login(user, accessToken, refreshToken);
     } catch (err) {
       const msg = err.response?.data?.message || 'Login failed';
       setError(msg);

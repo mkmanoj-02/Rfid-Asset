@@ -1,25 +1,122 @@
 import axios from 'axios';
+import {
+  getAccessToken,
+  getRefreshToken,
+  getStoredUser,
+  setTokens,
+  clearAuthSession,
+} from './authToken';
 
 const API_BASE_URL = (process.env.REACT_APP_API_BASE_URL || 'http://localhost:5004').replace(/\/+$/, '');
 
 const api = axios.create({ baseURL: `${API_BASE_URL}/api` });
 
-// Attach current user_id to all requests automatically
-api.interceptors.request.use(config => {
+/** Plain client for login / refresh (no Bearer interceptor, no 401 retry loop). */
+const authClient = axios.create({ baseURL: `${API_BASE_URL}/api` });
+
+let refreshPromise = null;
+let onAuthFailure = null;
+
+export function setOnAuthFailure(handler) {
+  onAuthFailure = handler;
+}
+
+function isAuthRoute(url) {
+  if (!url) return false;
+  return (
+    url.includes('/auth/login')
+    || url.includes('/auth/refresh-token')
+    || url.includes('/auth/logout')
+  );
+}
+
+async function refreshAccessToken() {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    const refreshToken = getRefreshToken();
+    if (!refreshToken) throw new Error('No refresh token');
+
+    const { data } = await authClient.post('/auth/refresh-token', { refreshToken });
+    if (!data?.accessToken) throw new Error('Refresh response missing accessToken');
+
+    setTokens(data.accessToken, data.refreshToken || refreshToken);
+    return data.accessToken;
+  })();
+
   try {
-    // Use sessionStorage (app switched from localStorage)
-    const user = JSON.parse(sessionStorage.getItem('rfid_user') || 'null');
+    return await refreshPromise;
+  } finally {
+    refreshPromise = null;
+  }
+}
+
+function forceLogout() {
+  clearAuthSession();
+  if (onAuthFailure) onAuthFailure();
+}
+
+api.interceptors.request.use((config) => {
+  const accessToken = getAccessToken();
+  if (accessToken) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = `Bearer ${accessToken}`;
+  }
+
+  try {
+    const user = getStoredUser();
     if (user?.id) {
       config.params = { ...config.params, user_id: user.id };
       config.headers = config.headers || {};
       config.headers['x-username'] = user.username || '';
       config.headers['x-user-id'] = String(user.id);
     }
-  } catch {}
+  } catch {
+    /* ignore */
+  }
+
   return config;
 });
 
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const original = error.config;
+    const status = error.response?.status;
+
+    if (!original || isAuthRoute(original.url)) {
+      return Promise.reject(error);
+    }
+
+    if (status !== 401) {
+      return Promise.reject(error);
+    }
+
+    if (original._retry) {
+      forceLogout();
+      return Promise.reject(error);
+    }
+
+    original._retry = true;
+
+    try {
+      const newAccessToken = await refreshAccessToken();
+      original.headers = original.headers || {};
+      original.headers.Authorization = `Bearer ${newAccessToken}`;
+      return api(original);
+    } catch {
+      forceLogout();
+      return Promise.reject(error);
+    }
+  },
+);
+
 export default api;
+
+export const loginRequest = (credentials) => authClient.post('/auth/login', credentials);
+
+export const logoutRequest = (refreshToken) =>
+  authClient.post('/auth/logout', { refreshToken });
 
 export const getLocations = () => api.get('/locations');
 export const getLocationTree = () => api.get('/locations/tree');
@@ -112,7 +209,7 @@ export const getAssets = (params) => api.get('/assets', { params });
 /** JSON create (no image) — prefer createAssetMultipart when uploading images */
 export const createAsset = (data) => api.post('/assets', data);
 export const deleteAsset = (id) => api.delete(`/assets/${id}`);
-export const bulkDeleteAssets = (ids) => axios.delete(`${API_BASE_URL}/api/assets/bulk`, { data: { ids } });
+export const bulkDeleteAssets = (ids) => api.delete('/assets/bulk', { data: { ids } });
 export const getAssetAttributes = (id) => api.get(`/assets/${id}/attributes`);
 export const saveAssetAttributes = (id, values) => api.put(`/assets/${id}/attributes`, { values });
 

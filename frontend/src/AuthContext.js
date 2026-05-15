@@ -1,27 +1,46 @@
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { setOnAuthFailure, logoutRequest } from './api';
+import {
+  getStoredUser,
+  setAuthSession,
+  clearAuthSession,
+  getRefreshToken,
+  hasAuthSession,
+} from './authToken';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  // sessionStorage clears when the browser tab/window closes,
-  // so every fresh app start will require login.
   const [currentUser, setCurrentUser] = useState(() => {
-    try {
-      return JSON.parse(sessionStorage.getItem('rfid_user') || 'null');
-    } catch {
+    if (!hasAuthSession()) {
+      clearAuthSession();
       return null;
     }
+    return getStoredUser();
   });
 
-  const login = (user) => {
-    setCurrentUser(user);
-    sessionStorage.setItem('rfid_user', JSON.stringify(user));
-  };
-
-  const logout = () => {
+  const logout = useCallback(async () => {
+    const refreshToken = getRefreshToken();
+    try {
+      if (refreshToken) await logoutRequest(refreshToken);
+    } catch {
+      /* server logout optional */
+    }
+    clearAuthSession();
     setCurrentUser(null);
-    sessionStorage.removeItem('rfid_user');
-  };
+  }, []);
+
+  useEffect(() => {
+    setOnAuthFailure(() => {
+      setCurrentUser(null);
+    });
+    return () => setOnAuthFailure(null);
+  }, []);
+
+  const login = useCallback((user, accessToken, refreshToken) => {
+    setAuthSession({ user, accessToken, refreshToken });
+    setCurrentUser(user);
+  }, []);
 
   return (
     <AuthContext.Provider value={{ currentUser, login, logout }}>
