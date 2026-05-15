@@ -21,6 +21,13 @@ async function expandWithSubLocations(ids) {
 
 router.get('/', async (req, res) => {
   const locParam = req.query.location;
+  const yearRaw = req.query.year;
+  const yearParsed = parseInt(yearRaw, 10);
+  const filterYear =
+    yearRaw !== undefined && yearRaw !== '' && !Number.isNaN(yearParsed) && yearParsed >= 1990 && yearParsed <= 2100
+      ? yearParsed
+      : null;
+
   let locationIds = null;
   let locationMeta = null;
 
@@ -52,6 +59,11 @@ router.get('/', async (req, res) => {
   let recentMovements;
   let tagged;
   let untagged;
+  let monthlyDistribution;
+  let locationDistribution;
+
+  const yearSql = filterYear != null ? 'YEAR(a.created_at) = ?' : 'YEAR(a.created_at) = YEAR(CURDATE())';
+  const yearParams = filterYear != null ? [filterYear] : [];
 
   if (ph) {
     const [[ta]] = await db.query(
@@ -107,6 +119,34 @@ router.get('/', async (req, res) => {
       locParams
     );
     untagged = ut.untagged;
+
+    const [monthRows] = await db.query(
+      `SELECT MONTH(a.created_at) AS month, COUNT(*) AS count
+       FROM assets a
+       WHERE ${yearSql} AND a.current_location_id IN (${ph})
+       GROUP BY MONTH(a.created_at)
+       ORDER BY month ASC`,
+      [...yearParams, ...locParams]
+    );
+    monthlyDistribution = monthRows.map((r) => ({
+      month: Number(r.month),
+      count: Number(r.count),
+    }));
+
+    const [locDistRows] = await db.query(
+      `SELECT l.name AS name, COUNT(a.id) AS count
+       FROM locations l
+       INNER JOIN assets a ON a.current_location_id = l.id
+       WHERE l.id IN (${ph})
+       GROUP BY l.id, l.name
+       ORDER BY count DESC
+       LIMIT 100`,
+      locParams
+    );
+    locationDistribution = locDistRows.map((r) => ({
+      name: r.name,
+      count: Number(r.count),
+    }));
   } else {
     const [[{ total_assets: ta }]] = await db.query('SELECT COUNT(*) AS total_assets FROM assets');
     total_assets = ta;
@@ -148,6 +188,33 @@ router.get('/', async (req, res) => {
       "SELECT COUNT(*) AS untagged FROM assets WHERE rfid_tag IS NULL OR rfid_tag = ''"
     );
     untagged = ut;
+
+    const [monthRows] = await db.query(
+      `SELECT MONTH(a.created_at) AS month, COUNT(*) AS count
+       FROM assets a
+       WHERE ${yearSql}
+       GROUP BY MONTH(a.created_at)
+       ORDER BY month ASC`,
+      yearParams
+    );
+    monthlyDistribution = monthRows.map((r) => ({
+      month: Number(r.month),
+      count: Number(r.count),
+    }));
+
+    const [locDistRows] = await db.query(
+      `SELECT l.name AS name, COUNT(a.id) AS count
+       FROM locations l
+       INNER JOIN assets a ON a.current_location_id = l.id
+       GROUP BY l.id, l.name
+       ORDER BY count DESC
+       LIMIT 100`,
+      []
+    );
+    locationDistribution = locDistRows.map((r) => ({
+      name: r.name,
+      count: Number(r.count),
+    }));
   }
 
   const body = {
@@ -158,6 +225,8 @@ router.get('/', async (req, res) => {
     assets_by_location: assetsByLocation,
     recent_movements: recentMovements,
     rfid_breakdown: { tagged, untagged },
+    monthlyDistribution,
+    locationDistribution,
   };
   if (locationMeta) {
     body.location = locationMeta;

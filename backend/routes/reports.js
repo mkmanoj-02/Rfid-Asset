@@ -96,12 +96,35 @@ router.get('/inventory-missing', async (req, res) => {
   const inventory = total - missing;
 
   const [assetRows] = await db.query(
-    `${sqlReportAssetsSelect()}
-     ${sqlReportAssetsFrom()}
-     WHERE ${missingWhere}
-     ORDER BY a.id DESC`,
+    `
+    SELECT
+      a.id AS asset_id,
+      COALESCE(NULLIF(TRIM(a.asset_serial), ''), NULLIF(TRIM(a.rfid_tag), ''), CONCAT('#', a.id)) AS asset_code,
+      a.name AS asset_name,
+      COALESCE(at.name, '') AS asset_type,
+      COALESCE(l.name, '') AS location,
+      CAST(NULL AS CHAR(255)) AS assigned_to,
+      a.status AS asset_status,
+      a.created_at AS created_at,
+      CASE WHEN COUNT(mh.id) > 0 THEN 'In Stock' ELSE 'Missing' END AS report_status,
+      COUNT(mh.id) AS movement_count,
+      MAX(mh.moved_at) AS last_movement_at
+    FROM assets a
+    LEFT JOIN asset_types at ON a.asset_type_id = at.id
+    LEFT JOIN locations l ON a.current_location_id = l.id
+    LEFT JOIN movement_history mh ON mh.asset_id = a.id
+      AND mh.moved_at >= ?
+      AND mh.moved_at < DATE_ADD(?, INTERVAL 1 DAY)
+    GROUP BY a.id, at.name, l.name
+    ORDER BY report_status ASC, a.id DESC`,
     [fromDate, toDate]
   );
+  const assets = assetRows.map((r) => ({
+    ...mapReportAssetRow(r),
+    report_status: r.report_status,
+    movement_count: Number(r.movement_count || 0),
+    last_movement_at: r.last_movement_at instanceof Date ? r.last_movement_at.toISOString() : r.last_movement_at,
+  }));
 
   res.json({
     inventory,
@@ -109,7 +132,9 @@ router.get('/inventory-missing', async (req, res) => {
     total,
     from: fromDate,
     to: toDate,
-    assets: assetRows.map(mapReportAssetRow),
+    assets,
+    inventory_assets: assets.filter((asset) => asset.report_status === 'In Stock'),
+    missing_assets: assets.filter((asset) => asset.report_status === 'Missing'),
   });
 });
 
