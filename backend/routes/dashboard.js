@@ -234,41 +234,16 @@ router.get('/', async (req, res) => {
   res.json(body);
 });
 
-// Location detail for dashboard popup
-router.get('/location/:id', async (req, res) => {
-  const id = req.params.id;
-  const [[loc]] = await db.query('SELECT * FROM locations WHERE id=?', [id]);
-  if (!loc) return res.status(404).json({ message: 'Not found' });
-
-  // Total assets at this location
-  const [[{ total }]] = await db.query('SELECT COUNT(*) AS total FROM assets WHERE current_location_id=?', [id]);
-  // Missing (inactive)
-  const [[{ missing }]] = await db.query("SELECT COUNT(*) AS missing FROM assets WHERE current_location_id=? AND status='inactive'", [id]);
-  // Sub-locations with counts
-  const [subLocs] = await db.query(`
-    SELECT l.name, COUNT(a.id) AS count
-    FROM locations l LEFT JOIN assets a ON a.current_location_id = l.id
-    WHERE l.parent_id=? GROUP BY l.id`, [id]);
-  // By asset type
-  const [byType] = await db.query(`
-    SELECT at.name, COUNT(a.id) AS count
-    FROM assets a JOIN asset_types at ON a.asset_type_id=at.id
-    WHERE a.current_location_id=? GROUP BY at.id ORDER BY count DESC LIMIT 5`, [id]);
-  // Recent transactions
-  const [recentTx] = await db.query(`
-    SELECT mh.moved_at, a.name AS asset_name, a.asset_serial,
-      fl.name AS from_loc, tl.name AS to_loc
-    FROM movement_history mh
-    JOIN assets a ON mh.asset_id=a.id
-    LEFT JOIN locations fl ON mh.from_location_id=fl.id
-    JOIN locations tl ON mh.to_location_id=tl.id
-    WHERE mh.to_location_id=? OR mh.from_location_id=?
-    ORDER BY mh.moved_at DESC LIMIT 3`, [id, id]);
-  // Recent alerts for this location
-  const [recentAlerts] = await db.query(`
-    SELECT * FROM alerts WHERE last_known_location=? ORDER BY alert_time DESC LIMIT 3`, [loc.name]);
-
-  res.json({ loc, total, missing, subLocs, byType, recentTx, recentAlerts });
+// Location detail for dashboard popup (map pin / modal)
+router.get('/location/:id', async (req, res, next) => {
+  try {
+    const { getLocationDashboardDetail } = require('../controllers/locationDetails');
+    const detail = await getLocationDashboardDetail(req.params.id);
+    if (!detail) return res.status(404).json({ message: 'Not found' });
+    res.json(detail);
+  } catch (err) {
+    next(err);
+  }
 });
 
 module.exports = router;

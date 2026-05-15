@@ -1,7 +1,11 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { getLocationTree, getLocations, createLocation, updateLocation, deleteLocation,
-  getLocationTypes, createLocationType, updateLocationType, deleteLocationType } from '../api';
+import {
+  getLocationTree, getLocations, createLocationMultipart, updateLocationMultipart, deleteLocation,
+  getLocationTypes, createLocationType, updateLocationType, deleteLocationType,
+} from '../api';
 import { useToast } from '../Toast';
+import ImageUploadField from '../components/ImageUploadField';
+import { resolveImageUrl } from '../utils/imageUrl';
 
 function locationNodeMatches(node, q) {
   if (!q) return true;
@@ -70,6 +74,9 @@ function ManageLocations() {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ name: '', description: '', parent_id: '', location_type_id: '' });
   const [editing, setEditing] = useState(null);
+  const [imageFile, setImageFile] = useState(null);
+  const [removeImage, setRemoveImage] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [manageSearch, setManageSearch] = useState('');
   const { showToast } = useToast();
 
@@ -96,24 +103,51 @@ function ManageLocations() {
 
   const openAdd = (parentId = '') => {
     setForm({ name: '', description: '', parent_id: parentId, location_type_id: '' });
-    setEditing(null); setModal(true);
+    setEditing(null);
+    setImageFile(null);
+    setRemoveImage(false);
+    setModal(true);
   };
 
   const openEdit = (item) => {
-    setForm({ name: item.name, description: item.description || '', parent_id: item.parent_id || '', location_type_id: item.location_type_id || '' });
-    setEditing(item.id); setModal(true);
+    setForm({
+      name: item.name,
+      description: item.description || '',
+      parent_id: item.parent_id || '',
+      location_type_id: item.location_type_id || '',
+    });
+    setEditing(item.id);
+    setImageFile(null);
+    setRemoveImage(false);
+    setModal(true);
   };
 
+  const editingItem = editing ? flatList.find(l => l.id === editing) : null;
+  const locationPreviewUrl = editingItem?.image_url && !removeImage
+    ? resolveImageUrl(editingItem.image_url)
+    : null;
+
   const save = async () => {
-    try {
-      if (editing) { await updateLocation(editing, form); showToast('Location updated', 'success'); }
-      else { await createLocation(form); showToast('Location added', 'success'); }
-    } catch (e) {
-      const msg = e.response?.data?.message || 'Save failed';
-      showToast(msg, 'error');
+    if (!form.name?.trim()) {
+      showToast('Location name is required', 'error');
       return;
     }
-    setModal(false); load();
+    setSaving(true);
+    try {
+      if (editing) {
+        await updateLocationMultipart(editing, form, imageFile, { removeImage });
+        showToast('Location updated', 'success');
+      } else {
+        await createLocationMultipart(form, imageFile);
+        showToast('Location added', 'success');
+      }
+      setModal(false);
+      load();
+    } catch (e) {
+      showToast(e.response?.data?.message || 'Save failed', 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const remove = async (id) => {
@@ -182,6 +216,14 @@ function ManageLocations() {
         ) : (
           <div className="location-detail-body">
             <div className="page-header">
+              <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+              {selected.image_url && (
+                <img
+                  src={resolveImageUrl(selected.image_url)}
+                  alt={selected.name}
+                  style={{ width: 100, height: 75, objectFit: 'cover', borderRadius: 8, border: '1px solid #e2e8f0' }}
+                />
+              )}
               <div>
                 <h1>{selected.name}</h1>
                 {selected.location_type_name && (
@@ -191,6 +233,7 @@ function ManageLocations() {
                 )}
                 {selected.parent_name && <p style={{ color: '#888', fontSize: 13, marginTop: 4 }}>Parent: {selected.parent_name}</p>}
                 {selected.description && <p style={{ color: '#555', marginTop: 4 }}>{selected.description}</p>}
+              </div>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 {canModify && <button className="btn btn-primary" onClick={() => openAdd(selected.id)}>+ Add Child</button>}
@@ -251,9 +294,21 @@ function ManageLocations() {
               <label>Description</label>
               <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
             </div>
+            <div className="form-group" style={{ marginTop: 16 }}>
+              <ImageUploadField
+                label="Location image"
+                previewUrl={!imageFile && !removeImage ? locationPreviewUrl : null}
+                sourceLabel={imageFile ? 'New upload' : (locationPreviewUrl ? 'Current image' : null)}
+                file={imageFile}
+                onFileChange={(f) => { setImageFile(f); setRemoveImage(false); }}
+                onClear={() => { setImageFile(null); setRemoveImage(true); }}
+              />
+            </div>
             <div className="modal-actions">
-              <button className="btn btn-secondary" onClick={() => setModal(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={save}>Save</button>
+              <button className="btn btn-secondary" onClick={() => setModal(false)} disabled={saving}>Cancel</button>
+              <button className="btn btn-primary" onClick={save} disabled={saving}>
+                {saving ? 'Saving…' : 'Save'}
+              </button>
             </div>
           </div>
         </div>

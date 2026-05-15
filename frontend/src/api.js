@@ -23,6 +23,28 @@ export default api;
 
 export const getLocations = () => api.get('/locations');
 export const getLocationTree = () => api.get('/locations/tree');
+export const getDashboardLocation = (id) => api.get(`/dashboard/location/${id}`);
+
+export function buildLocationFormData(fields, imageFile, { removeImage } = {}) {
+  const fd = new FormData();
+  if (fields.name != null) fd.append('name', fields.name);
+  if (fields.description != null) fd.append('description', fields.description);
+  if (fields.parent_id != null && fields.parent_id !== '') fd.append('parent_id', fields.parent_id);
+  if (fields.location_type_id != null && fields.location_type_id !== '') {
+    fd.append('location_type_id', fields.location_type_id);
+  }
+  if (removeImage) fd.append('remove_image', 'true');
+  if (imageFile) fd.append('image', imageFile);
+  return fd;
+}
+
+export const createLocationMultipart = (fields, imageFile) =>
+  api.post('/locations', buildLocationFormData(fields, imageFile));
+
+export const updateLocationMultipart = (id, fields, imageFile, opts) =>
+  api.put(`/locations/${id}`, buildLocationFormData(fields, imageFile, opts));
+
+/** JSON create/update when no image upload */
 export const createLocation = (data) => api.post('/locations', data);
 export const updateLocation = (id, data) => api.put(`/locations/${id}`, data);
 export const deleteLocation = (id) => api.delete(`/locations/${id}`);

@@ -2,13 +2,14 @@ import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell, LabelList,
 } from 'recharts';
-import api, { getDashboard, getLocations } from '../api';
+import api, { getDashboard, getDashboardLocation, getLocations } from '../api';
 import {
   DashboardChartCard,
   LocationDistributionBarChart,
   LocationDistributionPieChart,
   MonthlyDistributionAreaChart,
 } from '../components/dashboard/DistributionCharts';
+import LocationDetailPopup from '../components/LocationDetailPopup';
 const MAP_STORAGE_KEY = 'rfid_dashboard_map_image';
 const PINS_STORAGE_KEY = 'rfid_dashboard_pins'; // { locationId: { x%, y% } }
 
@@ -93,94 +94,6 @@ function AssetTypeBarChart({ rows }) {
   );
 }
 
-// ── Location Detail Popup ──────────────────────────────────────
-function LocationPopup({ locationName, detail, loading, onClose }) {
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500
-    }} onClick={onClose}>
-      <div style={{ background: '#fff', borderRadius: 8, width: 620, maxWidth: '95vw', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}
-        onClick={e => e.stopPropagation()}>
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #e2e8f0', background: '#f7f8fc' }}>
-          <span style={{ fontWeight: 700, fontSize: 16 }}>{locationName}</span>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#888' }}>×</button>
-        </div>
-
-        {loading || !detail ? (
-          <div style={{ padding: 32, textAlign: 'center', color: '#aaa' }}>{loading ? 'Loading...' : 'Could not load location.'}</div>
-        ) : (
-          <div>
-            {/* Top info */}
-            <div style={{ display: 'flex', gap: 16, padding: 16, borderBottom: '1px solid #e2e8f0' }}>
-              <div style={{ width: 90, height: 70, background: '#f0f2f5', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 11, color: '#aaa', textAlign: 'center' }}>
-                No Image<br />Available
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 14 }}>
-                <div><span style={{ color: '#555', minWidth: 140, display: 'inline-block' }}>Type</span>: Default</div>
-                <div><span style={{ color: '#555', minWidth: 140, display: 'inline-block' }}>Total Inventory</span>: <strong style={{ color: '#5a67d8' }}>{detail.total}</strong></div>
-                <div><span style={{ color: '#555', minWidth: 140, display: 'inline-block' }}>Missing Inventory</span>: <strong style={{ color: detail.missing > 0 ? '#e53e3e' : '#276749' }}>{detail.missing}</strong></div>
-              </div>
-            </div>
-
-            {/* Sub-location + By Type */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', borderBottom: '1px solid #e2e8f0' }}>
-              <div style={{ padding: 14, borderRight: '1px solid #e2e8f0' }}>
-                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10, textAlign: 'center' }}>Inventory by Sub Location</div>
-                {detail.subLocs.length === 0 && <div style={{ fontSize: 13, color: '#aaa', textAlign: 'center' }}>No sub-locations</div>}
-                {detail.subLocs.map((s, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '4px 0', borderBottom: '1px solid #f7f8fc' }}>
-                    <span>{s.name}</span>
-                    <strong style={{ color: '#5a67d8' }}>{s.count}</strong>
-                  </div>
-                ))}
-                {/* Also show this location itself */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
-                  <span>{locationName}</span>
-                  <strong style={{ color: '#5a67d8' }}>{detail.total}</strong>
-                </div>
-              </div>
-              <div style={{ padding: 14 }}>
-                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10, textAlign: 'center' }}>Inventory by Asset Types</div>
-                {detail.byType.length === 0 && <div style={{ fontSize: 13, color: '#aaa', textAlign: 'center' }}>No assets</div>}
-                {detail.byType.map((t, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '4px 0', borderBottom: '1px solid #f7f8fc' }}>
-                    <span>{t.name}</span>
-                    <strong style={{ color: '#5a67d8' }}>{t.count}</strong>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Recent Transactions + Alerts */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
-              <div style={{ padding: 14, borderRight: '1px solid #e2e8f0' }}>
-                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10, textAlign: 'center' }}>Recent Transactions</div>
-                {detail.recentTx.length === 0 && <div style={{ fontSize: 13, color: '#aaa', textAlign: 'center' }}>No transactions</div>}
-                {detail.recentTx.map((t, i) => (
-                  <div key={i} style={{ fontSize: 12, color: '#444', marginBottom: 8 }}>
-                    <span style={{ fontWeight: 500 }}>{t.asset_serial || t.asset_name}</span>
-                    {' '}{t.from_loc ? 'OUT' : 'IN'}{' '}
-                    {new Date(t.moved_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
-                  </div>
-                ))}
-              </div>
-              <div style={{ padding: 14 }}>
-                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10, textAlign: 'center' }}>Recent Alerts</div>
-                {detail.recentAlerts.length === 0 && <div style={{ fontSize: 13, color: '#aaa', textAlign: 'center' }}>No alerts</div>}
-                {detail.recentAlerts.map((a, i) => (
-                  <div key={i} style={{ fontSize: 12, color: '#e53e3e', marginBottom: 6 }}>● {a.description}</div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ── Main Dashboard ─────────────────────────────────────────────
 export default function Dashboard() {
   const [data, setData] = useState(null);
@@ -189,7 +102,7 @@ export default function Dashboard() {
   const [pins, setPins] = useState(() => { try { return JSON.parse(localStorage.getItem(PINS_STORAGE_KEY) || '{}'); } catch { return {}; } });
   const [placingPin, setPlacingPin] = useState(null); // locationId being placed
   const [selectedLocation, setSelectedLocation] = useState(null); // scopes dashboard + chart (tree or pin)
-  const [popupLocation, setPopupLocation] = useState(null); // modal only — set from map pin click
+  const [popupLocation, setPopupLocation] = useState(null); // location detail modal (tree or map pin)
   const [locations, setLocations] = useState([]);
   const [locationSearch, setLocationSearch] = useState('');
   const [showPinPanel, setShowPinPanel] = useState(false);
@@ -207,7 +120,7 @@ export default function Dashboard() {
     let cancelled = false;
     setPopupDetail(null);
     setPopupLoading(true);
-    api.get(`/dashboard/location/${popupLocation.id}`)
+    getDashboardLocation(popupLocation.id)
       .then(r => { if (!cancelled) setPopupDetail(r.data); })
       .catch(() => { if (!cancelled) setPopupDetail(null); })
       .finally(() => { if (!cancelled) setPopupLoading(false); });
@@ -337,7 +250,7 @@ export default function Dashboard() {
             <span
               onClick={() => {
                 setSelectedLocation({ id: loc.id, name: loc.name });
-                setPopupLocation(null);
+                setPopupLocation({ id: loc.id, name: loc.name });
               }}
               style={{
                 cursor: 'pointer',
@@ -627,9 +540,8 @@ export default function Dashboard() {
         </DashboardChartCard>
       </div>
 
-      {/* Location detail modal — map pin only */}
       {popupLocation && (
-        <LocationPopup
+        <LocationDetailPopup
           locationName={popupLocation.name}
           detail={popupDetail}
           loading={popupLoading}
