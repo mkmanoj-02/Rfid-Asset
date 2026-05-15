@@ -15,6 +15,43 @@ function reportListPayload(body) {
   return [];
 }
 
+/** Detail rows for exports — backend sends `assets` (some payloads may use `asset`). */
+function reportAssetsPayload(body) {
+  if (!body || typeof body !== 'object') return [];
+  if (Array.isArray(body.assets)) return body.assets;
+  if (Array.isArray(body.asset)) return body.asset;
+  return [];
+}
+
+/** Columns aligned with backend `mapReportAssetRow` / `sqlReportAssetsSelect`. */
+const REPORT_ASSET_EXPORT_COLUMNS = [
+  { header: 'Asset ID', key: 'asset_id' },
+  { header: 'Code', key: 'asset_code' },
+  { header: 'Name', key: 'asset_name' },
+  { header: 'Type', key: 'asset_type' },
+  { header: 'Location', key: 'location' },
+  { header: 'Assigned To', key: 'assigned_to' },
+  { header: 'Status', key: 'asset_status' },
+  { header: 'Created', key: 'created_at' },
+];
+
+function formatAssetRowsForExport(assets) {
+  if (!Array.isArray(assets)) return [];
+  return assets.map((a) => ({
+    ...a,
+    created_at:
+      a && a.created_at != null && a.created_at !== ''
+        ? new Date(a.created_at).toLocaleString('en-GB', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          })
+        : '—',
+  }));
+}
+
 /* ─── Design tokens ──────────────────────────────────────────── */
 const T = {
   blue:    '#2563EB',
@@ -182,13 +219,28 @@ function DashboardReports() {
   const [assetsByLoc, setAssetsByLoc] = useState([]);
   const [missingByLoc, setMissingByLoc] = useState([]);
   const [activeUsers, setActiveUsers] = useState([]);
+  const [exportAssetsByType, setExportAssetsByType] = useState([]);
+  const [exportAssetsByLocation, setExportAssetsByLocation] = useState([]);
+  const [exportAssetsMissingByLocation, setExportAssetsMissingByLocation] = useState([]);
 
   const load = () => {
     const params = { from: fromDate, to: toDate };
     api.get('/reports/inventory-missing', { params }).then(r => setInventoryMissing(r.data)).catch(() => {});
-    api.get('/reports/assets-by-type', { params }).then(r => setAssetsByType(reportListPayload(r.data))).catch(() => {});
-    api.get('/reports/assets-by-location', { params }).then(r => setAssetsByLoc(reportListPayload(r.data))).catch(() => {});
-    api.get('/reports/missing-by-location', { params }).then(r => setMissingByLoc(reportListPayload(r.data))).catch(() => {});
+    api.get('/reports/assets-by-type', { params }).then((r) => {
+      const body = r.data;
+      setAssetsByType(reportListPayload(body));
+      setExportAssetsByType(reportAssetsPayload(body));
+    }).catch(() => {});
+    api.get('/reports/assets-by-location', { params }).then((r) => {
+      const body = r.data;
+      setAssetsByLoc(reportListPayload(body));
+      setExportAssetsByLocation(reportAssetsPayload(body));
+    }).catch(() => {});
+    api.get('/reports/missing-by-location', { params }).then((r) => {
+      const body = r.data;
+      setMissingByLoc(reportListPayload(body));
+      setExportAssetsMissingByLocation(reportAssetsPayload(body));
+    }).catch(() => {});
     api.get('/reports/most-active-users', { params }).then(r => setActiveUsers(reportListPayload(r.data))).catch(() => {});
   };
 
@@ -252,12 +304,15 @@ function DashboardReports() {
         title="Inventory vs Missing"
         subtitle={`With movement in range vs none (${rangeLabel})`}
         onExcel={() => exportExcel(
-          [{ header: 'Category', key: 'name' }, { header: 'Count', key: 'value' }],
-          invData, 'inventory-missing'
+          REPORT_ASSET_EXPORT_COLUMNS,
+          formatAssetRowsForExport(reportAssetsPayload(inventoryMissing)),
+          'inventory-missing-assets'
         )}
         onPDF={() => exportPDF(
-          [{ header: 'Category', key: 'name' }, { header: 'Count', key: 'value' }],
-          invData, `Inventory vs Missing (${rangeLabel})`, 'inventory-missing'
+          REPORT_ASSET_EXPORT_COLUMNS,
+          formatAssetRowsForExport(reportAssetsPayload(inventoryMissing)),
+          `Missing assets — no movement in period (${rangeLabel})`,
+          'inventory-missing-assets'
         )}
         minH={260}
       >
@@ -336,12 +391,15 @@ function DashboardReports() {
         title="Assets by Type"
         subtitle={`Assets created in period (${rangeLabel})`}
         onExcel={() => exportExcel(
-          [{ header: 'Asset Type', key: 'type' }, { header: 'Count', key: 'count' }],
-          assetsByType, 'assets-by-type'
+          REPORT_ASSET_EXPORT_COLUMNS,
+          formatAssetRowsForExport(exportAssetsByType),
+          'assets-by-type-detail'
         )}
         onPDF={() => exportPDF(
-          [{ header: 'Asset Type', key: 'type' }, { header: 'Count', key: 'count' }],
-          assetsByType, `Assets by Type (${rangeLabel})`, 'assets-by-type'
+          REPORT_ASSET_EXPORT_COLUMNS,
+          formatAssetRowsForExport(exportAssetsByType),
+          `Assets by type — full detail (${rangeLabel})`,
+          'assets-by-type-detail'
         )}
       >
         {assetsByType.length === 0 ? <Empty /> : (
@@ -368,12 +426,15 @@ function DashboardReports() {
         title="Assets by Location"
         subtitle={`Top locations — assets created in period (${rangeLabel})`}
         onExcel={() => exportExcel(
-          [{ header: 'Location', key: 'location' }, { header: 'Count', key: 'count' }],
-          assetsByLoc, 'assets-by-location'
+          REPORT_ASSET_EXPORT_COLUMNS,
+          formatAssetRowsForExport(exportAssetsByLocation),
+          'assets-by-location-detail'
         )}
         onPDF={() => exportPDF(
-          [{ header: 'Location', key: 'location' }, { header: 'Count', key: 'count' }],
-          assetsByLoc, `Assets by Location (${rangeLabel})`, 'assets-by-location'
+          REPORT_ASSET_EXPORT_COLUMNS,
+          formatAssetRowsForExport(exportAssetsByLocation),
+          `Assets by location — full detail (${rangeLabel})`,
+          'assets-by-location-detail'
         )}
       >
         {assetsByLoc.length === 0 ? <Empty /> : (
@@ -400,12 +461,15 @@ function DashboardReports() {
         subtitle={`Inactive assets created in period (${rangeLabel})`}
         fullWidth
         onExcel={() => exportExcel(
-          [{ header: 'Location', key: 'location' }, { header: 'Missing', key: 'missing_count' }],
-          missingByLoc, 'missing-by-location'
+          REPORT_ASSET_EXPORT_COLUMNS,
+          formatAssetRowsForExport(exportAssetsMissingByLocation),
+          'missing-by-location-detail'
         )}
         onPDF={() => exportPDF(
-          [{ header: 'Location', key: 'location' }, { header: 'Missing', key: 'missing_count' }],
-          missingByLoc, `Locations with Missing Assets (${rangeLabel})`, 'missing-by-location'
+          REPORT_ASSET_EXPORT_COLUMNS,
+          formatAssetRowsForExport(exportAssetsMissingByLocation),
+          `Missing assets by location — full detail (${rangeLabel})`,
+          'missing-by-location-detail'
         )}
       >
         {missingByLoc.length === 0 ? (
