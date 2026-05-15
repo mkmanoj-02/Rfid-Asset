@@ -3,6 +3,12 @@ import {
   BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell, LabelList,
 } from 'recharts';
 import api, { getDashboard, getLocations } from '../api';
+import {
+  DashboardChartCard,
+  LocationDistributionBarChart,
+  LocationDistributionPieChart,
+  MonthlyDistributionAreaChart,
+} from '../components/dashboard/DistributionCharts';
 const MAP_STORAGE_KEY = 'rfid_dashboard_map_image';
 const PINS_STORAGE_KEY = 'rfid_dashboard_pins'; // { locationId: { x%, y% } }
 
@@ -276,6 +282,25 @@ export default function Dashboard() {
 
   /** Remount chart when dashboard payload or scope changes */
   const distributionChartKey = `chart-${selectedLocation?.id ?? 'all'}-${data?.total_assets ?? 0}-${dashboardLoading ? 'l' : 'r'}`;
+  const scopeLabel = data?.location?.name || selectedLocation?.name || 'All Locations';
+  const locationDistRows = data?.locationDistribution ?? [];
+  const monthlyDistRows = data?.monthlyDistribution ?? [];
+
+  const clearLocationScope = () => {
+    setSelectedLocation(null);
+    setPopupLocation(null);
+  };
+
+  const chartScopeAction = selectedLocation ? (
+    <button
+      type="button"
+      className="btn btn-secondary btn-sm"
+      style={{ fontSize: 11, flexShrink: 0, marginTop: 2 }}
+      onClick={clearLocationScope}
+    >
+      All locations
+    </button>
+  ) : null;
 
   // Collapsible tree node for dashboard
   function DashLocNode({ loc, depth = 0 }) {
@@ -361,7 +386,7 @@ export default function Dashboard() {
         <h1>Dashboard</h1>
         {selectedLocation && (
           <p style={{ margin: '6px 0 0', fontSize: 14, color: '#64748b', fontWeight: 500 }}>
-            Showing metrics for <strong style={{ color: '#1a1f36' }}>{data?.location_filter?.name || selectedLocation.name}</strong>
+            Showing metrics for <strong style={{ color: '#1a1f36' }}>{scopeLabel}</strong>
           </p>
         )}
       </div>
@@ -532,33 +557,13 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Asset type distribution — global until you pick a location (tree or map pin) */}
-      <div style={{ marginTop: 16, background: '#fff', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
-        <div style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-          gap: 12, padding: '12px 16px', borderBottom: '1px solid #f0f2f5', background: '#fafbfc',
-        }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 15, color: '#1a1f36' }}>Asset Type Distribution</div>
-            <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>
-              {data?.location_filter?.name || selectedLocation?.name || 'All Locations'}
-            </div>
-          </div>
-          {selectedLocation && (
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              style={{ fontSize: 11, flexShrink: 0, marginTop: 2 }}
-              onClick={() => {
-                setSelectedLocation(null);
-                setPopupLocation(null);
-              }}
-            >
-              All locations
-            </button>
-          )}
-        </div>
-        <div style={{ padding: '8px 16px 20px' }}>
+      {/* Charts — asset type, location bar/pie, monthly trend */}
+      <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <DashboardChartCard
+          title="Asset Type Distribution"
+          subtitle={scopeLabel}
+          action={chartScopeAction}
+        >
           {dashboardLoading && !data ? (
             <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Loading chart...</div>
           ) : dashboardLoading ? (
@@ -566,7 +571,60 @@ export default function Dashboard() {
           ) : (
             <AssetTypeBarChart key={distributionChartKey} rows={distributionRows} />
           )}
+        </DashboardChartCard>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 16 }}>
+          <DashboardChartCard
+            title="Location Based Distribution"
+            subtitle={scopeLabel}
+            action={chartScopeAction}
+          >
+            {dashboardLoading ? (
+              <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
+                {data ? 'Updating chart...' : 'Loading chart...'}
+              </div>
+            ) : (
+              <LocationDistributionBarChart
+                key={`loc-bar-${distributionChartKey}`}
+                rows={locationDistRows}
+              />
+            )}
+          </DashboardChartCard>
+
+          <DashboardChartCard
+            title="Location Share"
+            subtitle={`Percentage of assets by location · ${scopeLabel}`}
+            action={chartScopeAction}
+          >
+            {dashboardLoading ? (
+              <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
+                {data ? 'Updating chart...' : 'Loading chart...'}
+              </div>
+            ) : (
+              <LocationDistributionPieChart
+                key={`loc-pie-${distributionChartKey}`}
+                rows={locationDistRows}
+              />
+            )}
+          </DashboardChartCard>
         </div>
+
+        <DashboardChartCard
+          title="Monthly Asset Distribution"
+          subtitle={`Assets created per month (current year) · ${scopeLabel}`}
+          action={chartScopeAction}
+        >
+          {dashboardLoading ? (
+            <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
+              {data ? 'Updating chart...' : 'Loading chart...'}
+            </div>
+          ) : (
+            <MonthlyDistributionAreaChart
+              key={`monthly-${distributionChartKey}`}
+              rows={monthlyDistRows}
+            />
+          )}
+        </DashboardChartCard>
       </div>
 
       {/* Location detail modal — map pin only */}
