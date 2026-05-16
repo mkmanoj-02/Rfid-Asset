@@ -11,6 +11,7 @@ export default function ImageUploadField({
   file,
   onFileChange,
   onClear,
+  clearLabel,
   disabled = false,
   hint = 'JPG, PNG or WEBP · max 5MB',
 }) {
@@ -154,7 +155,7 @@ export default function ImageUploadField({
             onClear();
           }}
         >
-          {sourceLabel === 'Custom Image' ? 'Use inherited image' : 'Remove image'}
+          {clearLabel ?? (sourceLabel === 'Custom Image' ? 'Use inherited image' : 'Remove image')}
         </button>
       )}
 

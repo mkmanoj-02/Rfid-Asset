@@ -25,6 +25,13 @@ function formatDetailDate(iso) {
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString();
 }
 
+function isAssetCustomImage(asset) {
+  const flag = asset?.is_custom_image;
+  if (flag === true || flag === 1 || flag === '1') return true;
+  const url = asset?.image_url;
+  return Boolean(url && String(url).includes('/uploads/assets/'));
+}
+
 /** Enter → next field; skips hidden file inputs and optional image upload block */
 function handleAssetFormEnterKey(e, submitButton) {
   if (e.key !== 'Enter') return;
@@ -578,7 +585,9 @@ function AssetDetail({ asset, types, locations, tagTypes, vendors, onBack, onRef
     if (Object.keys(e).length > 0) return;
     setEditSaving(true);
     try {
-      await updateAssetMultipart(asset.id, editForm, editImageFile, { removeCustomImage: revertToInherited });
+      await updateAssetMultipart(asset.id, editForm, editImageFile, {
+        removeCustomImage: revertToInherited && isAssetCustomImage(asset),
+      });
       showToast('Asset updated successfully', 'success');
       setEditModal(false);
       setEditImageFile(null);
@@ -593,12 +602,33 @@ function AssetDetail({ asset, types, locations, tagTypes, vendors, onBack, onRef
 
   const editSelectedType = types.find(t => String(t.id) === String(editForm.asset_type_id));
   const editInheritedUrl = editSelectedType?.image_url ? resolveImageUrl(editSelectedType.image_url) : null;
-  const editPreviewUrl = asset.image_url && Number(asset.is_custom_image) === 1 && !revertToInherited && !editImageFile
-    ? resolveImageUrl(asset.image_url)
-    : (!editImageFile && !revertToInherited ? (editInheritedUrl || resolveImageUrl(asset.image_url)) : null);
+  const assetHasCustomImage = isAssetCustomImage(asset);
+  const showingInheritedImage = !editImageFile && (revertToInherited || !assetHasCustomImage);
+  const editPreviewUrl = editImageFile
+    ? null
+    : (showingInheritedImage
+      ? (editInheritedUrl || resolveImageUrl(asset.image_url))
+      : (asset.image_url ? resolveImageUrl(asset.image_url) : null));
   const editImageSource = editImageFile
     ? 'Custom Image'
-    : (Number(asset.is_custom_image) === 1 && !revertToInherited ? 'Custom Image' : (editInheritedUrl ? 'Inherited Image' : null));
+    : (showingInheritedImage
+      ? ((editInheritedUrl || asset.image_url) ? 'Inherited Image' : null)
+      : 'Custom Image');
+  let editImageOnClear;
+  let editImageClearLabel;
+  if (editImageFile) {
+    editImageOnClear = () => {
+      setEditImageFile(null);
+      setRevertToInherited(false);
+    };
+    editImageClearLabel = 'Remove selected image';
+  } else if (assetHasCustomImage && !revertToInherited) {
+    editImageOnClear = () => setRevertToInherited(true);
+    editImageClearLabel = 'Use inherited image';
+  } else if (assetHasCustomImage && revertToInherited) {
+    editImageOnClear = () => setRevertToInherited(false);
+    editImageClearLabel = 'Keep custom image';
+  }
 
   const saveAttrValues = async () => {
     const payload = Object.entries(attrValues).map(([attribute_id, value]) => ({ attribute_id, value }));
@@ -643,7 +673,29 @@ function AssetDetail({ asset, types, locations, tagTypes, vendors, onBack, onRef
       <div className="detail-topbar">
         <button className="btn btn-secondary btn-sm" onClick={onBack}>← Back to Assets</button>
         <div style={{ display: 'flex', gap: 8 }}>
-          {canModify && <button className="btn btn-secondary" onClick={() => setEditModal(true)}>Edit Asset</button>}
+          {canModify && (
+            <button
+              className="btn btn-secondary"
+              onClick={() => {
+                setEditForm({
+                  asset_serial: asset.asset_serial || '',
+                  rfid_tag: asset.rfid_tag,
+                  tag_type_id: asset.tag_type_id || '',
+                  vendor_id: asset.vendor_id || '',
+                  name: asset.name,
+                  asset_type_id: asset.asset_type_id || '',
+                  current_location_id: asset.current_location_id || '',
+                  status: asset.status,
+                });
+                setEditImageFile(null);
+                setRevertToInherited(false);
+                setEditErrors({});
+                setEditModal(true);
+              }}
+            >
+              Edit Asset
+            </button>
+          )}
           {canModify && <button className="btn btn-primary" onClick={() => { setNewLocationId(asset.current_location_id || ''); setLocationModal(true); }}>Change Location</button>}
         </div>
       </div>
@@ -831,13 +883,9 @@ function AssetDetail({ asset, types, locations, tagTypes, vendors, onBack, onRef
                     previewUrl={editPreviewUrl}
                     sourceLabel={editImageSource}
                     file={editImageFile}
+                    clearLabel={editImageClearLabel}
                     onFileChange={(f) => { setEditImageFile(f); setRevertToInherited(false); }}
-                    onClear={() => {
-                      if (Number(asset.is_custom_image) === 1 || editImageFile) {
-                        setEditImageFile(null);
-                        setRevertToInherited(true);
-                      }
-                    }}
+                    onClear={editImageOnClear}
                   />
                 </div>
               </div>
