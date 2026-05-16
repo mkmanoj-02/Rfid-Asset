@@ -32,6 +32,16 @@ function isAssetCustomImage(asset) {
   return Boolean(url && String(url).includes('/uploads/assets/'));
 }
 
+function enrichAssetFromForm(form, { types, locations, tagTypes, vendors }) {
+  return {
+    ...form,
+    asset_type_name: types.find((t) => String(t.id) === String(form.asset_type_id))?.name,
+    location_name: locations.find((l) => String(l.id) === String(form.current_location_id))?.name,
+    tag_type_name: tagTypes.find((t) => String(t.id) === String(form.tag_type_id))?.name,
+    vendor_name: vendors.find((v) => String(v.id) === String(form.vendor_id))?.name,
+  };
+}
+
 /** Enter → next field; skips hidden file inputs and optional image upload block */
 function handleAssetFormEnterKey(e, submitButton) {
   if (e.key !== 'Enter') return;
@@ -585,14 +595,18 @@ function AssetDetail({ asset, types, locations, tagTypes, vendors, onBack, onRef
     if (Object.keys(e).length > 0) return;
     setEditSaving(true);
     try {
-      await updateAssetMultipart(asset.id, editForm, editImageFile, {
+      const { data } = await updateAssetMultipart(asset.id, editForm, editImageFile, {
         removeCustomImage: revertToInherited && isAssetCustomImage(asset),
       });
       showToast('Asset updated successfully', 'success');
       setEditModal(false);
       setEditImageFile(null);
       setRevertToInherited(false);
-      onRefresh();
+      onRefresh({
+        ...enrichAssetFromForm(editForm, { types, locations, tagTypes, vendors }),
+        image_url: data?.image_url ?? asset.image_url,
+        is_custom_image: data?.is_custom_image ?? asset.is_custom_image,
+      });
     } catch (e) {
       showToast(e.response?.data?.message || 'Update failed', 'error');
     } finally {
@@ -659,7 +673,11 @@ function AssetDetail({ asset, types, locations, tagTypes, vendors, onBack, onRef
     await updateAsset(asset.id, { ...editForm, current_location_id: newLocationId, notes: locationNotes });
     setLocationModal(false);
     setLocationNotes('');
-    onRefresh();
+    onRefresh({
+      ...editForm,
+      current_location_id: newLocationId,
+      location_name: locations.find((l) => String(l.id) === String(newLocationId))?.name,
+    });
   };
 
   const typeName     = types.find(t => t.id === asset.asset_type_id)?.name || '—';
@@ -1549,12 +1567,30 @@ export default function Assets() {
       if (corrected !== limit) {
         setPageSize(corrected);
       }
-    }).catch((e) => toastApiFailure(e, 'Assets list')).finally(() => setLoading(false));
+      return list;
+    }).catch((e) => {
+      toastApiFailure(e, 'Assets list');
+      return [];
+    }).finally(() => setLoading(false));
   };
 
   const load = useCallback(() => {
-    fetchAssets(search, filterLocation, filterType, currentPage, pageSize, sortKey, sortDir);
+    return fetchAssets(search, filterLocation, filterType, currentPage, pageSize, sortKey, sortDir);
   }, [search, filterLocation, filterType, filterInventoryStatus, currentPage, pageSize, sortKey, sortDir]);
+
+  const refreshDetailAsset = useCallback((patch) => {
+    setSelected((prev) => {
+      if (!prev) return null;
+      return patch ? { ...prev, ...patch } : prev;
+    });
+    load().then((list) => {
+      setSelected((prev) => {
+        if (!prev || !list?.length) return prev;
+        const fresh = list.find((i) => i.id === prev.id);
+        return fresh ? { ...prev, ...fresh } : prev;
+      });
+    });
+  }, [load]);
 
   useEffect(() => {
     fetchAssets('', '', '', 1, DEFAULT_PAGE_SIZE, 'created_at', 'desc');
@@ -1815,7 +1851,19 @@ export default function Assets() {
       });
 
   if (selected) {
-    return <AssetDetail asset={selected} types={types} locations={locations} tagTypes={tagTypes} vendors={vendors} onBack={() => setSelected(null)} onRefresh={load} canModify={canModify} canDelete={canDelete} />;
+    return (
+      <AssetDetail
+        asset={selected}
+        types={types}
+        locations={locations}
+        tagTypes={tagTypes}
+        vendors={vendors}
+        onBack={() => setSelected(null)}
+        onRefresh={refreshDetailAsset}
+        canModify={canModify}
+        canDelete={canDelete}
+      />
+    );
   }
 
   return (
