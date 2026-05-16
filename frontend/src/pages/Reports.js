@@ -5,6 +5,7 @@ import {
   CartesianGrid, BarChart, Bar, LabelList,
 } from 'recharts';
 import api from '../api';
+import { toastApiFailure } from '../apiErrorHandling';
 import { exportExcel, exportPDF, exportExcelSections, exportPDFSections } from '../export';
 
 /** List endpoints return `{ from, to, data: [...] }` or a bare array. */
@@ -306,23 +307,25 @@ function DashboardReports() {
 
   const load = () => {
     const params = { from: fromDate, to: toDate };
-    api.get('/reports/inventory-missing', { params }).then(r => setInventoryMissing(r.data)).catch(() => {});
+    api.get('/reports/inventory-missing', { params }).then(r => setInventoryMissing(r.data))
+      .catch((e) => toastApiFailure(e, 'Reports · Inventory'));
     api.get('/reports/assets-by-type', { params }).then((r) => {
       const body = r.data;
       setAssetsByType(reportListPayload(body));
       setExportAssetsByType(reportAssetsPayload(body));
-    }).catch(() => {});
+    }).catch((e) => toastApiFailure(e, 'Reports · Assets by type'));
     api.get('/reports/assets-by-location', { params }).then((r) => {
       const body = r.data;
       setAssetsByLoc(reportListPayload(body));
       setExportAssetsByLocation(reportAssetsPayload(body));
-    }).catch(() => {});
+    }).catch((e) => toastApiFailure(e, 'Reports · By location'));
     api.get('/reports/missing-by-location', { params }).then((r) => {
       const body = r.data;
       setMissingByLoc(reportListPayload(body));
       setExportAssetsMissingByLocation(reportAssetsPayload(body));
-    }).catch(() => {});
-    api.get('/reports/most-active-users', { params }).then(r => setActiveUsers(reportListPayload(r.data))).catch(() => {});
+    }).catch((e) => toastApiFailure(e, 'Reports · Missing by location'));
+    api.get('/reports/most-active-users', { params }).then(r => setActiveUsers(reportListPayload(r.data)))
+      .catch((e) => toastApiFailure(e, 'Reports · Active users'));
   };
 
   useEffect(() => { load(); }, []);
@@ -584,7 +587,7 @@ function TaggingReports() {
   const load = () => {
     api.get('/reports/tagging-progress', { params: { from: fromDate, to: toDate } })
       .then(r => setData(reportListPayload(r.data)))
-      .catch(() => {});
+      .catch((e) => toastApiFailure(e, 'Reports · Tagging'));
   };
   useEffect(() => { load(); }, []);
 

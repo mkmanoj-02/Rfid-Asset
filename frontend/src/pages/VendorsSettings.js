@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getVendors, createVendor, updateVendor, deleteVendor } from '../api';
 import { useToast } from '../Toast';
+import { toastApiFailure } from '../apiErrorHandling';
 
 export default function VendorsSettings() {
   const [items, setItems]     = useState([]);
@@ -16,7 +17,7 @@ export default function VendorsSettings() {
       const updated = r.data.find(v => v.id === selected.id);
       setSelected(updated || null);
     }
-  });
+  }).catch((e) => toastApiFailure(e, 'Vendors'));
 
   useEffect(() => { load(); }, []);
 
@@ -31,16 +32,23 @@ export default function VendorsSettings() {
     try {
       if (editing) { await updateVendor(editing, form); showToast('Vendor updated', 'success'); }
       else         { await createVendor(form);          showToast('Vendor added',   'success'); }
-    } catch (e) { showToast(e.response?.data?.message || 'Save failed', 'error'); return; }
+    } catch (e) {
+      toastApiFailure(e, 'Vendors');
+      return;
+    }
     setModal(false); load();
   };
 
   const remove = async (id) => {
     if (!window.confirm('Delete this vendor?')) return;
-    await deleteVendor(id);
-    showToast('Vendor deleted', 'success');
-    if (selected?.id === id) setSelected(null);
-    load();
+    try {
+      await deleteVendor(id);
+      showToast('Vendor deleted', 'success');
+      if (selected?.id === id) setSelected(null);
+      load();
+    } catch (e) {
+      toastApiFailure(e, 'Vendors');
+    }
   };
 
   return (

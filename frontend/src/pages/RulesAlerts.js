@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import api from '../api';
+import { toastApiFailure } from '../apiErrorHandling';
 
 const FILTER_LABELS = { asset: 'Asset', inventory: 'Inventory', attribute: 'Attribute', maintenance: 'Maintenance' };
 const FILTER_COLORS = { asset: '#7c8cf8', inventory: '#68d391', attribute: '#f6ad55', maintenance: '#fc8181' };
@@ -44,7 +45,8 @@ function RuleWizard({ locations, assetTypes, onClose, onSaved, editRule }) {
   // Load attributes when asset type selected (for attribute filter)
   useEffect(() => {
     if (!form.asset_type_id) { setAllAttrs([]); return; }
-    api.get(`/asset-types/${form.asset_type_id}/attributes`).then(r => setAllAttrs(r.data)).catch(() => {});
+    api.get(`/asset-types/${form.asset_type_id}/attributes`).then(r => setAllAttrs(r.data))
+      .catch((e) => toastApiFailure(e, 'Rule wizard · attributes'));
   }, [form.asset_type_id]);
 
   // Load ALL date attributes across all asset types (for maintenance filter)
@@ -64,20 +66,25 @@ function RuleWizard({ locations, assetTypes, onClose, onSaved, editRule }) {
         });
       }
       setAllDateAttrs(attrs);
-    }).catch(() => {});
+    }).catch((e) => toastApiFailure(e, 'Rule wizard · attributes'));
   }, [filterType]);
 
   const needsDuration = ['stays_at', 'not_scanned', 'is_missing'].includes(form.asset_action);
 
   const save = async () => {
-    if (!form.name.trim()) return alert('Rule name is required');
+    if (!form.name.trim()) {
+      toastApiFailure('Rule name is required', 'Rules');
+      return;
+    }
     const payload = { ...form, filter_type: filterType };
     try {
       if (editRule) await api.put(`/rules/${editRule.id}`, payload);
       else await api.post('/rules', payload);
       onSaved();
       onClose();
-    } catch (e) { alert(e.response?.data?.message || 'Save failed'); }
+    } catch (e) {
+      toastApiFailure(e, 'Rules');
+    }
   };
 
   const totalSteps = filterType === 'asset' ? 4 : filterType === 'inventory' ? 4 : filterType === 'maintenance' ? 4 : 1;
@@ -323,8 +330,16 @@ function RuleWizard({ locations, assetTypes, onClose, onSaved, editRule }) {
 function AlertsTab() {
   const [alerts, setAlerts] = useState([]);
   const [activeTab, setActiveTab] = useState('asset');
+  const loadFailRef = React.useRef(0);
 
-  const load = () => api.get('/alerts', { params: { filter_type: activeTab } }).then(r => setAlerts(r.data));
+  const load = () => api.get('/alerts', { params: { filter_type: activeTab } }).then(r => setAlerts(r.data))
+    .catch((e) => {
+      const now = Date.now();
+      if (now - loadFailRef.current > 12000) {
+        loadFailRef.current = now;
+        toastApiFailure(e, 'Alerts');
+      }
+    });
 
   useEffect(() => {
     load();
@@ -333,9 +348,31 @@ function AlertsTab() {
     return () => clearInterval(interval);
   }, [activeTab]);
 
-  const markAllRead = async () => { await api.put('/alerts/mark-read'); load(); };
-  const clearAll = async () => { if (window.confirm('Clear all alerts?')) { await api.delete('/alerts'); load(); } };
-  const deleteAlert = async (id) => { await api.delete(`/alerts/${id}`); load(); };
+  const markAllRead = async () => {
+    try {
+      await api.put('/alerts/mark-read');
+      load();
+    } catch (e) {
+      toastApiFailure(e, 'Alerts');
+    }
+  };
+  const clearAll = async () => {
+    if (!window.confirm('Clear all alerts?')) return;
+    try {
+      await api.delete('/alerts');
+      load();
+    } catch (e) {
+      toastApiFailure(e, 'Alerts');
+    }
+  };
+  const deleteAlert = async (id) => {
+    try {
+      await api.delete(`/alerts/${id}`);
+      load();
+    } catch (e) {
+      toastApiFailure(e, 'Alerts');
+    }
+  };
 
   const unread = alerts.filter(a => !a.is_read).length;
 
@@ -400,16 +437,27 @@ function RulesTab({ locations, assetTypes }) {
   const [showWizard, setShowWizard] = useState(false);
   const [editRule, setEditRule] = useState(null);
 
-  const load = () => api.get('/rules').then(r => setRules(r.data));
+  const load = () => api.get('/rules').then(r => setRules(r.data))
+    .catch((e) => toastApiFailure(e, 'Rules'));
   useEffect(() => { load(); }, []);
 
   const deleteRule = async (id) => {
-    if (window.confirm('Delete this rule?')) { await api.delete(`/rules/${id}`); load(); }
+    if (!window.confirm('Delete this rule?')) return;
+    try {
+      await api.delete(`/rules/${id}`);
+      load();
+    } catch (e) {
+      toastApiFailure(e, 'Rules');
+    }
   };
 
   const toggleActive = async (rule) => {
-    await api.put(`/rules/${rule.id}`, { ...rule, is_active: !rule.is_active });
-    load();
+    try {
+      await api.put(`/rules/${rule.id}`, { ...rule, is_active: !rule.is_active });
+      load();
+    } catch (e) {
+      toastApiFailure(e, 'Rules');
+    }
   };
 
   return (
@@ -473,12 +521,19 @@ export default function RulesAlerts() {
   const [locations, setLocations] = useState([]);
   const [assetTypes, setAssetTypes] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const unreadFailRef = React.useRef(0);
 
   useEffect(() => {
-    api.get('/locations').then(r => setLocations(r.data));
-    api.get('/asset-types').then(r => setAssetTypes(r.data));
+    api.get('/locations').then(r => setLocations(r.data)).catch((e) => toastApiFailure(e, 'Locations'));
+    api.get('/asset-types').then(r => setAssetTypes(r.data)).catch((e) => toastApiFailure(e, 'Asset types'));
     // Poll unread count every 3s
-    const loadCount = () => api.get('/alerts/unread-count').then(r => setUnreadCount(r.data.count)).catch(() => {});
+    const loadCount = () => api.get('/alerts/unread-count').then(r => setUnreadCount(r.data.count)).catch((e) => {
+      const now = Date.now();
+      if (now - unreadFailRef.current > 12000) {
+        unreadFailRef.current = now;
+        toastApiFailure(e, 'Unread alerts');
+      }
+    });
     loadCount();
     const interval = setInterval(loadCount, 3000);
     return () => clearInterval(interval);

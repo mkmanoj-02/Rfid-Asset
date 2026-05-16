@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import api from '../api';
+import { toastApiFailure } from '../apiErrorHandling';
 
 const TYPE_COLORS = {
   'Login':        { bg: '#dbeafe', color: '#1a56db' },
@@ -45,8 +46,8 @@ export default function AuditLog() {
     if (to) params.to = to;
     if (t && t !== 'all') params.type = t;
     if (s) params.search = s;
-    api.get('/audit-logs', { params }).then(r => setLogs(r.data));
-    api.get('/audit-logs/count').then(r => setTotal(r.data.count));
+    api.get('/audit-logs', { params }).then(r => setLogs(r.data)).catch((e) => toastApiFailure(e, 'Audit log'));
+    api.get('/audit-logs/count').then(r => setTotal(r.data.count)).catch((e) => toastApiFailure(e, 'Audit log count'));
   };
 
   useEffect(() => { load(search, typeFilter, fromDate, toDate); }, []);

@@ -4,6 +4,7 @@ import {
   getTagRecommendations, saveTagRecommendation, deleteTagRecommendation,
   getAssetTypes
 } from '../api';
+import { toastApiFailure } from '../apiErrorHandling';
 
 // ── Tag Types Management ───────────────────────────────────────
 function TagTypesTab() {
@@ -13,7 +14,7 @@ function TagTypesTab() {
   const [editing, setEditing] = useState(null);
   const [error, setError] = useState('');
 
-  const load = () => getTagTypes().then(r => setItems(r.data));
+  const load = () => getTagTypes().then(r => setItems(r.data)).catch((e) => toastApiFailure(e, 'Tag types'));
   useEffect(() => { load(); }, []);
 
   const openAdd = () => { setForm({ name: '', description: '' }); setEditing(null); setError(''); setModal(true); };
@@ -25,11 +26,20 @@ function TagTypesTab() {
       if (editing) await updateTagType(editing, form);
       else await createTagType(form);
       setModal(false); load();
-    } catch (e) { setError(e.response?.data?.message || 'Save failed'); }
+    } catch (e) {
+      toastApiFailure(e, 'Tag types');
+      setError(e.response?.data?.message || 'Save failed');
+    }
   };
 
   const remove = async (id) => {
-    if (window.confirm('Delete this tag type?')) { await deleteTagType(id); load(); }
+    if (!window.confirm('Delete this tag type?')) return;
+    try {
+      await deleteTagType(id);
+      load();
+    } catch (e) {
+      toastApiFailure(e, 'Tag types');
+    }
   };
 
   return (
@@ -91,26 +101,47 @@ function TagRecommendationsTab() {
   const [showAdd, setShowAdd] = useState(false);
 
   const load = async () => {
-    const [rec, at, tt] = await Promise.all([getTagRecommendations(), getAssetTypes(), getTagTypes()]);
-    setRecommendations(rec.data);
-    setAssetTypes(at.data);
-    setTagTypes(tt.data);
+    try {
+      const [rec, at, tt] = await Promise.all([getTagRecommendations(), getAssetTypes(), getTagTypes()]);
+      setRecommendations(rec.data);
+      setAssetTypes(at.data);
+      setTagTypes(tt.data);
+    } catch (e) {
+      toastApiFailure(e, 'Tag recommendations');
+    }
   };
   useEffect(() => { load(); }, []);
 
   const saveEdit = async (asset_type_id) => {
-    await saveTagRecommendation({ asset_type_id, ...editForm });
-    setEditingId(null); load();
+    try {
+      await saveTagRecommendation({ asset_type_id, ...editForm });
+      setEditingId(null);
+      load();
+    } catch (e) {
+      toastApiFailure(e, 'Tag recommendation');
+    }
   };
 
   const saveAdd = async () => {
     if (!addForm.asset_type_id || !addForm.tag_type_id) return;
-    await saveTagRecommendation(addForm);
-    setShowAdd(false); setAddForm({ asset_type_id: '', tag_type_id: '', reason: '' }); load();
+    try {
+      await saveTagRecommendation(addForm);
+      setShowAdd(false);
+      setAddForm({ asset_type_id: '', tag_type_id: '', reason: '' });
+      load();
+    } catch (e) {
+      toastApiFailure(e, 'Tag recommendation');
+    }
   };
 
   const remove = async (asset_type_id) => {
-    if (window.confirm('Remove this recommendation?')) { await deleteTagRecommendation(asset_type_id); load(); }
+    if (!window.confirm('Remove this recommendation?')) return;
+    try {
+      await deleteTagRecommendation(asset_type_id);
+      load();
+    } catch (e) {
+      toastApiFailure(e, 'Tag recommendation');
+    }
   };
 
   // Asset types that don't have a recommendation yet

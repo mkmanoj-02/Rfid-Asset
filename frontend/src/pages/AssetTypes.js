@@ -4,6 +4,7 @@ import {
   getAttributes, createAttribute, updateAttribute, deleteAttribute
 } from '../api';
 import { useToast } from '../Toast';
+import { toastApiFailure } from '../apiErrorHandling';
 import ImageUploadField from '../components/ImageUploadField';
 import { resolveImageUrl } from '../utils/imageUrl';
 
@@ -253,8 +254,13 @@ function AssetTypeCard({ item, allTypes, onEdit, onDelete, onAddSub, onAttribute
   const [attrs, setAttrs] = useState([]);
 
   const loadAttrs = async () => {
-    const r = await getAttributes(item.id);
-    setAttrs(r.data);
+    try {
+      const r = await getAttributes(item.id);
+      setAttrs(r.data);
+    } catch (e) {
+      toastApiFailure(e, 'Attributes');
+      setAttrs([]);
+    }
   };
 
   useEffect(() => { if (expanded) loadAttrs(); }, [expanded]);
@@ -332,7 +338,7 @@ export default function AssetTypes() {
   const canModify = isSuperAdmin || !!currentUser?.asset_type_can_modify;
   const canDelete = isSuperAdmin || !!currentUser?.asset_type_can_delete;
 
-  const load = () => getAssetTypes().then(r => setItems(r.data));
+  const load = () => getAssetTypes().then(r => setItems(r.data)).catch((e) => toastApiFailure(e, 'Asset types'));
   useEffect(() => { load(); }, []);
 
   const openAdd = (parentId = '') => {

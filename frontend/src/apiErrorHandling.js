@@ -16,6 +16,14 @@ export function formatAxiosErrorMessage(error) {
   return error.message || 'Request failed';
 }
 
+/** Show an API/backend failure in the global toast queue (sink set by ToastProvider). */
+export function toastApiFailure(errorLike, contextLabel) {
+  const base = typeof errorLike === 'string' ? errorLike : formatAxiosErrorMessage(errorLike);
+  const msg = contextLabel ? `${contextLabel}: ${base}` : base;
+  if (apiErrorSink) apiErrorSink(msg);
+  else pendingToasts.push(msg);
+}
+
 /**
  * CRA dev server's overlay attaches unhandledrejection before our bundle runs and does not honor
  * preventDefault(). Bootstrap in public/index.html patches addEventListener and exposes
@@ -43,9 +51,7 @@ export function installUnhandledAxiosRejectionHandler() {
     const reason = event.reason;
     if (!axios.isAxiosError(reason)) return;
     event.preventDefault();
-    const msg = formatAxiosErrorMessage(reason);
-    if (apiErrorSink) apiErrorSink(msg);
-    else pendingToasts.push(msg);
+    toastApiFailure(reason);
   });
 }
 

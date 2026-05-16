@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   getAssets, createAssetMultipart, updateAsset, updateAssetMultipart, deleteAsset, bulkDeleteAssets,
   getAssetTypes, getLocations,
@@ -7,6 +7,7 @@ import {
   getTagTypes, createTagType, updateTagType, deleteTagType, getTagRecommendationForAssetType,
   getVendors, createVendor, updateVendor, deleteVendor
 } from '../api';
+import { toastApiFailure } from '../apiErrorHandling';
 import { useToast } from '../Toast';
 import { exportExcel, exportPDF, ExportButtons } from '../export';
 import ImageUploadField from '../components/ImageUploadField';
@@ -97,6 +98,7 @@ function ConfirmModal({ title, message, subMessage, confirmLabel = 'Delete', con
 // ── Add Asset Form ─────────────────────────────────────────────
 function AddAssetModal({ types, locations, tagTypes, vendors, onClose, onSaved }) {
   const { showToast } = useToast();
+  const rfidPollErrLastRef = useRef(0);
   const [form, setForm] = useState({
     asset_serial: '', name: '', rfid_tag: '',
     tag_type_id: '', vendor_id: '',
@@ -118,13 +120,19 @@ function AddAssetModal({ types, locations, tagTypes, vendors, onClose, onSaved }
       const defaults = {};
       r.data.forEach(a => { defaults[a.id] = a.default_value || ''; });
       setAttrValues(defaults);
-    }).catch(() => {});
+    }).catch((e) => toastApiFailure(e, 'Attributes'));
   }, [form.asset_type_id]);
 
   // Poll RFID tags every 2s when picker is open
   useEffect(() => {
     if (!rfidPickerOpen) return;
-    const load = () => getRfidTags().then(r => setRfidTags(r.data)).catch(() => {});
+    const load = () => getRfidTags().then(r => setRfidTags(r.data)).catch((e) => {
+      const now = Date.now();
+      if (now - rfidPollErrLastRef.current > 12000) {
+        rfidPollErrLastRef.current = now;
+        toastApiFailure(e, 'RFID tags');
+      }
+    });
     load();
     const interval = setInterval(load, 2000);
     return () => clearInterval(interval);
@@ -132,7 +140,12 @@ function AddAssetModal({ types, locations, tagTypes, vendors, onClose, onSaved }
 
   const selectRfid = async (tag) => {
     setForm({ ...form, rfid_tag: tag });
-    await removeRfidTag(tag);
+    try {
+      await removeRfidTag(tag);
+    } catch (e) {
+      toastApiFailure(e, 'RFID tag');
+      return;
+    }
     setRfidPickerOpen(false);
   };
 
@@ -415,20 +428,25 @@ function FinancialInfoTab({ assetId, assetName }) {
               purchase_date: r.data.purchase_date?.split('T')[0] || '',
             });
           }
-        }).catch(() => {});
+        }).catch((e) => toastApiFailure(e, 'Financial details'));
     });
   }, [assetId]);
 
   const save = async () => {
     setSaving(true);
-    const { default: axios } = await import('axios');
-    const api = axios.create({ baseURL: '/api' });
-    await api.post('/depreciation/financials', { asset_id: assetId, ...form });
-    setSaving(false); setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-    // Reload
-    const r = await api.get(`/depreciation/financials/${assetId}`);
-    setFinancials(r.data);
+    try {
+      const { default: axios } = await import('axios');
+      const http = axios.create({ baseURL: '/api' });
+      await http.post('/depreciation/financials', { asset_id: assetId, ...form });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+      const r = await http.get(`/depreciation/financials/${assetId}`);
+      setFinancials(r.data);
+    } catch (e) {
+      toastApiFailure(e, 'Financial details');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const bookValue = financials?.current_book_value;
@@ -963,14 +981,18 @@ function BulkChangeLocationModal({ selectedAssets, locations, onClose, onSaved }
   const save = async () => {
     if (!newLocationId) return;
     setLoading(true);
+    let firstErr = null;
     for (const asset of selectedAssets) {
       try {
         await updateAsset(asset.id, {
           ...asset,
           current_location_id: newLocationId,
         });
-      } catch {}
+      } catch (e) {
+        if (!firstErr) firstErr = e;
+      }
     }
+    if (firstErr) toastApiFailure(firstErr, 'Bulk change location');
     setLoading(false);
     onSaved();
     onClose();
@@ -1026,7 +1048,7 @@ function UpdateAttributeModal({ selectedAssets, onClose, onSaved }) {
         }
       }));
       setAllAttrs(attrs);
-    });
+    }).catch((e) => toastApiFailure(e, 'Attributes'));
   }, []);
 
   const handleAttrChange = (id) => {
@@ -1043,6 +1065,7 @@ function UpdateAttributeModal({ selectedAssets, onClose, onSaved }) {
     if (!selAttrId || attrValue === '') return;
     setLoading(true);
     const attr = allAttrs.find(a => String(a.id) === String(selAttrId));
+    let firstErr = null;
     // For each selected asset, find the matching attribute by name and update
     for (const asset of selectedAssets) {
       try {
@@ -1052,8 +1075,11 @@ function UpdateAttributeModal({ selectedAssets, onClose, onSaved }) {
         if (match) {
           await saveAssetAttributes(asset.id, [{ attribute_id: match.attribute_id, value: attrValue }]);
         }
-      } catch {}
+      } catch (e) {
+        if (!firstErr) firstErr = e;
+      }
     }
+    if (firstErr) toastApiFailure(firstErr, 'Bulk update attributes');
     setLoading(false);
     onSaved();
     onClose();
@@ -1419,7 +1445,7 @@ export default function Assets() {
       if (corrected !== limit) {
         setPageSize(corrected);
       }
-    }).finally(() => setLoading(false));
+    }).catch((e) => toastApiFailure(e, 'Assets list')).finally(() => setLoading(false));
   };
 
   const load = useCallback(() => {
@@ -1428,10 +1454,10 @@ export default function Assets() {
 
   useEffect(() => {
     fetchAssets('', '', '', 1, 10, 'created_at', 'desc');
-    getAssetTypes().then(r => setTypes(r.data));
-    getLocations().then(r => setLocations(r.data));
-    getTagTypes().then(r => setTagTypes(r.data)).catch(() => {});
-    getVendors().then(r => setVendors(r.data)).catch(() => {});
+    getAssetTypes().then(r => setTypes(r.data)).catch((e) => toastApiFailure(e, 'Asset types'));
+    getLocations().then(r => setLocations(r.data)).catch((e) => toastApiFailure(e, 'Locations'));
+    getTagTypes().then(r => setTagTypes(r.data)).catch((e) => toastApiFailure(e, 'Tag types'));
+    getVendors().then(r => setVendors(r.data)).catch((e) => toastApiFailure(e, 'Vendors'));
   }, []);
 
   useEffect(() => {
@@ -1505,6 +1531,8 @@ export default function Assets() {
       setItems(list);
       setTotal(tot);
       setTotalPages(totPages);
+    } catch (e) {
+      toastApiFailure(e, 'Assets list');
     } finally {
       setLoading(false);
     }
@@ -1519,9 +1547,13 @@ export default function Assets() {
       confirmLabel: 'Delete',
       confirmStyle: 'danger',
       onConfirm: async () => {
-        await deleteAsset(id);
-        showToast('Asset deleted', 'success');
-        fetchAndClampPage(search, filterLocation, filterType, currentPage, pageSize, sortKey, sortDir);
+        try {
+          await deleteAsset(id);
+          showToast('Asset deleted', 'success');
+          fetchAndClampPage(search, filterLocation, filterType, currentPage, pageSize, sortKey, sortDir);
+        } catch (e) {
+          toastApiFailure(e, 'Delete asset');
+        }
       },
     });
   };
@@ -1536,10 +1568,14 @@ export default function Assets() {
       confirmLabel: 'Delete',
       confirmStyle: 'danger',
       onConfirm: async () => {
-        await bulkDeleteAssets(ids);
-        showToast(`${ids.length} asset${ids.length > 1 ? 's' : ''} deleted`, 'success');
-        setCheckedIds(new Set());
-        fetchAndClampPage(search, filterLocation, filterType, currentPage, pageSize, sortKey, sortDir);
+        try {
+          await bulkDeleteAssets(ids);
+          showToast(`${ids.length} asset${ids.length > 1 ? 's' : ''} deleted`, 'success');
+          setCheckedIds(new Set());
+          fetchAndClampPage(search, filterLocation, filterType, currentPage, pageSize, sortKey, sortDir);
+        } catch (e) {
+          toastApiFailure(e, 'Bulk delete assets');
+        }
       },
     });
   };
@@ -1650,8 +1686,8 @@ export default function Assets() {
     ...exportAttrColumns,
     { header: 'Inventory / Missing', key: '_invLabel' },
   ];
-  const fetchAllForExport = () => {
-    return getAssets({
+  const fetchAllForExport = () =>
+    getAssets({
       search: search || '',
       location_id: filterLocation || '',
       asset_type_id: filterType || '',
@@ -1660,14 +1696,18 @@ export default function Assets() {
       limit: total || 99999,
       sort: sortKey,
       sort_dir: sortDir,
-    }).then(r => {
-      const data = r.data;
-      if (data && data.pagination && Array.isArray(data.data)) return data.data;
-      if (Array.isArray(data)) return data;
-      if (data && Array.isArray(data.assets)) return data.assets;
-      return [];
-    });
-  };
+    })
+      .then((r) => {
+        const data = r.data;
+        if (data && data.pagination && Array.isArray(data.data)) return data.data;
+        if (Array.isArray(data)) return data;
+        if (data && Array.isArray(data.assets)) return data.assets;
+        return [];
+      })
+      .catch((e) => {
+        toastApiFailure(e, 'Export');
+        return [];
+      });
 
   if (selected) {
     return <AssetDetail asset={selected} types={types} locations={locations} tagTypes={tagTypes} vendors={vendors} onBack={() => setSelected(null)} onRefresh={load} canModify={canModify} canDelete={canDelete} />;
@@ -1984,7 +2024,10 @@ function TagTypes({ tagTypes, onReload }) {
     try {
       if (editing) await updateTagType(editing, form);
       else await createTagType(form);
-    } catch (e) { alert(e.response?.data?.message || 'Save failed'); return; }
+    } catch (e) {
+      toastApiFailure(e, 'Tag types');
+      return;
+    }
     setModal(false);
     await onReload();
   };
@@ -1997,9 +2040,13 @@ function TagTypes({ tagTypes, onReload }) {
       confirmLabel: 'Delete',
       confirmStyle: 'danger',
       onConfirm: async () => {
-        await deleteTagType(id);
-        if (selected?.id === id) setSelected(null);
-        await onReload();
+        try {
+          await deleteTagType(id);
+          if (selected?.id === id) setSelected(null);
+          await onReload();
+        } catch (e) {
+          toastApiFailure(e, 'Tag types');
+        }
       },
     });
   };
@@ -2122,7 +2169,7 @@ function Vendors({ vendors, onReload }) {
       if (editing) { await updateVendor(editing, form); showToast('Vendor updated', 'success'); }
       else { await createVendor(form); showToast('Vendor added', 'success'); }
     } catch (e) {
-      showToast(e.response?.data?.message || 'Save failed', 'error');
+      toastApiFailure(e, 'Vendors');
       return;
     }
     setModal(false);
@@ -2137,10 +2184,14 @@ function Vendors({ vendors, onReload }) {
       confirmLabel: 'Delete',
       confirmStyle: 'danger',
       onConfirm: async () => {
-        await deleteVendor(id);
-        showToast('Vendor deleted', 'success');
-        if (selected?.id === id) setSelected(null);
-        await onReload();
+        try {
+          await deleteVendor(id);
+          showToast('Vendor deleted', 'success');
+          if (selected?.id === id) setSelected(null);
+          await onReload();
+        } catch (e) {
+          toastApiFailure(e, 'Vendors');
+        }
       },
     });
   };

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getTagTypes, createTagType, updateTagType, deleteTagType } from '../api';
 import { useToast } from '../Toast';
+import { toastApiFailure } from '../apiErrorHandling';
 
 export default function TagTypesSettings() {
   const [items, setItems]     = useState([]);
@@ -16,7 +17,7 @@ export default function TagTypesSettings() {
       const updated = r.data.find(t => t.id === selected.id);
       setSelected(updated || null);
     }
-  });
+  }).catch((e) => toastApiFailure(e, 'Tag types'));
 
   useEffect(() => { load(); }, []);
 
@@ -28,16 +29,23 @@ export default function TagTypesSettings() {
     try {
       if (editing) { await updateTagType(editing, form); showToast('Tag type updated', 'success'); }
       else         { await createTagType(form);          showToast('Tag type added',   'success'); }
-    } catch (e) { showToast(e.response?.data?.message || 'Save failed', 'error'); return; }
+    } catch (e) {
+      toastApiFailure(e, 'Tag types');
+      return;
+    }
     setModal(false); load();
   };
 
   const remove = async (id) => {
     if (!window.confirm('Delete this tag type?')) return;
-    await deleteTagType(id);
-    showToast('Tag type deleted', 'success');
-    if (selected?.id === id) setSelected(null);
-    load();
+    try {
+      await deleteTagType(id);
+      showToast('Tag type deleted', 'success');
+      if (selected?.id === id) setSelected(null);
+      load();
+    } catch (e) {
+      toastApiFailure(e, 'Tag types');
+    }
   };
 
   return (

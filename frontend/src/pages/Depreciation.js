@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import api from '../api';
+import { toastApiFailure } from '../apiErrorHandling';
 
 const METHODS = ['SLM', 'WDV', 'Declining Balance'];
 const METHOD_DESC = {
@@ -17,27 +18,43 @@ function RulesTab({ assetTypes }) {
   const [editRule, setEditRule] = useState(null);
   const [form, setForm] = useState({ asset_type_id: '', method: 'SLM', useful_life_years: '', depreciation_rate: '', salvage_value: '', effective_from: new Date().toISOString().split('T')[0], stop_on_disposal: true, partial_year: true });
 
-  const load = () => api.get('/depreciation/rules').then(r => setRules(r.data));
+  const load = () => api.get('/depreciation/rules').then(r => setRules(r.data))
+    .catch((e) => toastApiFailure(e, 'Depreciation rules'));
+
   useEffect(() => { load(); }, []);
 
   const openAdd = () => { setForm({ asset_type_id: '', method: 'SLM', useful_life_years: '', depreciation_rate: '', salvage_value: '', effective_from: new Date().toISOString().split('T')[0], stop_on_disposal: true, partial_year: true }); setEditRule(null); setShowForm(true); };
   const openEdit = (r) => { setForm({ asset_type_id: r.asset_type_id, method: r.method, useful_life_years: r.useful_life_years, depreciation_rate: r.depreciation_rate, salvage_value: r.salvage_value, effective_from: r.effective_from?.split('T')[0] || '', stop_on_disposal: !!r.stop_on_disposal, partial_year: !!r.partial_year }); setEditRule(r); setShowForm(true); };
 
   const save = async () => {
+    try {
     const at = assetTypes.find(t => String(t.id) === String(form.asset_type_id));
     const payload = { ...form, asset_type_name: at?.name };
     if (editRule) await api.put(`/depreciation/rules/${editRule.id}`, { ...payload, is_active: editRule.is_active });
     else await api.post('/depreciation/rules', payload);
     setShowForm(false); load();
+    } catch (e) {
+      toastApiFailure(e, 'Depreciation rule');
+    }
   };
 
   const toggleActive = async (rule) => {
-    await api.put(`/depreciation/rules/${rule.id}`, { ...rule, is_active: !rule.is_active });
-    load();
+    try {
+      await api.put(`/depreciation/rules/${rule.id}`, { ...rule, is_active: !rule.is_active });
+      load();
+    } catch (e) {
+      toastApiFailure(e, 'Depreciation rule');
+    }
   };
 
   const remove = async (id) => {
-    if (window.confirm('Delete this rule?')) { await api.delete(`/depreciation/rules/${id}`); load(); }
+    if (!window.confirm('Delete this rule?')) return;
+    try {
+      await api.delete(`/depreciation/rules/${id}`);
+      load();
+    } catch (e) {
+      toastApiFailure(e, 'Depreciation rule');
+    }
   };
 
   // Auto-calculate rate from useful life for SLM
@@ -170,7 +187,8 @@ function RunHistoryTab({ assetTypes }) {
   const [bulkForm, setBulkForm] = useState({ asset_type_id: '', purchase_cost: '', salvage_value: '', purchase_date: '' });
   const [bulkSaving, setBulkSaving] = useState(false);
 
-  const load = () => api.get('/depreciation/history').then(r => setHistory(r.data));
+  const load = () => api.get('/depreciation/history').then(r => setHistory(r.data))
+    .catch((e) => toastApiFailure(e, 'Depreciation history'));
   useEffect(() => { load(); }, []);
 
   const runMonthly = async () => {
@@ -180,23 +198,33 @@ function RunHistoryTab({ assetTypes }) {
       const r = await api.post('/depreciation/run-monthly', runForm);
       alert(`✅ ${r.data.run_code}: ${r.data.processed} assets processed, ₹${parseFloat(r.data.total_depreciation).toLocaleString()} depreciated`);
       load();
-    } catch (e) { alert('Run failed: ' + (e.response?.data?.message || e.message)); }
+    } catch (e) {
+      toastApiFailure(e, 'Monthly depreciation run');
+    }
     setRunning(false);
   };
 
   const bulkSetCost = async () => {
     if (!bulkForm.asset_type_id || !bulkForm.purchase_cost) return alert('Select asset type and enter purchase cost');
     setBulkSaving(true);
-    const r = await api.post('/depreciation/financials/bulk', bulkForm);
-    alert(`✅ Purchase cost set for ${r.data.updated} assets`);
+    try {
+      const r = await api.post('/depreciation/financials/bulk', bulkForm);
+      alert(`✅ Purchase cost set for ${r.data.updated} assets`);
+    } catch (e) {
+      toastApiFailure(e, 'Bulk purchase cost');
+    }
     setBulkSaving(false);
   };
 
   const viewEntries = async (run) => {
     if (expandedRun === run.id) { setExpandedRun(null); return; }
-    const r = await api.get(`/depreciation/history/${run.id}/entries`);
-    setEntries(r.data);
-    setExpandedRun(run.id);
+    try {
+      const r = await api.get(`/depreciation/history/${run.id}/entries`);
+      setEntries(r.data);
+      setExpandedRun(run.id);
+    } catch (e) {
+      toastApiFailure(e, 'Run entries');
+    }
   };
 
   return (
@@ -331,8 +359,12 @@ function CalculatorTab({ rules }) {
   const calculate = async () => {
     if (!form.purchase_cost || !form.depreciation_rate || !form.useful_life_years) return alert('Fill in Purchase Cost, Rate, and Useful Life');
     setLoading(true);
-    const r = await api.post('/depreciation/calculate', form);
-    setSchedule(r.data);
+    try {
+      const r = await api.post('/depreciation/calculate', form);
+      setSchedule(r.data);
+    } catch (e) {
+      toastApiFailure(e, 'Depreciation calculator');
+    }
     setLoading(false);
   };
 
@@ -417,7 +449,9 @@ function CalculatorTab({ rules }) {
 // ── Audit Log Tab ──────────────────────────────────────────────
 function AuditTab() {
   const [logs, setLogs] = useState([]);
-  useEffect(() => { api.get('/depreciation/audit').then(r => setLogs(r.data)); }, []);
+  useEffect(() => {
+    api.get('/depreciation/audit').then(r => setLogs(r.data)).catch((e) => toastApiFailure(e, 'Depreciation audit'));
+  }, []);
 
   return (
     <table>
@@ -445,8 +479,8 @@ export default function Depreciation() {
   const [rules, setRules] = useState([]);
 
   useEffect(() => {
-    api.get('/asset-types').then(r => setAssetTypes(r.data));
-    api.get('/depreciation/rules').then(r => setRules(r.data));
+    api.get('/asset-types').then(r => setAssetTypes(r.data)).catch((e) => toastApiFailure(e, 'Asset types'));
+    api.get('/depreciation/rules').then(r => setRules(r.data)).catch((e) => toastApiFailure(e, 'Depreciation rules'));
   }, []);
 
   return (

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import api from '../api';
+import { toastApiFailure } from '../apiErrorHandling';
 
 const PROFILE_LABELS = {
   super_admin: 'Super Administrator',
@@ -344,7 +345,10 @@ function AssetPrivilegePicker({ current, onClose, onSave }) {
       }
       setAllAttrs(attrs);
       setLoading(false);
-    }).catch(() => setLoading(false));
+    }).catch((e) => {
+      toastApiFailure(e, 'Privileges · attributes');
+      setLoading(false);
+    });
   }, []);
 
   const addEntry = () => {
@@ -485,7 +489,8 @@ function UserForm({ user, locations, assetTypes, onClose, onSaved }) {
       onSaved();
       onClose();
     } catch (e) {
-      setErrors({ submit: e.response?.data?.message || 'Save failed' });
+      toastApiFailure(e, 'Users');
+      setErrors({ submit: e.response?.data?.message || e.message || 'Save failed' });
     }
   };
 
@@ -747,7 +752,7 @@ export default function Users() {
         setUsers(u.data);
         setLocations(l.data);
         setAssetTypes(at.data);
-      });
+      }).catch((e) => toastApiFailure(e, 'Users'));
     } else {
       Promise.all([
         api.get('/users'),
@@ -758,31 +763,39 @@ export default function Users() {
         setMyProfile(me);
         setLocations(l.data);
         setAssetTypes(at.data);
-      });
+      }).catch((e) => toastApiFailure(e, 'Users'));
     }
   }, []);
 
   const reload = async () => {
-    const [u, l, at] = await Promise.all([
-      api.get('/users'),
-      api.get('/locations'),
-      api.get('/asset-types'),
-    ]);
-    setUsers(u.data);
-    setLocations(l.data);
-    setAssetTypes(at.data);
-    if (selected) {
-      const updated = u.data.find(x => x.id === selected.id);
-      setSelected(updated || null);
+    try {
+      const [u, l, at] = await Promise.all([
+        api.get('/users'),
+        api.get('/locations'),
+        api.get('/asset-types'),
+      ]);
+      setUsers(u.data);
+      setLocations(l.data);
+      setAssetTypes(at.data);
+      if (selected) {
+        const updated = u.data.find(x => x.id === selected.id);
+        setSelected(updated || null);
+      }
+    } catch (e) {
+      toastApiFailure(e, 'Users');
     }
   };
 
   const handleDelete = async () => {
     if (!selected || !isSuperAdmin) return;
     if (!window.confirm(`Delete user "${selected.username}"?`)) return;
-    await api.delete(`/users/${selected.id}`);
-    setSelected(null);
-    reload();
+    try {
+      await api.delete(`/users/${selected.id}`);
+      setSelected(null);
+      reload();
+    } catch (e) {
+      toastApiFailure(e, 'Delete user');
+    }
   };
 
   // ── Non-super-admin: show ONLY their own profile, read-only ──

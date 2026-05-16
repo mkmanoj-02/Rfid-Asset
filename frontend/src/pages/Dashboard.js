@@ -3,6 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell, LabelList,
 } from 'recharts';
 import api, { getDashboard, getDashboardLocation, getLocations } from '../api';
+import { toastApiFailure } from '../apiErrorHandling';
 import {
   DashboardChartCard,
   LocationDistributionBarChart,
@@ -122,7 +123,12 @@ export default function Dashboard() {
     setPopupLoading(true);
     getDashboardLocation(popupLocation.id)
       .then(r => { if (!cancelled) setPopupDetail(r.data); })
-      .catch(() => { if (!cancelled) setPopupDetail(null); })
+      .catch((e) => {
+        if (!cancelled) {
+          setPopupDetail(null);
+          toastApiFailure(e, 'Location details');
+        }
+      })
       .finally(() => { if (!cancelled) setPopupLoading(false); });
     return () => { cancelled = true; };
   }, [popupLocation]);
@@ -132,15 +138,17 @@ export default function Dashboard() {
     setDashboardLoading(true);
     getDashboard(selectedLocation?.id ?? null)
       .then(r => { if (!cancelled) setData(r.data); })
-      .catch(console.error)
+      .catch((e) => { if (!cancelled) toastApiFailure(e, 'Dashboard'); })
       .finally(() => { if (!cancelled) setDashboardLoading(false); });
     return () => { cancelled = true; };
   }, [selectedLocation?.id]);
 
   useEffect(() => {
-    api.get('/alerts').then(r => setRecentAlerts(r.data.slice(0, 3))).catch(() => {});
+    api.get('/alerts').then(r => setRecentAlerts(r.data.slice(0, 3)))
+      .catch((e) => toastApiFailure(e, 'Alerts'));
     // Use getLocations() so user_id is automatically attached → server filters by privilege
-    getLocations().then(r => setLocations(r.data)).catch(() => {});
+    getLocations().then(r => setLocations(r.data))
+      .catch((e) => toastApiFailure(e, 'Locations'));
   }, []);
 
   const savePins = (newPins) => {

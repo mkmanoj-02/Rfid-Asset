@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
 import api from '../api';
+import { toastApiFailure } from '../apiErrorHandling';
 
 const SAMPLES = {
   assets: [['Serial', 'Name', 'RFID', 'Asset Type', 'Location', 'Description', 'Attribute1', 'Attribute2']],
@@ -261,7 +262,7 @@ function ImportWizard({ title, fields, endpoint }) {
       setPreview(res.data);
       setAttrCols(unmapped || []);
       setStep(3);
-    } catch (e) { alert('Preview failed: ' + (e.response?.data?.message || e.message)); }
+    } catch (e) { toastApiFailure(e, 'Import · Preview'); }
   };
 
   const handlePreviewClick = async () => {
@@ -284,7 +285,7 @@ function ImportWizard({ title, fields, endpoint }) {
         return;
       }
       await runPreview(mapped, unmapped);
-    } catch (e) { alert('Check failed: ' + (e.response?.data?.message || e.message)); }
+    } catch (e) { toastApiFailure(e, 'Import · Check'); }
     setLoading(false);
   };
 
@@ -295,7 +296,7 @@ function ImportWizard({ title, fields, endpoint }) {
     try {
       await api.post('/import/assets/smartfix', { rows: mappedRows });
       await runPreview(mappedRows, unmapped);
-    } catch (e) { alert('Smart fix failed: ' + (e.response?.data?.message || e.message)); }
+    } catch (e) { toastApiFailure(e, 'Import · Smart fix'); }
     setLoading(false);
   };
 
@@ -303,7 +304,11 @@ function ImportWizard({ title, fields, endpoint }) {
     const { mappedRows, unmapped } = smartFixDialog;
     setSmartFixDialog(null);
     setLoading(true);
-    await runPreview(mappedRows, unmapped);
+    try {
+      await runPreview(mappedRows, unmapped);
+    } catch (e) {
+      toastApiFailure(e, 'Import · Preview');
+    }
     setLoading(false);
   };
 
@@ -313,7 +318,7 @@ function ImportWizard({ title, fields, endpoint }) {
       const res = await api.post(`/import/${endpoint}/execute`, { rows: preview.filter(r => r._status !== 'error') });
       setResult(res.data);
       setStep(4);
-    } catch (e) { alert('Import failed: ' + (e.response?.data?.message || e.message)); }
+    } catch (e) { toastApiFailure(e, 'Import · Execute'); }
     setLoading(false);
   };
 

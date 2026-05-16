@@ -4,6 +4,7 @@ import {
   getLocationTypes, createLocationType, updateLocationType, deleteLocationType,
 } from '../api';
 import { useToast } from '../Toast';
+import { toastApiFailure } from '../apiErrorHandling';
 import ImageUploadField from '../components/ImageUploadField';
 import { resolveImageUrl } from '../utils/imageUrl';
 
@@ -89,13 +90,17 @@ function ManageLocations() {
   const canDelete = isSuperAdmin || !!currentUser?.location_can_delete;
 
   const load = async () => {
-    const [treeRes, flatRes, typesRes] = await Promise.all([getLocationTree(), getLocations(), getLocationTypes()]);
-    setTree(treeRes.data);
-    setFlatList(flatRes.data);
-    setLocationTypes(typesRes.data);
-    if (selected) {
-      const updated = flatRes.data.find(l => l.id === selected.id);
-      setSelected(updated || null);
+    try {
+      const [treeRes, flatRes, typesRes] = await Promise.all([getLocationTree(), getLocations(), getLocationTypes()]);
+      setTree(treeRes.data);
+      setFlatList(flatRes.data);
+      setLocationTypes(typesRes.data);
+      if (selected) {
+        const updated = flatRes.data.find(l => l.id === selected.id);
+        setSelected(updated || null);
+      }
+    } catch (e) {
+      toastApiFailure(e, 'Locations');
     }
   };
 
@@ -151,11 +156,14 @@ function ManageLocations() {
   };
 
   const remove = async (id) => {
-    if (window.confirm('Delete this location and all its children?')) {
+    if (!window.confirm('Delete this location and all its children?')) return;
+    try {
       await deleteLocation(id);
       showToast('Location deleted', 'success');
       if (selected?.id === id) setSelected(null);
       load();
+    } catch (e) {
+      toastApiFailure(e, 'Delete location');
     }
   };
 
@@ -338,7 +346,7 @@ function LocationTypes() {
       const updated = r.data.find(t => t.id === selected.id);
       setSelected(updated || null);
     }
-  });
+  }).catch((e) => toastApiFailure(e, 'Location types'));
 
   useEffect(() => { load(); }, []);
 
@@ -371,11 +379,14 @@ function LocationTypes() {
   };
 
   const remove = async (id) => {
-    if (window.confirm('Delete this location type?')) {
+    if (!window.confirm('Delete this location type?')) return;
+    try {
       await deleteLocationType(id);
       showToast('Location type deleted', 'success');
       if (selected?.id === id) setSelected(null);
       load();
+    } catch (e) {
+      toastApiFailure(e, 'Location types');
     }
   };
 
@@ -518,8 +529,10 @@ function ReorganizeLocations() {
   const [locPickerOpen, setLocPickerOpen] = useState(false);
   const [parentPickerOpen, setParentPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const { showToast } = useToast();
 
-  const load = () => getLocations().then(r => setFlatList(r.data));
+  const load = () => getLocations().then(r => setFlatList(r.data)).catch((e) => toastApiFailure(e, 'Locations'));
+
   useEffect(() => { load(); }, []);
 
   const toggleSelect = (loc) => {
@@ -529,18 +542,18 @@ function ReorganizeLocations() {
   };
 
   const update = async () => {
-    if (!selectedLocations.length) { alert('Please select at least one location.'); return; }
+    if (!selectedLocations.length) { toastApiFailure('Please select at least one location.', 'Reorganize'); return; }
     setSaving(true);
     try {
       for (const loc of selectedLocations) {
         await updateLocation(loc.id, { ...loc, parent_id: newParentId || null });
       }
-      alert(`${selectedLocations.length} location(s) moved successfully.`);
+      showToast(`${selectedLocations.length} location(s) moved successfully.`, 'success');
       setSelectedLocations([]);
       setNewParentId('');
       load();
     } catch (e) {
-      alert(e.response?.data?.message || 'Update failed');
+      toastApiFailure(e, 'Reorganize');
     }
     setSaving(false);
   };

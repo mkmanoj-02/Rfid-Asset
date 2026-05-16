@@ -1,16 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { getMovements, getAssets } from '../api';
+import { toastApiFailure } from '../apiErrorHandling';
 
 export default function Movements() {
   const [movements, setMovements] = useState([]);
   const [assets, setAssets] = useState([]);
   const [filter, setFilter] = useState('');
 
-  const load = (asset_id) => getMovements(asset_id || undefined).then(r => setMovements(r.data));
+  const load = (asset_id) => getMovements(asset_id || undefined)
+    .then(r => setMovements(r.data))
+    .catch((e) => toastApiFailure(e, 'Movements'));
 
   useEffect(() => {
     load();
-    getAssets().then(r => setAssets(r.data));
+    getAssets().then(r => setAssets(r.data)).catch((e) => toastApiFailure(e, 'Assets'));
   }, []);
 
   const handleFilter = (e) => {
