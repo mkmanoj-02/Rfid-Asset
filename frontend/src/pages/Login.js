@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { loginRequest } from '../api';
 import { useAuth } from '../AuthContext';
 import { useToast, useSingleFlight } from '../Toast';
@@ -259,6 +260,7 @@ const CSS = `
 
 export default function Login() {
   const { login }      = useAuth();
+  const navigate       = useNavigate();
   const { showToast }  = useToast();
   const runOnce        = useSingleFlight();
   const [form, setForm]       = useState({ username: '', password: '' });
@@ -277,8 +279,9 @@ export default function Login() {
         if (!accessToken || !refreshToken) {
           throw new Error('Login response missing tokens');
         }
-        showToast(`Welcome, ${user.username}!`, 'success');
         login(user, accessToken, refreshToken);
+        navigate('/', { replace: true });
+        showToast(`Welcome, ${user.username}!`, 'success');
       } catch (err) {
         const msg = err.response?.data?.message || 'Login failed';
         setError(msg);

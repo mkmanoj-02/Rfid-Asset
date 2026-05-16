@@ -1,0 +1,206 @@
+/* ── Dashboard page ─────────────────────────────────────────── */
+.dashboard-page {
+  --dash-surface: #ffffff;
+  --dash-border: #e4e8ef;
+  --dash-muted: #64748b;
+  --dash-text: #0f172a;
+}
+
+.dashboard-page .page-header {
+  margin-bottom: 20px;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dashboard-page .page-header h1 {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--dash-text);
+}
+
+.dashboard-scope {
+  font-size: 13px;
+  color: var(--dash-muted);
+  font-weight: 500;
+}
+
+.dashboard-scope strong {
+  color: #334155;
+}
+
+.dashboard-layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.dashboard-side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.dash-panel {
+  background: var(--dash-surface);
+  border-radius: 14px;
+  border: 1px solid var(--dash-border);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 6px 20px rgba(15, 23, 42, 0.04);
+  overflow: hidden;
+}
+
+.dash-panel__body {
+  padding: 18px;
+}
+
+.dash-panel__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid #eef1f6;
+  background: linear-gradient(180deg, #fafbfc 0%, #fff 100%);
+}
+
+.dash-panel__title {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--dash-text);
+  letter-spacing: -0.01em;
+}
+
+.dash-panel__title-lg {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--dash-text);
+}
+
+.dash-summary-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f1f4f9;
+}
+
+.dash-summary-row:last-child {
+  border-bottom: none;
+}
+
+.dash-summary-row span:first-child {
+  color: var(--dash-muted);
+}
+
+.dash-summary-row strong {
+  font-weight: 700;
+}
+
+.dash-summary-row strong.is-neutral { color: var(--dash-text); }
+.dash-summary-row strong.is-danger { color: #dc2626; }
+.dash-summary-row strong.is-success { color: #059669; }
+.dash-summary-row strong.is-accent { color: #7c3aed; }
+
+.dash-loc-search {
+  padding: 8px 10px;
+  border-bottom: 1px solid #f1f4f9;
+}
+
+.dash-loc-search input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 8px 7px 28px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 12px;
+  background: #f8fafc;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.dash-loc-search input:focus {
+  outline: none;
+  border-color: #a5b4fc;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+  background: #fff;
+}
+
+.dash-loc-tree {
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.dash-map-wrap {
+  position: relative;
+  min-height: 460px;
+  background: linear-gradient(160deg, #e8ecf4 0%, #dfe6f0 100%);
+}
+
+.dash-map-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 460px;
+  color: #94a3b8;
+}
+
+.dash-charts-stack {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dash-charts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(440px, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+
+.dash-chart-card {
+  background: var(--dash-surface);
+  border-radius: 14px;
+  border: 1px solid var(--dash-border);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.05);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.dash-chart-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #eef1f6;
+  background: linear-gradient(180deg, #fafbfc 0%, #fff 100%);
+}
+
+.dash-chart-card__titles { min-width: 0; }
+
+.dash-chart-card__title {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--dash-text);
+  letter-spacing: -0.02em;
+}
+
+.dash-chart-card__subtitle {
+  font-size: 12.5px;
+  color: var(--dash-muted);
+  margin-top: 4px;
+}
+
+.dash-chart-card__body {
+  padding: 14px 18px 20px;
+  flex: 1;
+}
+
+@media (max-width: 900px) {
+  .dashboard-layout {
+    grid-template-columns: 1fr;
+  }
+}

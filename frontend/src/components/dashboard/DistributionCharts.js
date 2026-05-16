@@ -15,12 +15,14 @@ import {
   Area,
 } from 'recharts';
 
-const CHART_PALETTE = [
-  '#38bdf8', '#818cf8', '#f472b6', '#fb923c', '#4ade80', '#a78bfa',
-  '#22d3ee', '#facc15', '#f87171', '#34d399',
-];
-
-const PASTEL_BARS = ['#bfdbfe', '#fecaca', '#fed7aa', '#bbf7d0', '#ddd6fe', '#a5f3fc'];
+import {
+  CHART_ACCENT,
+  CHART_GRID,
+  CHART_PIE_FILLS,
+  CHART_PRIMARY,
+  CHART_TICK,
+  CHART_TICK_MUTED,
+} from './chartTheme';
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -55,8 +57,8 @@ function ChartViewport({ children }) {
   return <div style={chartPlotShellStyle}>{children}</div>;
 }
 
-const TICK = { fontSize: 11, fill: '#94a3b8', fontFamily: 'inherit' };
-const TICK_DARK = { fontSize: 11, fill: '#64748b', fontFamily: 'inherit' };
+const TICK = CHART_TICK_MUTED;
+const TICK_DARK = CHART_TICK;
 
 const TOOLTIP_BOX = {
   background: '#0f172a',
@@ -129,7 +131,6 @@ function ChartEmpty({ message = 'No data for this view' }) {
 }
 
 export function LocationDistributionBarChart({ rows, maxCategories = 12 }) {
-  const gradId = useId().replace(/:/g, '');
   const data = useMemo(
     () => normalizeLocationRows(rows).slice(0, maxCategories),
     [rows, maxCategories],
@@ -145,7 +146,13 @@ export function LocationDistributionBarChart({ rows, maxCategories = 12 }) {
     <ChartViewport>
       <ResponsiveContainer width="100%" height="100%">
       <BarChart data={data} margin={DIST_CHART_MARGIN}>
-        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+        <defs>
+          <linearGradient id="dashLocSky" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#3BB5F5" />
+            <stop offset="100%" stopColor="#A8E4F9" />
+          </linearGradient>
+        </defs>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID} />
         <XAxis
           dataKey="name"
           tick={TICK_DARK}
@@ -167,19 +174,10 @@ export function LocationDistributionBarChart({ rows, maxCategories = 12 }) {
           allowDecimals={false}
           tickFormatter={(v) => v.toLocaleString()}
         />
-        <Tooltip content={<BarAreaTooltip />} cursor={{ fill: 'rgba(56, 189, 248, 0.08)' }} />
-        <defs>
-          <linearGradient id={`locBarGrad-${gradId}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#38bdf8" />
-            <stop offset="100%" stopColor="#e0f2fe" />
-          </linearGradient>
-        </defs>
-        <Bar dataKey="count" radius={[8, 8, 0, 0]} maxBarSize={52}>
-          {data.map((entry, index) => (
-            <Cell
-              key={entry.name}
-              fill={index === 0 ? `url(#locBarGrad-${gradId})` : PASTEL_BARS[(index - 1) % PASTEL_BARS.length]}
-            />
+        <Tooltip content={<BarAreaTooltip />} cursor={{ fill: 'rgba(59, 181, 245, 0.1)' }} />
+        <Bar dataKey="count" radius={[10, 10, 0, 0]} maxBarSize={52} fill="url(#dashLocSky)">
+          {data.map((entry) => (
+            <Cell key={entry.name} fill="url(#dashLocSky)" />
           ))}
         </Bar>
       </BarChart>
@@ -222,7 +220,7 @@ export function LocationDistributionPieChart({ rows, maxCategories = 8 }) {
           strokeWidth={0}
         >
           {data.map((entry, i) => (
-            <Cell key={entry.name} fill={CHART_PALETTE[i % CHART_PALETTE.length]} />
+            <Cell key={entry.name} fill={CHART_PIE_FILLS[i % CHART_PIE_FILLS.length]} />
           ))}
         </Pie>
         <Tooltip content={<PieTooltip />} />
@@ -267,11 +265,11 @@ export function MonthlyDistributionAreaChart({ rows }) {
       <AreaChart data={data} margin={DIST_CHART_MARGIN}>
         <defs>
           <linearGradient id={`monthArea-${gradId}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#38bdf8" stopOpacity={0.35} />
-            <stop offset="100%" stopColor="#38bdf8" stopOpacity={0.02} />
+            <stop offset="0%" stopColor="#3BB5F5" stopOpacity={0.35} />
+            <stop offset="100%" stopColor="#3BB5F5" stopOpacity={0.02} />
           </linearGradient>
         </defs>
-        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID} />
         <XAxis
           dataKey="month"
           tick={TICK_DARK}
@@ -293,11 +291,11 @@ export function MonthlyDistributionAreaChart({ rows }) {
         <Area
           type="monotone"
           dataKey="count"
-          stroke="#38bdf8"
-          strokeWidth={2.5}
+          stroke="#3BB5F5"
+          strokeWidth={2}
           fill={`url(#monthArea-${gradId})`}
-          dot={{ r: 4, fill: '#38bdf8', strokeWidth: 0 }}
-          activeDot={{ r: 6, fill: '#0ea5e9', stroke: '#fff', strokeWidth: 2 }}
+          dot={{ r: 3, fill: '#3BB5F5', strokeWidth: 0 }}
+          activeDot={{ r: 5, fill: CHART_ACCENT, stroke: '#fff', strokeWidth: 2 }}
         />
       </AreaChart>
       </ResponsiveContainer>

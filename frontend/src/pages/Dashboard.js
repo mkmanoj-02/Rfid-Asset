@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import {
-  BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell, LabelList,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip, Cell, LabelList,
 } from 'recharts';
+import { Package, MapPin, Layers, ScanLine, CircleOff } from 'lucide-react';
 import api, { getDashboard, getDashboardLocation, getLocations } from '../api';
 import { toastApiFailure } from '../apiErrorHandling';
 import {
@@ -10,13 +11,18 @@ import {
   MonthlyDistributionAreaChart,
   chartLoadingShellStyle,
 } from '../components/dashboard/DistributionCharts';
+import { STAT_CARD_CLASS, CHART_GRID } from '../components/dashboard/chartTheme';
 import LocationDetailPopup from '../components/LocationDetailPopup';
+import './Dashboard.css';
 const MAP_STORAGE_KEY = 'rfid_dashboard_map_image';
 const PINS_STORAGE_KEY = 'rfid_dashboard_pins'; // { locationId: { x%, y% } }
 
-const CHART_PALETTE = [
-  '#2563EB', '#7C3AED', '#059669', '#D97706', '#DC2626',
-  '#0D9488', '#4F46E5', '#DB2777', '#0891B2', '#65A30D',
+const STAT_METRICS = [
+  { label: 'Total Assets', key: 'total_assets', icon: Package, tone: 'assets' },
+  { label: 'Locations', key: 'total_locations', icon: MapPin, tone: 'locations' },
+  { label: 'Asset Types', key: 'total_types', icon: Layers, tone: 'types' },
+  { label: 'Tagged', key: 'tagged', icon: ScanLine, tone: 'tagged' },
+  { label: 'Untagged', key: 'untagged', icon: CircleOff, tone: 'untagged' },
 ];
 
 function buildLocationTree(items, parentId = null) {
@@ -68,7 +74,7 @@ function AssetTypeBarChart({ rows }) {
     () => [...rows].sort((a, b) => b.count - a.count),
     [rows],
   );
-  const h = Math.min(400, Math.max(160, data.length * 28 + 48));
+  const h = Math.min(400, Math.max(160, data.length * 32 + 48));
   if (data.length === 0) {
     return (
       <div style={{ padding: 28, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
@@ -80,12 +86,35 @@ function AssetTypeBarChart({ rows }) {
     <div style={{ overflowY: 'auto', maxHeight: 440 }}>
       <ResponsiveContainer width="100%" height={h}>
         <BarChart data={data} layout="vertical" margin={{ top: 8, right: 48, left: 8, bottom: 8 }}>
+          <defs>
+            <linearGradient id="dashAssetBlue" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="#4F9CE8" />
+              <stop offset="100%" stopColor="#C5E3FA" />
+            </linearGradient>
+            <linearGradient id="dashAssetPurple" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="#9B7EDE" />
+              <stop offset="100%" stopColor="#D8CCF5" />
+            </linearGradient>
+            <linearGradient id="dashAssetCoral" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="#EF8A82" />
+              <stop offset="100%" stopColor="#F5C4BE" />
+            </linearGradient>
+            <linearGradient id="dashAssetMint" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="#5CB8A8" />
+              <stop offset="100%" stopColor="#B8E8DE" />
+            </linearGradient>
+            <linearGradient id="dashAssetSky" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="#38BDF8" />
+              <stop offset="100%" stopColor="#BAE6FD" />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_GRID} />
           <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
           <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 11, fill: '#334155' }} axisLine={false} tickLine={false} />
           <Tooltip formatter={(v) => [v, 'Assets']} />
-          <Bar dataKey="count" radius={[0, 5, 5, 0]} maxBarSize={22}>
+          <Bar dataKey="count" radius={[0, 10, 10, 0]} maxBarSize={26}>
             {data.map((_, i) => (
-              <Cell key={`${i}-${data[i].name}`} fill={CHART_PALETTE[i % CHART_PALETTE.length]} />
+              <Cell key={`${i}-${data[i].name}`} fill={['url(#dashAssetBlue)', 'url(#dashAssetPurple)', 'url(#dashAssetCoral)', 'url(#dashAssetMint)', 'url(#dashAssetSky)'][i % 5]} />
             ))}
             <LabelList dataKey="count" position="right" style={{ fontSize: 11, fill: '#64748b', fontWeight: 600 }} />
           </Bar>
@@ -302,33 +331,40 @@ export default function Dashboard() {
   }
 
   return (
-    <div>
+    <div className="dashboard-page">
       <div className="page-header">
         <h1>Dashboard</h1>
         {selectedLocation && (
-          <p style={{ margin: '6px 0 0', fontSize: 14, color: '#64748b', fontWeight: 500 }}>
-            Showing metrics for <strong style={{ color: '#1a1f36' }}>{scopeLabel}</strong>
+          <p className="dashboard-scope">
+            Showing metrics for <strong>{scopeLabel}</strong>
           </p>
         )}
       </div>
 
       {/* Stat cards */}
-      <div className="stat-cards" style={{ marginBottom: 20 }}>
-        {[
-          { label: 'Total Assets', value: dashboardLoading ? '...' : (data?.total_assets ?? '—'), icon: '📦' },
-          { label: 'Locations', value: dashboardLoading ? '...' : (data?.total_locations ?? '—'), icon: '📍' },
-          { label: 'Asset Types', value: dashboardLoading ? '...' : (data?.total_types ?? '—'), icon: '🏷️' },
-          { label: 'Tagged', value: dashboardLoading ? '...' : (data?.rfid_breakdown?.tagged ?? '—'), icon: '🔖' },
-          { label: 'Untagged', value: dashboardLoading ? '...' : (data?.rfid_breakdown?.untagged ?? '—'), icon: '🚫' },
-        ].map(({ label, value, icon }) => (
-          <div className="stat-card" key={label}>
-            <span className="stat-icon">{icon}</span>
-            <div className="stat-info">
-              <span className="value">{value}</span>
-              <span className="label">{label}</span>
+      <div className="stat-cards">
+        {STAT_METRICS.map(({ label, key, icon: Icon, tone }) => {
+          let value = '—';
+          if (!dashboardLoading) {
+            if (key === 'tagged') value = data?.rfid_breakdown?.tagged ?? '—';
+            else if (key === 'untagged') value = data?.rfid_breakdown?.untagged ?? '—';
+            else value = data?.[key] ?? '—';
+          } else value = '...';
+          return (
+            <div
+              className={`stat-card ${STAT_CARD_CLASS[tone]}`}
+              key={label}
+            >
+              <div className="stat-icon-wrap">
+                <Icon size={22} strokeWidth={2} aria-hidden />
+              </div>
+              <div className="stat-info">
+                <span className="value">{value}</span>
+                <span className="label">{label}</span>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Main layout */}
