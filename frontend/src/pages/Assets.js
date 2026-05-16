@@ -13,6 +13,18 @@ import { exportExcel, exportPDF, ExportButtons } from '../export';
 import ImageUploadField from '../components/ImageUploadField';
 import { resolveImageUrl } from '../utils/imageUrl';
 
+function detailDisplay(value) {
+  if (value == null) return '—';
+  const s = String(value).trim();
+  return s === '' ? '—' : s;
+}
+
+function formatDetailDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString();
+}
+
 /** Enter → next field; skips hidden file inputs and optional image upload block */
 function handleAssetFormEnterKey(e, submitButton) {
   if (e.key !== 'Enter') return;
@@ -651,14 +663,24 @@ function AssetDetail({ asset, types, locations, tagTypes, vendors, onBack, onRef
           </div>
         )}
         <div className="detail-fields" style={{ flex: 1, minWidth: 240 }}>
-          <div className="detail-row"><span className="detail-label">Asset Name</span><span>: {asset.name}</span></div>
-          <div className="detail-row"><span className="detail-label">RFID Tag</span><span>: <code>{asset.rfid_tag}</code></span></div>
-          <div className="detail-row"><span className="detail-label">Asset Type</span><span>: {typeName}</span></div>
-          <div className="detail-row"><span className="detail-label">Tag Type</span><span>: {tagTypeName}</span></div>
-          <div className="detail-row"><span className="detail-label">Vendor</span><span>: {vendorName}</span></div>
-          <div className="detail-row"><span className="detail-label">Last Known Location</span><span>: {locationName}</span></div>
+          <div className="detail-row"><span className="detail-label">Asset Name</span><span>: {detailDisplay(asset.name)}</span></div>
+          <div className="detail-row">
+            <span className="detail-label">RFID Tag</span>
+            <span>
+              :{' '}
+              {detailDisplay(asset.rfid_tag) === '—' ? (
+                '—'
+              ) : (
+                <code>{asset.rfid_tag}</code>
+              )}
+            </span>
+          </div>
+          <div className="detail-row"><span className="detail-label">Asset Type</span><span>: {detailDisplay(typeName)}</span></div>
+          <div className="detail-row"><span className="detail-label">Tag Type</span><span>: {detailDisplay(tagTypeName)}</span></div>
+          <div className="detail-row"><span className="detail-label">Vendor</span><span>: {detailDisplay(vendorName)}</span></div>
+          <div className="detail-row"><span className="detail-label">Last Known Location</span><span>: {detailDisplay(locationName)}</span></div>
           <div className="detail-row"><span className="detail-label">Status</span><span>: {statusBadge(asset.status)}</span></div>
-          <div className="detail-row"><span className="detail-label">Created</span><span>: {new Date(asset.created_at).toLocaleString()}</span></div>
+          <div className="detail-row"><span className="detail-label">Created</span><span>: {formatDetailDate(asset.created_at)}</span></div>
         </div>
       </div>
 
