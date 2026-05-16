@@ -68,6 +68,15 @@ function addUnhandledRejectionListener(handler, options) {
  * CRA dev overlay reacts to unhandled promise rejections. Register via the native bypass so Axios
  * errors surface as app toasts instead of a fullscreen webpack overlay.
  */
+function isAuthClientRequest(config) {
+  const url = config?.url || '';
+  return (
+    url.includes('/auth/login')
+    || url.includes('/auth/refresh-token')
+    || url.includes('/auth/logout')
+  );
+}
+
 export function installUnhandledAxiosRejectionHandler() {
   if (typeof window === 'undefined') return;
 
@@ -75,6 +84,7 @@ export function installUnhandledAxiosRejectionHandler() {
     const reason = event.reason;
     if (!axios.isAxiosError(reason)) return;
     event.preventDefault();
+    if (isAuthClientRequest(reason.config)) return;
     toastApiFailure(reason);
   });
 }

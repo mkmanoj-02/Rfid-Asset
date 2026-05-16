@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { loginRequest } from '../api';
 import { useAuth } from '../AuthContext';
-import { useToast } from '../Toast';
+import { useToast, useSingleFlight } from '../Toast';
 
 const CSS = `
   * { box-sizing: border-box; }
@@ -260,29 +260,33 @@ const CSS = `
 export default function Login() {
   const { login }      = useAuth();
   const { showToast }  = useToast();
+  const runOnce        = useSingleFlight();
   const [form, setForm]       = useState({ username: '', password: '' });
   const [error, setError]     = useState('');
   const [loading, setLoading] = useState(false);
   const [showPw, setShowPw]   = useState(false);
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
-    setError('');
-    setLoading(true);
-    try {
-      const res = await loginRequest(form);
-      const { user, accessToken, refreshToken } = res.data;
-      if (!accessToken || !refreshToken) {
-        throw new Error('Login response missing tokens');
+    runOnce(async () => {
+      setError('');
+      setLoading(true);
+      try {
+        const res = await loginRequest(form);
+        const { user, accessToken, refreshToken } = res.data;
+        if (!accessToken || !refreshToken) {
+          throw new Error('Login response missing tokens');
+        }
+        showToast(`Welcome, ${user.username}!`, 'success');
+        login(user, accessToken, refreshToken);
+      } catch (err) {
+        const msg = err.response?.data?.message || 'Login failed';
+        setError(msg);
+        showToast(msg, 'error');
+      } finally {
+        setLoading(false);
       }
-      showToast(`Welcome, ${user.username}!`, 'success');
-      login(user, accessToken, refreshToken);
-    } catch (err) {
-      const msg = err.response?.data?.message || 'Login failed';
-      setError(msg);
-      showToast(msg, 'error');
-    }
-    setLoading(false);
+    });
   };
 
   return (
