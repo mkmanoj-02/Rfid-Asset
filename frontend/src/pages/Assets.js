@@ -946,8 +946,8 @@ function inventoryStatusLabel(st) {
 }
 
 const assetTableThumbStyle = {
-  width: 40,
-  height: 40,
+  width: 32,
+  height: 32,
   borderRadius: 6,
   flexShrink: 0,
   overflow: 'hidden',
