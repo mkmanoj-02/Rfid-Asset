@@ -6,6 +6,7 @@ import {
 import { useToast } from '../Toast';
 import { toastApiFailure } from '../apiErrorHandling';
 import ImageUploadField from '../components/ImageUploadField';
+import ConfirmModal from '../components/ConfirmModal';
 import { resolveImageUrl } from '../utils/imageUrl';
 
 function locationNodeMatches(node, q) {
@@ -79,6 +80,7 @@ function ManageLocations() {
   const [removeImage, setRemoveImage] = useState(false);
   const [saving, setSaving] = useState(false);
   const [manageSearch, setManageSearch] = useState('');
+  const [confirmDialog, setConfirmDialog] = useState(null);
   const { showToast } = useToast();
 
   const manageQuery = manageSearch.trim().toLowerCase();
@@ -155,16 +157,29 @@ function ManageLocations() {
     }
   };
 
-  const remove = async (id) => {
-    if (!window.confirm('Delete this location and all its children?')) return;
-    try {
-      await deleteLocation(id);
-      showToast('Location deleted', 'success');
-      if (selected?.id === id) setSelected(null);
-      load();
-    } catch (e) {
-      toastApiFailure(e, 'Delete location');
+  const remove = (id) => {
+    if (!canDelete) {
+      showToast('You do not have permission to delete locations', 'error');
+      return;
     }
+    const item = flatList.find((l) => l.id === id);
+    setConfirmDialog({
+      title: 'Delete Location',
+      message: `Are you sure you want to delete "${item?.name || 'this location'}"?`,
+      subMessage: 'All sub-locations under this location will also be deleted. This action cannot be undone.',
+      confirmLabel: 'Delete',
+      confirmStyle: 'danger',
+      onConfirm: async () => {
+        try {
+          await deleteLocation(id);
+          showToast('Location deleted', 'success');
+          if (selected?.id === id) setSelected(null);
+          load();
+        } catch (e) {
+          toastApiFailure(e, 'Delete location');
+        }
+      },
+    });
   };
 
   const children = selected ? flatList.filter(l => l.parent_id === selected.id) : [];
@@ -323,6 +338,18 @@ function ManageLocations() {
           </div>
         </div>
       )}
+
+      {confirmDialog && (
+        <ConfirmModal
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          subMessage={confirmDialog.subMessage}
+          confirmLabel={confirmDialog.confirmLabel}
+          confirmStyle={confirmDialog.confirmStyle}
+          onConfirm={() => { confirmDialog.onConfirm(); setConfirmDialog(null); }}
+          onCancel={() => setConfirmDialog(null)}
+        />
+      )}
     </div>
   );
 }
@@ -335,6 +362,7 @@ function LocationTypes() {
   const [form, setForm] = useState({ name: '', description: '' });
   const [editing, setEditing] = useState(null);
   const [typesSearch, setTypesSearch] = useState('');
+  const [confirmDialog, setConfirmDialog] = useState(null);
   const { showToast } = useToast();
 
   const currentUser = (() => { try { return JSON.parse(sessionStorage.getItem('rfid_user') || 'null'); } catch { return null; } })();
@@ -380,16 +408,29 @@ function LocationTypes() {
     setModal(false); load();
   };
 
-  const remove = async (id) => {
-    if (!window.confirm('Delete this location type?')) return;
-    try {
-      await deleteLocationType(id);
-      showToast('Location type deleted', 'success');
-      if (selected?.id === id) setSelected(null);
-      load();
-    } catch (e) {
-      toastApiFailure(e, 'Location types');
+  const remove = (id) => {
+    if (!canDelete) {
+      showToast('You do not have permission to delete location types', 'error');
+      return;
     }
+    const item = types.find((t) => t.id === id);
+    setConfirmDialog({
+      title: 'Delete Location Type',
+      message: `Are you sure you want to delete "${item?.name || 'this location type'}"?`,
+      subMessage: 'This action cannot be undone. Locations already using this type may need to be updated.',
+      confirmLabel: 'Delete',
+      confirmStyle: 'danger',
+      onConfirm: async () => {
+        try {
+          await deleteLocationType(id);
+          showToast('Location type deleted', 'success');
+          if (selected?.id === id) setSelected(null);
+          load();
+        } catch (e) {
+          toastApiFailure(e, 'Delete location type');
+        }
+      },
+    });
   };
 
   const typesLeftRef = useRef(null);
@@ -518,6 +559,18 @@ function LocationTypes() {
             </div>
           </div>
         </div>
+      )}
+
+      {confirmDialog && (
+        <ConfirmModal
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          subMessage={confirmDialog.subMessage}
+          confirmLabel={confirmDialog.confirmLabel}
+          confirmStyle={confirmDialog.confirmStyle}
+          onConfirm={() => { confirmDialog.onConfirm(); setConfirmDialog(null); }}
+          onCancel={() => setConfirmDialog(null)}
+        />
       )}
     </div>
   );
