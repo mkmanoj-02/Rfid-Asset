@@ -1,6 +1,37 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
+    <!-- Runs before webpack-dev-server overlay client: hides fullscreen overlay for Axios rejections only. -->
+    <script>
+(function () {
+  try {
+    var proto = typeof EventTarget !== 'undefined' ? EventTarget.prototype : null;
+    if (!proto || typeof proto.addEventListener !== 'function') return;
+    var origAdd = proto.addEventListener;
+    function isHandledAxiosRejection(reason) {
+      if (!reason || typeof reason !== 'object') return false;
+      if (reason.isAxiosError === true) return true;
+      return reason.name === 'AxiosError';
+    }
+    window.__rfidNativeAddUnhandled = function (listener, options) {
+      origAdd.call(window, 'unhandledrejection', listener, options);
+    };
+    proto.addEventListener = function (type, listener, options) {
+      if (type === 'unhandledrejection' && typeof listener === 'function') {
+        var wrapped = function (event) {
+          if (isHandledAxiosRejection(event.reason)) {
+            if (typeof event.preventDefault === 'function') event.preventDefault();
+            return;
+          }
+          return listener.call(this, event);
+        };
+        return origAdd.call(this, type, wrapped, options);
+      }
+      return origAdd.call(this, type, listener, options);
+    };
+  } catch (_) { /* noop */ }
+})();
+    </script>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>RFID Asset Management</title>

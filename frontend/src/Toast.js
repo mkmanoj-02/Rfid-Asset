@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { setApiErrorToastSink, clearApiErrorToastSink } from './apiErrorHandling';
 
 const ToastContext = createContext(null);
 
@@ -18,6 +19,12 @@ export function ToastProvider({ children }) {
     setToasts(prev => [...prev, { id, message, type }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), duration);
   }, []);
+
+  useEffect(() => {
+    const duration = 5500;
+    setApiErrorToastSink((msg) => showToast(msg, 'error', duration));
+    return () => clearApiErrorToastSink();
+  }, [showToast]);
 
   const removeToast = (id) => setToasts(prev => prev.filter(t => t.id !== id));
 
