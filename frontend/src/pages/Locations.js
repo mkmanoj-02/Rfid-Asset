@@ -276,8 +276,9 @@ function ManageLocations() {
 
       {modal && (
         <div className="modal-overlay">
-          <div className="modal">
+          <div className="modal location-form-modal">
             <h2>{editing ? 'Edit Location' : 'Add Location'}</h2>
+            <div className="location-form-body">
             <div className="form-group">
               <label>Location Name <span style={{ color: '#e53e3e' }}>*</span></label>
               <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Enter location name" />
@@ -311,6 +312,7 @@ function ManageLocations() {
                 onFileChange={(f) => { setImageFile(f); setRemoveImage(false); }}
                 onClear={() => { setImageFile(null); setRemoveImage(true); }}
               />
+            </div>
             </div>
             <div className="modal-actions">
               <button className="btn btn-secondary" onClick={() => setModal(false)} disabled={saving}>Cancel</button>
