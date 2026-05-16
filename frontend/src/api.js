@@ -30,6 +30,17 @@ function isAuthRoute(url) {
   );
 }
 
+/**
+ * Backend verifyToken returns 401 when Bearer missing, 403 with code TOKEN_EXPIRED / TOKEN_INVALID for JWT failures.
+ */
+function shouldAttemptTokenRefresh(error) {
+  const status = error.response?.status;
+  const code = error.response?.data?.code;
+  if (status === 401) return true;
+  if (status === 403 && (code === 'TOKEN_EXPIRED' || code === 'TOKEN_INVALID')) return true;
+  return false;
+}
+
 async function refreshAccessToken() {
   if (refreshPromise) return refreshPromise;
 
@@ -82,13 +93,12 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const original = error.config;
-    const status = error.response?.status;
 
     if (!original || isAuthRoute(original.url)) {
       return Promise.reject(error);
     }
 
-    if (status !== 401) {
+    if (!shouldAttemptTokenRefresh(error)) {
       return Promise.reject(error);
     }
 
