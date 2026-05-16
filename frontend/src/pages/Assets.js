@@ -1681,6 +1681,7 @@ export default function Assets() {
   const selectedAssets = pagedItems.filter(i => checkedIds.has(i.id));
   const hasFilters = search || filterLocation || filterType || filterInventoryStatus;
   const tableColSpan = 12 + tableAttrColumns.length;
+  const tableMinWidth = 1120 + tableAttrColumns.length * 132;
 
   const handleTableAttrColumnsChange = useCallback((next) => {
     const cleaned = (Array.isArray(next) ? next : []).slice(0, MAX_ASSET_TABLE_ATTR_COLUMNS);
@@ -1756,7 +1757,8 @@ export default function Assets() {
   }
 
   return (
-    <div>
+    <div className="assets-page">
+      <div className="assets-page-top">
       <div className="page-header">
         <h1>Assets</h1>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1800,17 +1802,7 @@ export default function Assets() {
       </div>
 
       {/* Search + Filter bar */}
-      <div style={{
-        background: '#fff',
-        borderRadius: 8,
-        padding: '12px 16px',
-        boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
-        marginBottom: 16,
-        display: 'flex',
-        gap: 10,
-        alignItems: 'center',
-        flexWrap: 'wrap',
-      }}>
+      <div className="assets-page-filters">
         <div style={{ position: 'relative', flex: '1 1 220px', minWidth: 180 }}>
           <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', display: 'flex', alignItems: 'center', pointerEvents: 'none' }}>
             <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
@@ -1873,15 +1865,12 @@ export default function Assets() {
         </div>
       </div>
 
-      <div style={{
-        background: '#fff',
-        borderRadius: 12,
-        boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-        border: '1px solid #e8edf2',
-        overflow: 'hidden',
-      }}>
-        <div style={{ overflowX: 'auto', width: '100%' }}>
-          <table style={{ width: '100%', borderRadius: 0, boxShadow: 'none', border: 'none', minWidth: 1080 + tableAttrColumns.length * 132 }}>
+      </div>
+
+      <div className="assets-page-table-wrap">
+      <div className="assets-page-table-card">
+        <div className="assets-table-scroll">
+          <table className="assets-data-table" style={{ minWidth: tableMinWidth }}>
             <thead>
               <tr>
                 <th style={{ width: 36, padding: '10px 12px' }}>
@@ -1966,7 +1955,7 @@ export default function Assets() {
 
         {/* Pagination bar */}
         {total > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderTop: '1px solid #f0f4f8', flexWrap: 'wrap', gap: 10 }}>
+          <div className="assets-page-pagination">
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#555' }}>
               <span>Rows per page:</span>
               <select
@@ -2029,6 +2018,7 @@ export default function Assets() {
             </div>
           </div>
         )}
+      </div>
       </div>
       {modal && <AddAssetModal types={types} locations={locations} tagTypes={tagTypes} vendors={vendors} onClose={() => setModal(false)} onSaved={() => fetchAssets(search, filterLocation, filterType, currentPage, pageSize, sortKey, sortDir)} />}
       {updateAttrModal && (
