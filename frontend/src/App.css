@@ -360,15 +360,6 @@ tr:hover td { background: #f8fafc; }
   background: #fff;
   z-index: 2;
 }
-.assets-page-pagination-selected {
-  font-size: 12px;
-  font-weight: 600;
-  color: #1565c0;
-  background: #eff6ff;
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1px solid #bfdbfe;
-}
 
 /* ── Assets table — extra columns (inline panel above table) ─ */
 .assets-attr-toolbar-btn {

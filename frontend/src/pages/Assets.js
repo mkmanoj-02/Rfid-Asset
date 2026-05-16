@@ -1964,9 +1964,6 @@ export default function Assets() {
         {(total > 0 || items.length > 0) && (
           <div className="assets-page-pagination">
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#555', flexWrap: 'wrap' }}>
-              {checkedIds.size > 0 && (
-                <span className="assets-page-pagination-selected">{checkedIds.size} selected</span>
-              )}
               <span>Rows per page:</span>
               <select
                 value={pageSize}
