@@ -368,7 +368,7 @@ export default function Dashboard() {
       </div>
 
       {/* Main layout */}
-      <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 16, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 16, alignItems: 'stretch' }}>
 
         {/* Left panel */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -436,7 +436,7 @@ export default function Dashboard() {
         </div>
 
         {/* Map panel */}
-        <div style={{ background: '#fff', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+        <div style={{ background: '#fff', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #f0f2f5' }}>
             <div style={{ fontWeight: 700, fontSize: 15, color: '#1a1f36' }}>
               {selectedLocation ? 'Location map' : 'Global Asset Map'}
@@ -458,12 +458,12 @@ export default function Dashboard() {
           <div
             ref={mapRef}
             onClick={handleMapClick}
-            style={{ position: 'relative', minHeight: 460, background: '#e8edf2', cursor: placingPin ? 'crosshair' : 'default', userSelect: 'none' }}
+            style={{ position: 'relative', flex: 1, minHeight: 0, background: '#e8edf2', cursor: placingPin ? 'crosshair' : 'default', userSelect: 'none' }}
           >
             {mapImage ? (
               <img src={mapImage} alt="Asset Map" style={{ width: '100%', height: '100%', objectFit: 'contain', maxHeight: 520, display: 'block' }} />
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 460, color: '#a0aec0' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, minHeight: 0, height: '100%', color: '#a0aec0' }}>
                 <div style={{ fontSize: 52, marginBottom: 12 }}>🗺️</div>
                 <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 8 }}>No map uploaded</div>
                 <div style={{ fontSize: 13, marginBottom: 16 }}>Upload a floor plan, site map, or world map image</div>
