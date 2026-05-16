@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { setApiErrorToastSink, clearApiErrorToastSink } from './apiErrorHandling';
 
 const ToastContext = createContext(null);
@@ -13,23 +13,38 @@ const COLORS = {
 
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
+  const timersRef = useRef([]);
+
+  const clearToasts = useCallback(() => {
+    timersRef.current.forEach((tid) => clearTimeout(tid));
+    timersRef.current = [];
+    setToasts([]);
+  }, []);
 
   const showToast = useCallback((message, type = 'success', duration = 3000) => {
     const id = Date.now() + Math.random();
     setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), duration);
+    const tid = setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+      timersRef.current = timersRef.current.filter((x) => x !== tid);
+    }, duration);
+    timersRef.current.push(tid);
   }, []);
 
   useEffect(() => {
     const duration = 5500;
     setApiErrorToastSink((msg) => showToast(msg, 'error', duration));
-    return () => clearApiErrorToastSink();
+    return () => {
+      clearApiErrorToastSink();
+      timersRef.current.forEach((tid) => clearTimeout(tid));
+      timersRef.current = [];
+    };
   }, [showToast]);
 
   const removeToast = (id) => setToasts(prev => prev.filter(t => t.id !== id));
 
   return (
-    <ToastContext.Provider value={{ showToast }}>
+    <ToastContext.Provider value={{ showToast, clearToasts }}>
       {children}
       {/* Toast container */}
       <div style={{

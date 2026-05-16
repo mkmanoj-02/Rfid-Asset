@@ -3,6 +3,10 @@ import axios from 'axios';
 let apiErrorSink = null;
 const pendingToasts = [];
 
+/** Same underlying error (e.g. network) within this window shows only once. */
+const DEDUPE_MS = 5000;
+const recentByBase = new Map();
+
 export function formatAxiosErrorMessage(error) {
   const d = error.response?.data;
   if (typeof d === 'string') return d;
@@ -16,12 +20,32 @@ export function formatAxiosErrorMessage(error) {
   return error.message || 'Request failed';
 }
 
+function errorBase(errorLike) {
+  if (typeof errorLike === 'string') return errorLike.trim();
+  return formatAxiosErrorMessage(errorLike).trim();
+}
+
+function shouldShowApiToast(base) {
+  if (!base) return false;
+  const key = base.toLowerCase();
+  const now = Date.now();
+  const prev = recentByBase.get(key);
+  if (prev != null && now - prev < DEDUPE_MS) return false;
+  recentByBase.set(key, now);
+  return true;
+}
+
+/** Reset dedupe cache (e.g. on route change so the next page can show errors again). */
+export function resetApiErrorToastDedupe() {
+  recentByBase.clear();
+}
+
 /** Show an API/backend failure in the global toast queue (sink set by ToastProvider). */
-export function toastApiFailure(errorLike, contextLabel) {
-  const base = typeof errorLike === 'string' ? errorLike : formatAxiosErrorMessage(errorLike);
-  const msg = contextLabel ? `${contextLabel}: ${base}` : base;
-  if (apiErrorSink) apiErrorSink(msg);
-  else pendingToasts.push(msg);
+export function toastApiFailure(errorLike, _contextLabel) {
+  const base = errorBase(errorLike);
+  if (!shouldShowApiToast(base)) return;
+  if (apiErrorSink) apiErrorSink(base);
+  else pendingToasts.push(base);
 }
 
 /**
@@ -58,8 +82,12 @@ export function installUnhandledAxiosRejectionHandler() {
 /** Called from ToastProvider when the app can display messages. */
 export function setApiErrorToastSink(fn) {
   apiErrorSink = fn;
+  const seen = new Set();
   while (pendingToasts.length) {
     const m = pendingToasts.shift();
+    const key = m.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
     fn(m);
   }
 }

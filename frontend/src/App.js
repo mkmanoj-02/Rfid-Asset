@@ -22,6 +22,7 @@ import AppSettings       from './pages/Settings';
 import Depreciation      from './pages/Depreciation';
 import { AuthProvider, useAuth } from './AuthContext';
 import { ToastProvider }         from './Toast';
+import ToastRouteSync            from './ToastRouteSync';
 import './App.css';
 
 /* ─── Design tokens ──────────────────────────────────────────── */
@@ -511,6 +512,7 @@ export default function App() {
     <AuthProvider>
       <ToastProvider>
         <BrowserRouter>
+          <ToastRouteSync />
           <AppShell />
         </BrowserRouter>
       </ToastProvider>
