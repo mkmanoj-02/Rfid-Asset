@@ -285,10 +285,7 @@ export default function Dashboard() {
               <span style={{ width: 14, flexShrink: 0 }} />
             )}
             <span
-              onClick={() => {
-                setSelectedLocation({ id: loc.id, name: loc.name });
-                setPopupLocation({ id: loc.id, name: loc.name });
-              }}
+              onClick={() => setSelectedLocation({ id: loc.id, name: loc.name })}
               style={{
                 cursor: 'pointer',
                 color: hasPinned ? '#2563EB' : depth === 0 ? '#0f172a' : '#475569',
