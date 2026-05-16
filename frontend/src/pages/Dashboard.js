@@ -1,17 +1,15 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip, Cell, LabelList,
-} from 'recharts';
 import { Package, MapPin, Layers, ScanLine, CircleOff } from 'lucide-react';
 import api, { getDashboard, getDashboardLocation, getLocations } from '../api';
 import { toastApiFailure } from '../apiErrorHandling';
 import {
   DashboardChartCard,
+  AssetTypeDistributionBarChart,
   LocationDistributionBarChart,
   MonthlyDistributionAreaChart,
   chartLoadingShellStyle,
 } from '../components/dashboard/DistributionCharts';
-import { STAT_CARD_CLASS, CHART_GRID } from '../components/dashboard/chartTheme';
+import { STAT_CARD_CLASS } from '../components/dashboard/chartTheme';
 import LocationDetailPopup from '../components/LocationDetailPopup';
 import './Dashboard.css';
 const MAP_STORAGE_KEY = 'rfid_dashboard_map_image';
@@ -67,61 +65,6 @@ function filterLocationsBySearch(locations, queryNorm) {
     addDescendants(id);
   }
   return locations.filter(l => idsToShow.has(l.id));
-}
-
-function AssetTypeBarChart({ rows }) {
-  const data = useMemo(
-    () => [...rows].sort((a, b) => b.count - a.count),
-    [rows],
-  );
-  const h = Math.min(400, Math.max(160, data.length * 32 + 48));
-  if (data.length === 0) {
-    return (
-      <div style={{ padding: 28, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
-        No assets in this view yet
-      </div>
-    );
-  }
-  return (
-    <div style={{ overflowY: 'auto', maxHeight: 440 }}>
-      <ResponsiveContainer width="100%" height={h}>
-        <BarChart data={data} layout="vertical" margin={{ top: 8, right: 48, left: 8, bottom: 8 }}>
-          <defs>
-            <linearGradient id="dashAssetBlue" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="#4F9CE8" />
-              <stop offset="100%" stopColor="#C5E3FA" />
-            </linearGradient>
-            <linearGradient id="dashAssetPurple" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="#9B7EDE" />
-              <stop offset="100%" stopColor="#D8CCF5" />
-            </linearGradient>
-            <linearGradient id="dashAssetCoral" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="#EF8A82" />
-              <stop offset="100%" stopColor="#F5C4BE" />
-            </linearGradient>
-            <linearGradient id="dashAssetMint" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="#5CB8A8" />
-              <stop offset="100%" stopColor="#B8E8DE" />
-            </linearGradient>
-            <linearGradient id="dashAssetSky" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="#38BDF8" />
-              <stop offset="100%" stopColor="#BAE6FD" />
-            </linearGradient>
-          </defs>
-          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_GRID} />
-          <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
-          <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 11, fill: '#334155' }} axisLine={false} tickLine={false} />
-          <Tooltip formatter={(v) => [v, 'Assets']} />
-          <Bar dataKey="count" radius={[0, 10, 10, 0]} maxBarSize={26}>
-            {data.map((_, i) => (
-              <Cell key={`${i}-${data[i].name}`} fill={['url(#dashAssetBlue)', 'url(#dashAssetPurple)', 'url(#dashAssetCoral)', 'url(#dashAssetMint)', 'url(#dashAssetSky)'][i % 5]} />
-            ))}
-            <LabelList dataKey="count" position="right" style={{ fontSize: 11, fill: '#64748b', fontWeight: 600 }} />
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  );
 }
 
 // ── Main Dashboard ─────────────────────────────────────────────
@@ -511,27 +454,29 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Charts — asset type, location bar, monthly trend */}
-      <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <DashboardChartCard
-          title="Asset Type Distribution"
-          subtitle={scopeLabel}
-          action={chartScopeAction}
-        >
-          {dashboardLoading && !data ? (
-            <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Loading chart...</div>
-          ) : dashboardLoading ? (
-            <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Updating chart...</div>
-          ) : (
-            <AssetTypeBarChart key={distributionChartKey} rows={distributionRows} />
-          )}
-        </DashboardChartCard>
+      {/* Charts — asset type (left) + location (right), monthly (full width) */}
+      <div className="dash-charts-stack">
+        <div className="dash-charts-row">
+          <DashboardChartCard
+            title="Asset Type Distribution"
+            subtitle={scopeLabel}
+            action={chartScopeAction}
+            bodyClassName="dash-chart-card__body--plot"
+          >
+            {dashboardLoading && !data ? (
+              <div style={chartLoadingShellStyle}>Loading chart...</div>
+            ) : dashboardLoading ? (
+              <div style={chartLoadingShellStyle}>Updating chart...</div>
+            ) : (
+              <AssetTypeDistributionBarChart key={distributionChartKey} rows={distributionRows} />
+            )}
+          </DashboardChartCard>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(440px, 1fr))', gap: 16, alignItems: 'stretch' }}>
           <DashboardChartCard
             title="Location Based Distribution"
             subtitle={scopeLabel}
             action={chartScopeAction}
+            bodyClassName="dash-chart-card__body--plot"
           >
             {dashboardLoading ? (
               <div style={chartLoadingShellStyle}>
@@ -544,24 +489,25 @@ export default function Dashboard() {
               />
             )}
           </DashboardChartCard>
-
-          <DashboardChartCard
-            title="Monthly Asset Distribution"
-            subtitle={`Assets created per month (current year) · ${scopeLabel}`}
-            action={chartScopeAction}
-          >
-            {dashboardLoading ? (
-              <div style={chartLoadingShellStyle}>
-                {data ? 'Updating chart...' : 'Loading chart...'}
-              </div>
-            ) : (
-              <MonthlyDistributionAreaChart
-                key={`monthly-${distributionChartKey}`}
-                rows={monthlyDistRows}
-              />
-            )}
-          </DashboardChartCard>
         </div>
+
+        <DashboardChartCard
+          title="Monthly Asset Distribution"
+          subtitle={`Assets created per month (current year) · ${scopeLabel}`}
+          action={chartScopeAction}
+          bodyClassName="dash-chart-card__body--plot"
+        >
+          {dashboardLoading ? (
+            <div style={chartLoadingShellStyle}>
+              {data ? 'Updating chart...' : 'Loading chart...'}
+            </div>
+          ) : (
+            <MonthlyDistributionAreaChart
+              key={`monthly-${distributionChartKey}`}
+              rows={monthlyDistRows}
+            />
+          )}
+        </DashboardChartCard>
       </div>
 
       {popupLocation && (

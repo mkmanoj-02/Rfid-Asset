@@ -152,6 +152,19 @@
   gap: 16px;
 }
 
+/* Asset type (left) + location (right), half width each */
+.dash-charts-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.dash-charts-row > * {
+  min-width: 0;
+}
+
 .dash-charts-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(440px, 1fr));
@@ -195,8 +208,58 @@
 }
 
 .dash-chart-card__body {
-  padding: 14px 18px 20px;
+  padding: 16px 20px 22px;
   flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.dash-chart-card__body--plot {
+  padding: 12px 14px 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.dash-charts-row .dash-chart-card:first-child .dash-chart-card__body--plot {
+  padding-left: 6px;
+  padding-right: 10px;
+}
+
+.dash-chart-plot--asset {
+  overflow: visible;
+}
+
+.dash-chart-plot--asset .recharts-cartesian-axis-tick-value {
+  user-select: none;
+}
+
+/* Fixed plot area — matches location/monthly chart height */
+.dash-chart-plot {
+  width: 100%;
+  height: 260px;
+  min-height: 260px;
+  flex-shrink: 0;
+}
+
+.dash-chart-plot__inner {
+  width: 100%;
+  height: 100%;
+  min-height: 260px;
+}
+
+.dash-chart-plot--scroll {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.dash-chart-plot--scroll .dash-chart-plot__inner {
+  min-height: 0;
+}
+
+@media (max-width: 960px) {
+  .dash-charts-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 900px) {

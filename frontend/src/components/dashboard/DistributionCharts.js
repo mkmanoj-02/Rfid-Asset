@@ -13,6 +13,7 @@ import {
   ResponsiveContainer,
   AreaChart,
   Area,
+  LabelList,
 } from 'recharts';
 
 import {
@@ -45,7 +46,7 @@ export const chartLoadingShellStyle = {
 };
 
 /** Shared plot insets so location + monthly charts align visually. */
-const DIST_CHART_MARGIN = { top: 12, right: 16, left: 8, bottom: 12 };
+const DIST_CHART_MARGIN = { top: 12, right: 20, left: 12, bottom: 16 };
 const DIST_Y_AXIS_WIDTH = 40;
 
 function truncateAxisLabel(name, maxLen = 11) {
@@ -54,7 +55,11 @@ function truncateAxisLabel(name, maxLen = 11) {
 }
 
 function ChartViewport({ children }) {
-  return <div style={chartPlotShellStyle}>{children}</div>;
+  return (
+    <div className="dash-chart-plot">
+      <div className="dash-chart-plot__inner">{children}</div>
+    </div>
+  );
 }
 
 const TICK = CHART_TICK_MUTED;
@@ -126,6 +131,184 @@ function ChartEmpty({ message = 'No data for this view' }) {
   return (
     <div style={{ ...chartPlotShellStyle, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
       <span style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center' }}>{message}</span>
+    </div>
+  );
+}
+
+const ASSET_TYPE_SCROLL_AT = 9;
+const ASSET_TYPE_ROW_PX = 28;
+const ASSET_TYPE_ROW_PX_WRAPPED = 36;
+const ASSET_LABEL_CHARS_PER_LINE = 13;
+const ASSET_LABEL_MAX_LINES = 2;
+const ASSET_LABEL_LEFT = 2;
+const ASSET_LABEL_LINE_HEIGHT = 13;
+
+/** Split long asset names into up to two lines (word-aware when possible). */
+function wrapAssetLabel(name, perLine = ASSET_LABEL_CHARS_PER_LINE, maxLines = ASSET_LABEL_MAX_LINES) {
+  const s = String(name ?? '').trim();
+  if (!s) return [''];
+  if (s.length <= perLine) return [s];
+
+  const lines = [];
+  let remaining = s;
+
+  while (remaining && lines.length < maxLines) {
+    if (remaining.length <= perLine) {
+      lines.push(remaining);
+      break;
+    }
+    let chunk = remaining.slice(0, perLine);
+    const lastSpace = chunk.lastIndexOf(' ');
+    if (lastSpace > 3 && lines.length < maxLines - 1) {
+      chunk = remaining.slice(0, lastSpace);
+      remaining = remaining.slice(lastSpace + 1).trim();
+    } else {
+      remaining = remaining.slice(perLine);
+    }
+    lines.push(chunk);
+  }
+
+  if (remaining && lines.length) {
+    const last = lines[lines.length - 1];
+    lines[lines.length - 1] = last.length >= perLine ? `${last.slice(0, perLine - 1)}…` : `${last}…`;
+  }
+
+  return lines.slice(0, maxLines);
+}
+
+function AssetYAxisTick({ y, payload }) {
+  const lines = wrapAssetLabel(payload?.value ?? '');
+  const centerOffset = lines.length > 1 ? -((lines.length - 1) * ASSET_LABEL_LINE_HEIGHT) / 2 : 0;
+
+  return (
+    <text
+      x={ASSET_LABEL_LEFT}
+      y={y}
+      dy={4 + centerOffset}
+      textAnchor="start"
+      fill={TICK_DARK.fill}
+      fontSize={11}
+      fontFamily="inherit"
+    >
+      {lines.map((line, i) => (
+        <tspan key={`${line}-${i}`} x={ASSET_LABEL_LEFT} dy={i === 0 ? 0 : ASSET_LABEL_LINE_HEIGHT}>
+          {line}
+        </tspan>
+      ))}
+    </text>
+  );
+}
+
+const ASSET_BAR_GRADIENTS = [
+  'url(#dashAssetBlue)',
+  'url(#dashAssetPurple)',
+  'url(#dashAssetCoral)',
+  'url(#dashAssetMint)',
+  'url(#dashAssetSky)',
+];
+
+export function AssetTypeDistributionBarChart({ rows }) {
+  const data = useMemo(
+    () => [...(rows || [])]
+      .map((r) => ({ name: String(r.name ?? r.type ?? 'Unknown'), count: Number(r.count) || 0 }))
+      .filter((r) => r.count > 0)
+      .sort((a, b) => b.count - a.count),
+    [rows],
+  );
+
+  const hasWrappedLabels = useMemo(
+    () => data.some((d) => wrapAssetLabel(d.name).length > 1),
+    [data],
+  );
+
+  const rowPx = hasWrappedLabels ? ASSET_TYPE_ROW_PX_WRAPPED : ASSET_TYPE_ROW_PX;
+
+  const yAxisWidth = useMemo(() => {
+    if (!data.length) return 52;
+    const wrapped = data.map((d) => wrapAssetLabel(d.name));
+    const maxLineLen = Math.max(...wrapped.flat().map((line) => line.length));
+    return Math.min(98, Math.max(44, Math.ceil(maxLineLen * 6.1) + 6));
+  }, [data]);
+
+  const maxBarSize = useMemo(() => {
+    if (!data.length) return 24;
+    const slot = (DASHBOARD_DIST_CHART_HEIGHT - 44) / data.length;
+    const cap = hasWrappedLabels ? 32 : 38;
+    return Math.min(cap, Math.max(14, Math.floor(slot * 0.62)));
+  }, [data.length, hasWrappedLabels]);
+
+  const needsScroll = data.length >= ASSET_TYPE_SCROLL_AT;
+  const scrollInnerHeight = data.length * rowPx + 36;
+
+  if (data.length === 0) {
+    return <ChartEmpty message="No assets in this view yet" />;
+  }
+
+  const plotShellClass = `dash-chart-plot dash-chart-plot--asset${needsScroll ? ' dash-chart-plot--scroll' : ''}`;
+
+  return (
+    <div className={plotShellClass}>
+      <div
+        className="dash-chart-plot__inner"
+        style={needsScroll ? { height: scrollInnerHeight, minHeight: scrollInnerHeight } : undefined}
+      >
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart
+            data={data}
+            layout="vertical"
+            margin={{ top: 12, right: 44, left: 0, bottom: 12 }}
+            barCategoryGap="16%"
+          >
+            <defs>
+              <linearGradient id="dashAssetBlue" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor="#4F9CE8" />
+                <stop offset="100%" stopColor="#C5E3FA" />
+              </linearGradient>
+              <linearGradient id="dashAssetPurple" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor="#9B7EDE" />
+                <stop offset="100%" stopColor="#D8CCF5" />
+              </linearGradient>
+              <linearGradient id="dashAssetCoral" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor="#EF8A82" />
+                <stop offset="100%" stopColor="#F5C4BE" />
+              </linearGradient>
+              <linearGradient id="dashAssetMint" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor="#5CB8A8" />
+                <stop offset="100%" stopColor="#B8E8DE" />
+              </linearGradient>
+              <linearGradient id="dashAssetSky" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor="#38BDF8" />
+                <stop offset="100%" stopColor="#BAE6FD" />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_GRID} />
+            <XAxis type="number" allowDecimals={false} tick={TICK} axisLine={false} tickLine={false} />
+            <YAxis
+              type="category"
+              dataKey="name"
+              width={yAxisWidth}
+              tick={AssetYAxisTick}
+              axisLine={false}
+              tickLine={false}
+            />
+            <Tooltip
+              formatter={(v) => [v, 'Assets']}
+              labelFormatter={(name) => name}
+              content={<BarAreaTooltip />}
+            />
+            <Bar dataKey="count" radius={[0, 8, 8, 0]} maxBarSize={maxBarSize}>
+              {data.map((entry, i) => (
+                <Cell key={entry.name} fill={ASSET_BAR_GRADIENTS[i % ASSET_BAR_GRADIENTS.length]} />
+              ))}
+              <LabelList
+                dataKey="count"
+                position="right"
+                style={{ fontSize: 11, fill: '#64748b', fontWeight: 600 }}
+              />
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }
@@ -303,39 +486,19 @@ export function MonthlyDistributionAreaChart({ rows }) {
   );
 }
 
-export function DashboardChartCard({ title, subtitle, children, action }) {
+export function DashboardChartCard({ title, subtitle, children, action, className = '', bodyClassName = '' }) {
   return (
-    <div
-      style={{
-        background: '#fff',
-        borderRadius: 12,
-        boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.04)',
-        border: '1px solid #e2e8f0',
-        overflow: 'hidden',
-        display: 'flex',
-        flexDirection: 'column',
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          gap: 12,
-          padding: '14px 18px',
-          borderBottom: '1px solid #f1f5f9',
-          background: '#fafbfc',
-        }}
-      >
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: 15, color: '#0f172a', letterSpacing: '-0.01em' }}>{title}</div>
+    <div className={`dash-chart-card ${className}`.trim()}>
+      <div className="dash-chart-card__head">
+        <div className="dash-chart-card__titles">
+          <div className="dash-chart-card__title">{title}</div>
           {subtitle && (
-            <div style={{ fontSize: 12.5, color: '#64748b', marginTop: 4 }}>{subtitle}</div>
+            <div className="dash-chart-card__subtitle">{subtitle}</div>
           )}
         </div>
         {action}
       </div>
-      <div style={{ padding: '12px 16px 18px', flex: 1 }}>{children}</div>
+      <div className={`dash-chart-card__body ${bodyClassName}`.trim()}>{children}</div>
     </div>
   );
 }
