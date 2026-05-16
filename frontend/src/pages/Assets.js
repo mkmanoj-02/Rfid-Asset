@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   getAssets, createAssetMultipart, updateAsset, updateAssetMultipart, deleteAsset, bulkDeleteAssets,
-  getAssetTypes, getLocations,
+  getAssetTypes, getLocations, getLocationTree,
   getAssetAttributes, saveAssetAttributes, getAssetMovements,
   getRfidTags, removeRfidTag, getAttributes, getAttributeList,
   getTagTypes, createTagType, updateTagType, deleteTagType, getTagRecommendationForAssetType,
@@ -11,7 +11,9 @@ import { toastApiFailure } from '../apiErrorHandling';
 import { useToast } from '../Toast';
 import { exportExcel, exportPDF, ExportButtons } from '../export';
 import ImageUploadField from '../components/ImageUploadField';
+import LocationTreeSelect from '../components/LocationTreeSelect';
 import { resolveImageUrl } from '../utils/imageUrl';
+import { buildLocationPath } from '../utils/locationTree';
 
 function detailDisplay(value) {
   if (value == null) return '—';
@@ -36,7 +38,8 @@ function enrichAssetFromForm(form, { types, locations, tagTypes, vendors }) {
   return {
     ...form,
     asset_type_name: types.find((t) => String(t.id) === String(form.asset_type_id))?.name,
-    location_name: locations.find((l) => String(l.id) === String(form.current_location_id))?.name,
+    location_name: buildLocationPath(locations, form.current_location_id)
+      || locations.find((l) => String(l.id) === String(form.current_location_id))?.name,
     tag_type_name: tagTypes.find((t) => String(t.id) === String(form.tag_type_id))?.name,
     vendor_name: vendors.find((v) => String(v.id) === String(form.vendor_id))?.name,
   };
@@ -145,7 +148,7 @@ function ConfirmModal({ title, message, subMessage, confirmLabel = 'Delete', con
 }
 
 // ── Add Asset Form ─────────────────────────────────────────────
-function AddAssetModal({ types, locations, tagTypes, vendors, onClose, onSaved }) {
+function AddAssetModal({ types, locations, locationTree, tagTypes, vendors, onClose, onSaved }) {
   const { showToast } = useToast();
   const rfidPollErrLastRef = useRef(0);
   const [form, setForm] = useState({
@@ -349,10 +352,14 @@ function AddAssetModal({ types, locations, tagTypes, vendors, onClose, onSaved }
           <div className="form-row">
             <label>Location <span className="required">*</span></label>
             <div className="field-wrap rfid-field">
-              <select value={form.current_location_id} onChange={e => setForm({ ...form, current_location_id: e.target.value })}>
-                <option value="">— Select location —</option>
-                {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-              </select>
+              <LocationTreeSelect
+                tree={locationTree}
+                locations={locations}
+                value={form.current_location_id}
+                onChange={(id) => setForm({ ...form, current_location_id: id })}
+                placeholder="— Select location —"
+                required
+              />
               {errors.current_location_id && <span className="field-error">{errors.current_location_id}</span>}
             </div>
           </div>
@@ -545,7 +552,7 @@ function FinancialInfoTab({ assetId, assetName }) {
 }
 
 // ── Asset Detail View ──────────────────────────────────────────
-function AssetDetail({ asset, types, locations, tagTypes, vendors, onBack, onRefresh, canModify, canDelete }) {
+function AssetDetail({ asset, types, locations, locationTree, tagTypes, vendors, onBack, onRefresh, canModify, canDelete }) {
   const { showToast } = useToast();
   const [tab, setTab] = useState('trace');
   const [attrs, setAttrs] = useState([]);
@@ -676,12 +683,15 @@ function AssetDetail({ asset, types, locations, tagTypes, vendors, onBack, onRef
     onRefresh({
       ...editForm,
       current_location_id: newLocationId,
-      location_name: locations.find((l) => String(l.id) === String(newLocationId))?.name,
+      location_name: buildLocationPath(locations, newLocationId)
+        || locations.find((l) => String(l.id) === String(newLocationId))?.name,
     });
   };
 
   const typeName     = types.find(t => t.id === asset.asset_type_id)?.name || '—';
-  const locationName = locations.find(l => l.id === asset.current_location_id)?.name || '—';
+  const locationName = buildLocationPath(locations, asset.current_location_id)
+    || locations.find((l) => l.id === asset.current_location_id)?.name
+    || '—';
   const tagTypeName  = asset.tag_type_name || '—';
   const vendorName   = asset.vendor_name || '—';
 
@@ -930,10 +940,14 @@ function AssetDetail({ asset, types, locations, tagTypes, vendors, onBack, onRef
               <div className="form-row">
                 <label>Location <span className="required">*</span></label>
                 <div className="field-wrap">
-                  <select value={editForm.current_location_id} onChange={e => setEditForm({ ...editForm, current_location_id: e.target.value })}>
-                    <option value="">— Select location —</option>
-                    {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                  </select>
+                  <LocationTreeSelect
+                    tree={locationTree}
+                    locations={locations}
+                    value={editForm.current_location_id}
+                    onChange={(id) => setEditForm({ ...editForm, current_location_id: id })}
+                    placeholder="— Select location —"
+                    required
+                  />
                   {editErrors.current_location_id && <span className="field-error">{editErrors.current_location_id}</span>}
                 </div>
               </div>
@@ -979,11 +993,16 @@ function AssetDetail({ asset, types, locations, tagTypes, vendors, onBack, onRef
             else modal.querySelector('.btn-primary')?.focus();
           }}>
             <h2>Change Location</h2>
-            <div className="form-group"><label>New Location</label>
-              <select value={newLocationId} onChange={e => setNewLocationId(e.target.value)}>
-                <option value="">-- Select --</option>
-                {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-              </select>
+            <div className="form-group">
+              <label>New Location</label>
+              <LocationTreeSelect
+                tree={locationTree}
+                locations={locations}
+                value={newLocationId}
+                onChange={setNewLocationId}
+                placeholder="— Select location —"
+                required
+              />
             </div>
             <div className="form-group"><label>Notes (optional)</label>
               <textarea value={locationNotes} onChange={e => setLocationNotes(e.target.value)} />
@@ -1096,7 +1115,7 @@ function InventoryStatusCell({ status }) {
 }
 
 // ── Bulk Change Location Modal ─────────────────────────────────
-function BulkChangeLocationModal({ selectedAssets, locations, onClose, onSaved }) {
+function BulkChangeLocationModal({ selectedAssets, locations, locationTree, onClose, onSaved }) {
   const [newLocationId, setNewLocationId] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -1131,10 +1150,14 @@ function BulkChangeLocationModal({ selectedAssets, locations, onClose, onSaved }
           <div className="form-row">
             <label>New Location <span className="required">*</span></label>
             <div className="field-wrap">
-              <select value={newLocationId} onChange={e => setNewLocationId(e.target.value)}>
-                <option value="">-- Select Location --</option>
-                {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-              </select>
+              <LocationTreeSelect
+                tree={locationTree}
+                locations={locations}
+                value={newLocationId}
+                onChange={setNewLocationId}
+                placeholder="— Select location —"
+                required
+              />
             </div>
           </div>
         </div>
@@ -1490,6 +1513,7 @@ export default function Assets() {
   const [loading, setLoading] = useState(false);
   const [types, setTypes] = useState([]);
   const [locations, setLocations] = useState([]);
+  const [locationTree, setLocationTree] = useState([]);
   const [tagTypes, setTagTypes] = useState([]);
   const [vendors, setVendors] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -1596,6 +1620,7 @@ export default function Assets() {
     fetchAssets('', '', '', 1, DEFAULT_PAGE_SIZE, 'created_at', 'desc');
     getAssetTypes().then(r => setTypes(r.data)).catch((e) => toastApiFailure(e, 'Asset types'));
     getLocations().then(r => setLocations(r.data)).catch((e) => toastApiFailure(e, 'Locations'));
+    getLocationTree().then(r => setLocationTree(r.data)).catch((e) => toastApiFailure(e, 'Location tree'));
     getTagTypes().then(r => setTagTypes(r.data)).catch((e) => toastApiFailure(e, 'Tag types'));
     getVendors().then(r => setVendors(r.data)).catch((e) => toastApiFailure(e, 'Vendors'));
   }, []);
@@ -1856,6 +1881,7 @@ export default function Assets() {
         asset={selected}
         types={types}
         locations={locations}
+        locationTree={locationTree}
         tagTypes={tagTypes}
         vendors={vendors}
         onBack={() => setSelected(null)}
@@ -2137,13 +2163,26 @@ export default function Assets() {
         )}
       </div>
       </div>
-      {modal && <AddAssetModal types={types} locations={locations} tagTypes={tagTypes} vendors={vendors} onClose={() => setModal(false)} onSaved={() => fetchAssets(search, filterLocation, filterType, currentPage, pageSize, sortKey, sortDir)} />}
+      {modal && (
+        <AddAssetModal
+          types={types}
+          locations={locations}
+          locationTree={locationTree}
+          tagTypes={tagTypes}
+          vendors={vendors}
+          onClose={() => setModal(false)}
+          onSaved={() => fetchAssets(search, filterLocation, filterType, currentPage, pageSize, sortKey, sortDir)}
+        />
+      )}
       {updateAttrModal && (
         <UpdateAttributeModal selectedAssets={selectedAssets} onClose={() => setUpdateAttrModal(false)}
           onSaved={() => { setCheckedIds(new Set()); fetchAssets(search, filterLocation, filterType, currentPage, pageSize, sortKey, sortDir); }} />
       )}
       {changeLocModal && (
-        <BulkChangeLocationModal selectedAssets={selectedAssets} locations={locations}
+        <BulkChangeLocationModal
+          selectedAssets={selectedAssets}
+          locations={locations}
+          locationTree={locationTree}
           onClose={() => setChangeLocModal(false)}
           onSaved={() => { setCheckedIds(new Set()); fetchAssets(search, filterLocation, filterType, currentPage, pageSize, sortKey, sortDir); }} />
       )}
