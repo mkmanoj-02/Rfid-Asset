@@ -1425,7 +1425,7 @@ export default function Assets() {
   /** `''` | `in_inventory` | `missing` — GET `asset_inventory_status` */
   const [filterInventoryStatus, setFilterInventoryStatus] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(50);
   const [confirmDialog, setConfirmDialog] = useState(null);
   const [tableAttrColumns, setTableAttrColumns] = useState(() => loadStoredAssetTableAttrColumns());
   const [attrColumnsPanelOpen, setAttrColumnsPanelOpen] = useState(false);
@@ -1438,10 +1438,10 @@ export default function Assets() {
   const canModify = isSuperAdmin || !!currentUser?.asset_can_modify;
   const canDelete = isSuperAdmin || !!currentUser?.asset_can_delete;
 
-  const PAGE_SIZES = [10, 25, 50, 100];
+  const PAGE_SIZES = [50, 100, 500];
+  const DEFAULT_PAGE_SIZE = PAGE_SIZES[0];
 
-  // Auto-correct pageSize downward only — if selected limit exceeds what's meaningful
-  // e.g. total=8, limit=25 → correct to 10. But never force upward (10→25).
+  // Auto-correct pageSize downward only when total is smaller than a smaller option.
   const clampPageSize = (tot, currentLimit) => {
     const prev = PAGE_SIZES[PAGE_SIZES.indexOf(currentLimit) - 1];
     // If there's a smaller option and total fits within it, step down
@@ -1458,7 +1458,7 @@ export default function Assets() {
       location_id: loc || '',
       asset_type_id: typ || '',
       page: page || 1,
-      limit: limit || 10,
+      limit: limit || DEFAULT_PAGE_SIZE,
       sort: sKey || 'created_at',
       sort_dir: sDir || 'desc',
     };
@@ -1495,7 +1495,7 @@ export default function Assets() {
   }, [search, filterLocation, filterType, filterInventoryStatus, currentPage, pageSize, sortKey, sortDir]);
 
   useEffect(() => {
-    fetchAssets('', '', '', 1, 10, 'created_at', 'desc');
+    fetchAssets('', '', '', 1, DEFAULT_PAGE_SIZE, 'created_at', 'desc');
     getAssetTypes().then(r => setTypes(r.data)).catch((e) => toastApiFailure(e, 'Asset types'));
     getLocations().then(r => setLocations(r.data)).catch((e) => toastApiFailure(e, 'Locations'));
     getTagTypes().then(r => setTagTypes(r.data)).catch((e) => toastApiFailure(e, 'Tag types'));
@@ -1547,7 +1547,7 @@ export default function Assets() {
       location_id: loc || '',
       asset_type_id: typ || '',
       page: page || 1,
-      limit: limit || 10,
+      limit: limit || DEFAULT_PAGE_SIZE,
       sort: sKey || 'created_at',
       sort_dir: sDir || 'desc',
     };
@@ -1788,15 +1788,6 @@ export default function Assets() {
             style={{ padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, background: '#fff', cursor: 'pointer' }}>
             {sortDir === 'asc' ? '↑ Asc' : '↓ Desc'}
           </button>
-          {checkedIds.size > 0 && canModify && (
-            <>
-              <button className="btn btn-secondary" onClick={() => setChangeLocModal(true)}>Change Location ({checkedIds.size})</button>
-              <button className="btn btn-secondary" onClick={() => setUpdateAttrModal(true)}>Update Attribute ({checkedIds.size})</button>
-            </>
-          )}
-          {checkedIds.size > 0 && canDelete && (
-            <button className="btn btn-danger" onClick={bulkDelete}>Delete ({checkedIds.size})</button>
-          )}
           {canModify && <button className="btn btn-primary" onClick={() => setModal(true)}>+ Add Asset</button>}
         </div>
       </div>
@@ -1866,6 +1857,22 @@ export default function Assets() {
       </div>
 
       </div>
+
+      {checkedIds.size > 0 && (
+        <div className="assets-bulk-bar" role="status">
+          <strong>{checkedIds.size} selected</strong>
+          {canModify && (
+            <>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setChangeLocModal(true)}>Change Location</button>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setUpdateAttrModal(true)}>Update Attribute</button>
+            </>
+          )}
+          {canDelete && (
+            <button type="button" className="btn btn-danger btn-sm" onClick={bulkDelete}>Delete</button>
+          )}
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setCheckedIds(new Set())}>Clear selection</button>
+        </div>
+      )}
 
       <div className="assets-page-table-wrap">
       <div className="assets-page-table-card">
@@ -1953,17 +1960,20 @@ export default function Assets() {
           </table>
         </div>
 
-        {/* Pagination bar */}
-        {total > 0 && (
+        {/* Pagination bar — always visible when list has data */}
+        {(total > 0 || items.length > 0) && (
           <div className="assets-page-pagination">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#555' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#555', flexWrap: 'wrap' }}>
+              {checkedIds.size > 0 && (
+                <span className="assets-page-pagination-selected">{checkedIds.size} selected</span>
+              )}
               <span>Rows per page:</span>
               <select
                 value={pageSize}
                 onChange={e => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
                 style={{ padding: '4px 8px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13 }}
               >
-                {[10, 25, 50, 100].map((n, i, arr) => (
+                {PAGE_SIZES.map((n, i, arr) => (
                   <option key={n} value={n} disabled={i > 0 && total <= arr[i - 1]}>
                     {n}
                   </option>

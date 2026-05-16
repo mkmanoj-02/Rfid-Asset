@@ -267,7 +267,7 @@ tr:hover td { background: #f8fafc; }
 }
 .assets-table-scroll {
   flex: 1;
-  min-height: min(560px, calc(100vh - 220px));
+  min-height: 0;
   overflow: auto;
   width: 100%;
   -webkit-overflow-scrolling: touch;
@@ -330,16 +330,44 @@ tr:hover td { background: #f8fafc; }
 .assets-data-table thead tr {
   box-shadow: 0 2px 4px rgba(15, 23, 42, 0.06);
 }
+.assets-bulk-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #1e40af;
+}
+.assets-bulk-bar strong {
+  font-weight: 600;
+  margin-right: 4px;
+}
 .assets-page-pagination {
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 8px 14px;
-  border-top: 1px solid #f0f4f8;
+  border-top: 1px solid #e2e8f0;
   flex-wrap: wrap;
   gap: 10px;
   background: #fff;
+  z-index: 2;
+}
+.assets-page-pagination-selected {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1565c0;
+  background: #eff6ff;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid #bfdbfe;
 }
 
 /* ── Assets table — extra columns (inline panel above table) ─ */
