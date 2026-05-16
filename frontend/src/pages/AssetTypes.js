@@ -248,6 +248,47 @@ function AddAttributeForm({ typeId, onSaved, showInfo }) {
   );
 }
 
+const typeThumbStyle = {
+  width: 48,
+  height: 48,
+  borderRadius: 8,
+  flexShrink: 0,
+  overflow: 'hidden',
+  background: '#f0f2f5',
+  border: '1px solid #e8edf2',
+};
+
+function AssetTypeThumb({ imageUrl, name }) {
+  const [broken, setBroken] = useState(false);
+  if (!imageUrl || broken) {
+    return (
+      <div
+        style={{
+          ...typeThumbStyle,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 18,
+          color: '#c4c9d4',
+        }}
+        aria-hidden
+      >
+        📦
+      </div>
+    );
+  }
+  return (
+    <div style={typeThumbStyle}>
+      <img
+        src={resolveImageUrl(imageUrl)}
+        alt={name ? `${name} image` : 'Asset type'}
+        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+        onError={() => setBroken(true)}
+      />
+    </div>
+  );
+}
+
 // ── Asset Type Card (with attributes + sub-types) ──────────────
 function AssetTypeCard({ item, allTypes, onEdit, onDelete, onAddSub, onAttributeDeleteRequest, showInfo, level = 0, canModify, canDelete, searchQuery = '' }) {
   const [expanded, setExpanded] = useState(false);
@@ -271,8 +312,9 @@ function AssetTypeCard({ item, allTypes, onEdit, onDelete, onAddSub, onAttribute
     <div style={{ marginLeft: level * 24, marginBottom: 8 }}>
       <div className="type-card">
         <div className="type-card-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             {level > 0 && <span style={{ color: '#7c8cf8', fontSize: 12 }}>{'└─'}</span>}
+            <AssetTypeThumb imageUrl={item.image_url} name={item.name} />
             <div>
               <strong style={{ fontSize: level === 0 ? 15 : 14 }}>{item.name}</strong>
               {item.parent_name && level === 0 && (

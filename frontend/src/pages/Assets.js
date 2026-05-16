@@ -945,6 +945,48 @@ function inventoryStatusLabel(st) {
   return INVENTORY_STATUS_LABELS[k] || k.replace(/_/g, ' ');
 }
 
+const assetTableThumbStyle = {
+  width: 40,
+  height: 40,
+  borderRadius: 6,
+  flexShrink: 0,
+  overflow: 'hidden',
+  background: '#f1f5f9',
+  border: '1px solid #e2e8f0',
+};
+
+function AssetTableThumb({ imageUrl, name }) {
+  const [broken, setBroken] = useState(false);
+  const url = imageUrl?.trim();
+  if (!url || broken) {
+    return (
+      <div
+        style={{
+          ...assetTableThumbStyle,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 16,
+          color: '#cbd5e1',
+        }}
+        aria-hidden
+      >
+        —
+      </div>
+    );
+  }
+  return (
+    <div style={assetTableThumbStyle}>
+      <img
+        src={resolveImageUrl(url)}
+        alt={name ? `${name} image` : 'Asset'}
+        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+        onError={() => setBroken(true)}
+      />
+    </div>
+  );
+}
+
 function InventoryStatusCell({ status }) {
   const st = String(status || 'in_inventory').toLowerCase();
   const base = {
@@ -1638,7 +1680,7 @@ export default function Assets() {
 
   const selectedAssets = pagedItems.filter(i => checkedIds.has(i.id));
   const hasFilters = search || filterLocation || filterType || filterInventoryStatus;
-  const tableColSpan = 11 + tableAttrColumns.length;
+  const tableColSpan = 12 + tableAttrColumns.length;
 
   const handleTableAttrColumnsChange = useCallback((next) => {
     const cleaned = (Array.isArray(next) ? next : []).slice(0, MAX_ASSET_TABLE_ATTR_COLUMNS);
@@ -1864,6 +1906,7 @@ export default function Assets() {
                   </th>
                 ))}
                 <SortTh col="asset_inventory_status" label="Inv / Missing" align="center" />
+                <th style={{ width: 52, padding: '10px 8px', textAlign: 'center' }}>Image</th>
                 <th style={{ width: 130, textAlign: 'center' }}>Actions</th>
               </tr>
             </thead>
@@ -1904,6 +1947,9 @@ export default function Assets() {
                   })}
                   <td style={{ textAlign: 'center', verticalAlign: 'middle' }} title={inventoryStatusLabel(item.asset_inventory_status)}>
                     <InventoryStatusCell status={item.asset_inventory_status} />
+                  </td>
+                  <td style={{ padding: '10px 8px', textAlign: 'center', verticalAlign: 'middle' }}>
+                    <AssetTableThumb imageUrl={item.image_url} name={item.name} />
                   </td>
                   <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                     <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
