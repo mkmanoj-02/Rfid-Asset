@@ -13,6 +13,26 @@ import { exportExcel, exportPDF, ExportButtons } from '../export';
 import ImageUploadField from '../components/ImageUploadField';
 import { resolveImageUrl } from '../utils/imageUrl';
 
+/** Enter → next field; skips hidden file inputs and optional image upload block */
+function handleAssetFormEnterKey(e, submitButton) {
+  if (e.key !== 'Enter') return;
+  if (e.target.tagName === 'TEXTAREA') return;
+  e.preventDefault();
+  const form = e.currentTarget;
+  const focusable = [
+    ...form.querySelectorAll(
+      'input:not([readonly]):not([type="file"]):not([type="hidden"]), select, textarea',
+    ),
+    submitButton,
+  ].filter((el) => el && !el.disabled && !el.closest('[data-skip-enter-nav]'));
+  const idx = focusable.indexOf(e.target);
+  if (idx >= 0 && idx < focusable.length - 1) {
+    focusable[idx + 1].focus();
+  } else if (submitButton) {
+    submitButton.focus();
+  }
+}
+
 async function resolveRecommendedTagTypeId(assetTypeId, tagTypesList) {
   if (!assetTypeId) return null;
   try {
@@ -213,29 +233,11 @@ function AddAssetModal({ types, locations, tagTypes, vendors, onClose, onSaved }
 
   const saveRef = React.useRef(null);
 
-  const handleKeyDown = (e) => {
-    if (e.key !== 'Enter') return;
-    if (e.target.tagName === 'TEXTAREA') return;
-    e.preventDefault();
-
-    // Collect all focusable fields inside the form + the save button
-    const form = e.currentTarget;
-    const focusable = [
-      ...form.querySelectorAll('input:not([readonly]), select, textarea'),
-      saveRef.current,
-    ].filter(Boolean);
-
-    const idx = focusable.indexOf(e.target);
-    if (idx >= 0 && idx < focusable.length - 1) {
-      focusable[idx + 1].focus();
-    } else {
-      saveRef.current?.focus();
-    }
-  };
+  const handleKeyDown = (e) => handleAssetFormEnterKey(e, saveRef.current);
 
   return (
     <div className="modal-overlay">
-      <div className="modal add-asset-modal" style={{ maxHeight: '90vh', overflowY: 'auto' }}>
+      <div className="modal add-asset-modal">
         <h2>Add Asset</h2>
         <div className="add-asset-form" onKeyDown={handleKeyDown}>
           <div className="form-row">
@@ -539,6 +541,7 @@ function AssetDetail({ asset, types, locations, tagTypes, vendors, onBack, onRef
   const [revertToInherited, setRevertToInherited] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState(null); // { onConfirm }
+  const editSaveRef = useRef(null);
 
   useEffect(() => {
     getAssetAttributes(asset.id).then(r => {
@@ -756,20 +759,9 @@ function AssetDetail({ asset, types, locations, tagTypes, vendors, onBack, onRef
       {/* Edit Modal */}
       {editModal && (
         <div className="modal-overlay">
-          <div className="modal add-asset-modal">
+          <div className="modal add-asset-modal edit-asset-modal">
             <h2>Edit Asset</h2>
-            <div className="add-asset-form" onKeyDown={e => {
-              if (e.key !== 'Enter') return;
-              if (e.target.tagName === 'TEXTAREA') return;
-              e.preventDefault();
-              const focusable = [
-                ...e.currentTarget.querySelectorAll('input:not([readonly]), select, textarea'),
-                e.currentTarget.closest('.modal').querySelector('.btn-primary'),
-              ].filter(Boolean);
-              const idx = focusable.indexOf(e.target);
-              if (idx >= 0 && idx < focusable.length - 1) focusable[idx + 1].focus();
-              else focusable[focusable.length - 1]?.focus();
-            }}>
+            <div className="add-asset-form" onKeyDown={(e) => handleAssetFormEnterKey(e, editSaveRef.current)}>
               <div className="form-row">
                 <label>Asset Serial <span className="required">*</span></label>
                 <div className="field-wrap">
@@ -875,7 +867,7 @@ function AssetDetail({ asset, types, locations, tagTypes, vendors, onBack, onRef
                 setEditImageFile(null);
                 setRevertToInherited(false);
               }}>Cancel</button>
-              <button className="btn btn-primary" onClick={saveEdit} disabled={editSaving}>
+              <button ref={editSaveRef} className="btn btn-primary" onClick={saveEdit} disabled={editSaving}>
                 {editSaving ? 'Saving…' : 'Save'}
               </button>
             </div>

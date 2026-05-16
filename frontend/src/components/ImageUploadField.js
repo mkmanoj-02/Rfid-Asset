@@ -58,7 +58,7 @@ export default function ImageUploadField({
   const displayUrl = blobUrl || previewUrl;
 
   return (
-    <div className="image-upload-field">
+    <div className="image-upload-field" data-skip-enter-nav>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <label style={{ fontWeight: 600, fontSize: 13, color: '#374151' }}>{label}</label>
         {sourceLabel && (
@@ -79,9 +79,8 @@ export default function ImageUploadField({
       </div>
 
       <div
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => e.key === 'Enter' && !disabled && inputRef.current?.click()}
+        role="presentation"
+        tabIndex={-1}
         onDragOver={(e) => { e.preventDefault(); if (!disabled) setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={onDrop}
@@ -99,6 +98,7 @@ export default function ImageUploadField({
         <input
           ref={inputRef}
           type="file"
+          tabIndex={-1}
           accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
           style={{ display: 'none' }}
           disabled={disabled}
