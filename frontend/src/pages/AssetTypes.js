@@ -576,10 +576,6 @@ export default function AssetTypes() {
             <button type="button" onClick={() => { setExpandAllBranches(true); setTreeResetKey((k) => k + 1); }}>Expand all</button>
             <button type="button" onClick={() => { setExpandAllBranches(false); setTreeResetKey((k) => k + 1); }}>Collapse all</button>
           </div>
-          <div className="asset-types-legend" aria-hidden>
-            <span>— branch line</span>
-            <span>▸ expand</span>
-          </div>
           <span className="asset-types-toolbar-meta">
             {searchQuery ? `${visibleTypeCount} matching type${visibleTypeCount !== 1 ? 's' : ''}` : `${items.length} type${items.length !== 1 ? 's' : ''}`}
           </span>

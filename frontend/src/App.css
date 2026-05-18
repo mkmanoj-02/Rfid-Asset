@@ -227,19 +227,6 @@ tr:hover td { background: #f8fafc; }
 .asset-types-toolbar-links button:hover {
   background: #eff6ff;
 }
-.asset-types-legend {
-  font-size: 11px;
-  color: #64748b;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.asset-types-legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
 .asset-types-shell {
   background: #fff;
   border: 1px solid #e2e8f0;
@@ -269,8 +256,6 @@ tr:hover td { background: #f8fafc; }
   --at-line: 3px;
   --at-line-color: #2563eb;
   --at-row-gap: 10px;
-  max-height: calc(100vh - 280px);
-  overflow-y: auto;
   background: #eef1f5;
   padding: 8px 10px 12px;
 }
