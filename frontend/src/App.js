@@ -382,7 +382,6 @@ function Sidebar({ mobileOpen, onMobileClose }) {
             <NavItem to="/asset-types" icon={Tag}     label="Asset Types" indent />
             <NavItem to="/locations"   icon={MapPin}  label="Locations"   indent />
             <NavItem to="/users"       icon={Users}   label={isSuperAdmin ? 'Users' : 'My Profile'} indent />
-            {isAdmin && <NavItem to="/handheld-devices" icon={Smartphone} label="Handheld Devices" indent />}
           </NavGroup>
 
           <SidebarDivider />
@@ -393,6 +392,10 @@ function Sidebar({ mobileOpen, onMobileClose }) {
           <SidebarDivider />
           <SectionLabel label="Import Manager" />
           {isAdmin && <NavItem to="/import" icon={Upload} label="Import" />}
+
+          <SidebarDivider />
+          <SectionLabel label="Mobile Readers" />
+          {isAdmin && <NavItem to="/handheld-devices" icon={Smartphone} label="Reader Setup" />}
 
           <SidebarDivider />
           <SectionLabel label="Reports" />

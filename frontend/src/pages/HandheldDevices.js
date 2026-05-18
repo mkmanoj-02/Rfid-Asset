@@ -330,7 +330,7 @@ function ManageDevices() {
   );
 }
 
-// ── Tab 2: Map attributes per device ───────────────────────────
+// ── Tab 2: Field configuration per device ──────────────────────
 function AttributeMapping() {
   const [devices, setDevices] = useState([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
@@ -387,12 +387,8 @@ function AttributeMapping() {
     });
   };
 
-  const selectAllVisible = () => {
-    setMappedIds((prev) => {
-      const next = new Set(prev);
-      filteredAttrs.forEach((a) => next.add(a.id));
-      return next;
-    });
+  const selectAll = () => {
+    setMappedIds(new Set(allAttributes.map((a) => a.id)));
   };
 
   const clearAll = () => setMappedIds(new Set());
@@ -405,7 +401,7 @@ function AttributeMapping() {
     setSaving(true);
     try {
       await saveHandheldDeviceAttributes(selectedDeviceId, [...mappedIds]);
-      showToast('Attribute mapping saved', 'success');
+      showToast('Display fields saved', 'success');
     } catch (e) {
       toastApiFailure(e, 'Save mapping');
     } finally {
@@ -419,7 +415,7 @@ function AttributeMapping() {
     <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', border: '1px solid #e8edf2', overflow: 'hidden' }}>
       <div style={{ padding: '16px 20px', borderBottom: '1px solid #e8edf2', background: '#f8fafc' }}>
         <p style={{ margin: '0 0 12px', fontSize: 13, color: '#6b7280', lineHeight: 1.5 }}>
-          Map asset attributes to each handheld device. The Android app uses the device name from the header and shows only mapped attributes for that device.
+          Choose which asset attributes appear on each handheld device when scanning.
         </p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
           <label style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Device</label>
@@ -443,8 +439,8 @@ function AttributeMapping() {
 
       {!selectedDeviceId ? (
         <PageEmpty
-          title="Select a device to map attributes"
-          hint="Choose a handheld device above, then check the asset attributes that should appear on that reader."
+          title="Select a device to set display fields"
+          hint="Choose a handheld device above, then select which fields should appear when using that reader."
           icon={(
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M4 6h16M4 12h10M4 18h6" />
@@ -465,10 +461,10 @@ function AttributeMapping() {
             </div>
             {isAdmin && (
               <>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={selectAllVisible}>Select visible</button>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={selectAll}>Select all</button>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={clearAll}>Clear all</button>
                 <button type="button" className="btn btn-primary btn-sm" onClick={save} disabled={saving || loading}>
-                  {saving ? 'Saving…' : 'Save mapping'}
+                  {saving ? 'Saving…' : 'Save'}
                 </button>
               </>
             )}
@@ -504,9 +500,6 @@ function AttributeMapping() {
               </label>
             ))}
           </div>
-          <div style={{ padding: '12px 20px', borderTop: '1px solid #e8edf2', fontSize: 12, color: '#6b7280', background: '#fafbfc' }}>
-            Mobile API: <code style={{ fontSize: 11 }}>GET /api/handheld-devices/mobile/attributes?device_name={selectedDevice?.name || 'DeviceName'}</code>
-          </div>
         </>
       )}
     </div>
@@ -519,16 +512,16 @@ export default function HandheldDevices() {
 
   return (
     <div>
-      <div className="page-header"><h1>Handheld Devices</h1></div>
+      <div className="page-header"><h1>Reader Setup</h1></div>
       <p style={{ margin: '-8px 0 20px', fontSize: 14, color: '#6b7280', maxWidth: 720 }}>
-        Configure mobile reader devices and control which asset attributes appear on each handheld when scanning.
+        Register mobile RFID readers and choose which fields each device displays during scanning.
       </p>
       <div className="detail-tabs" style={{ marginBottom: 20 }}>
         <button type="button" className={`tab-btn ${tab === 'devices' ? 'active' : ''}`} onClick={() => setTab('devices')}>
           Devices
         </button>
         <button type="button" className={`tab-btn ${tab === 'mapping' ? 'active' : ''}`} onClick={() => setTab('mapping')}>
-          Attribute Mapping
+          Display Fields
         </button>
       </div>
       {tab === 'devices' && <ManageDevices />}
