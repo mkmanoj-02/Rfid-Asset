@@ -887,14 +887,8 @@ export default function Users() {
         {/* User list */}
         <div style={{ width: 260, flexShrink: 0, background: '#fff', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', overflow: 'hidden', border: '1px solid #e8edf2', display: 'flex', flexDirection: 'column' }}>
           <div className="panel-header">
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span>Users</span>
-              <span style={{ fontSize: 12, color: '#6b7280', fontWeight: 400 }}>
-                {userSearchQuery
-                  ? `${filteredUsers.length} of ${users.length}`
-                  : `${users.length} user${users.length !== 1 ? 's' : ''}`}
-              </span>
-            </span>
+            <span>Users</span>
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => { setEditUser(null); setShowForm(true); }}>+ Add</button>
           </div>
           <div style={{ padding: '8px 10px', borderBottom: '1px solid #e2e8f0', background: '#fafbfc' }}>
             <div style={{ position: 'relative' }}>
@@ -930,9 +924,6 @@ export default function Users() {
               </div>
             ))}
             {users.length === 0 && <div style={{ padding: 16, color: '#aaa', fontSize: 13, textAlign: 'center' }}>No users yet</div>}
-          </div>
-          <div style={{ padding: '10px 14px', borderTop: '1px solid #e8edf2', display: 'flex', justifyContent: 'flex-end' }}>
-            <button className="btn btn-primary btn-sm" onClick={() => { setEditUser(null); setShowForm(true); }}>+ Add User</button>
           </div>
         </div>
 
