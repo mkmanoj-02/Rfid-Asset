@@ -3,17 +3,215 @@ const router = express.Router();
 const db = require('../db');
 const audit = require('../audit');
 
+const VALID_ASSET_STATUSES = new Set(['active', 'inactive', 'maintenance']);
+
 // Helper: exact case-insensitive match only.
-// Fuzzy/partial matching caused false positives (e.g. "2cqr" matching "2cqr_oragadam").
 function findBestMatch(name, list) {
   if (!name) return null;
   const lower = name.trim().toLowerCase();
   return list.find(i => i.name.toLowerCase() === lower) || null;
 }
 
+function normalizeStatus(raw) {
+  const s = (raw || 'active').toString().trim().toLowerCase();
+  return VALID_ASSET_STATUSES.has(s) ? s : null;
+}
+
+/** Resolve master id from numeric id field or name field on import row. */
+function resolveMasterId(row, idKey, nameKey, list, label) {
+  const idRaw = row[idKey];
+  if (idRaw != null && idRaw !== '') {
+    const id = Number(idRaw);
+    if (!Number.isNaN(id)) {
+      const hit = list.find(x => x.id === id);
+      if (hit) return { id: hit.id, fix: null, error: null };
+      return { id: null, fix: null, error: `${label} id ${id} not found` };
+    }
+  }
+  const name = (row[nameKey] || '').trim();
+  if (!name) return { id: null, fix: null, error: null };
+  const match = findBestMatch(name, list);
+  if (!match) return { id: null, fix: null, error: `${label} "${name}" not found` };
+  const fix = match.name.toLowerCase() !== name.toLowerCase() ? match.name : null;
+  return { id: match.id, fix, error: null };
+}
+
+function normalizeAssetImportRow(row) {
+  if (!row || typeof row !== 'object') return row;
+  return {
+    ...row,
+    asset_serial: (row.asset_serial || '').trim(),
+    name: (row.name || '').trim(),
+    rfid_tag: (row.rfid_tag || '').trim(),
+    asset_type: (row.asset_type || '').trim(),
+    location: (row.location || '').trim(),
+    tag_type: (row.tag_type || '').trim(),
+    vendor: (row.vendor || '').trim(),
+    status: (row.status || '').trim(),
+    description: (row.description || '').trim(),
+  };
+}
+
+function collectMissingNames(rows, nameKey, list) {
+  const missing = new Set();
+  rows.forEach(row => {
+    const normalized = normalizeAssetImportRow(row);
+    const name = (normalized[nameKey] || '').trim();
+    if (!name) return;
+    if (!findBestMatch(name, list)) missing.add(name);
+  });
+  return [...missing];
+}
+
+async function loadTagTypeByName(name) {
+  const [rows] = await db.query('SELECT id, name FROM tag_types WHERE LOWER(name) = LOWER(?) LIMIT 1', [name]);
+  return rows[0] || null;
+}
+
+async function loadVendorByName(name) {
+  const [rows] = await db.query('SELECT id, name FROM vendors WHERE LOWER(name) = LOWER(?) LIMIT 1', [name]);
+  return rows[0] || null;
+}
+
+async function ensureTagType(name, tagTypes, created) {
+  const trimmed = (name || '').trim();
+  if (!trimmed) return null;
+  const existing = findBestMatch(trimmed, tagTypes);
+  if (existing) return existing;
+  if (created.has(trimmed.toLowerCase())) return findBestMatch(trimmed, tagTypes);
+
+  try {
+    const [result] = await db.query(
+      'INSERT INTO tag_types (name, description) VALUES (?, ?)',
+      [trimmed, 'Created via import']
+    );
+    const entry = { id: result.insertId, name: trimmed };
+    tagTypes.push(entry);
+    created.add(trimmed.toLowerCase());
+    return entry;
+  } catch (e) {
+    if (e.code === 'ER_DUP_ENTRY') {
+      const row = await loadTagTypeByName(trimmed);
+      if (row) {
+        tagTypes.push(row);
+        created.add(trimmed.toLowerCase());
+        return row;
+      }
+    }
+    throw e;
+  }
+}
+
+async function ensureVendor(name, vendors, created) {
+  const trimmed = (name || '').trim();
+  if (!trimmed) return null;
+  const existing = findBestMatch(trimmed, vendors);
+  if (existing) return existing;
+  if (created.has(trimmed.toLowerCase())) return findBestMatch(trimmed, vendors);
+
+  try {
+    const [result] = await db.query('INSERT INTO vendors (name) VALUES (?)', [trimmed]);
+    const entry = { id: result.insertId, name: trimmed };
+    vendors.push(entry);
+    created.add(trimmed.toLowerCase());
+    return entry;
+  } catch (e) {
+    if (e.code === 'ER_DUP_ENTRY') {
+      const row = await loadVendorByName(trimmed);
+      if (row) {
+        vendors.push(row);
+        created.add(trimmed.toLowerCase());
+        return row;
+      }
+    }
+    throw e;
+  }
+}
+
+async function ensureTypeAttributes(typeId, row) {
+  if (!typeId || !row.attributes || !row.attrTypes) return;
+  for (const [attrName, attrType] of Object.entries(row.attrTypes)) {
+    await db.query(
+      'INSERT IGNORE INTO asset_type_attributes (asset_type_id, name, attr_type) VALUES (?,?,?)',
+      [typeId, attrName, attrType || 'string']
+    );
+  }
+}
+
+function validateAssetImportRow(row, ctx) {
+  const { assetTypes, locations, tagTypes, vendors, existingAssets } = ctx;
+  const errors = [];
+
+  const serial = (row.asset_serial || '').trim();
+  const name = (row.name || '').trim();
+  if (!serial) errors.push('Asset Serial is required');
+  if (!name) errors.push('Asset Name is required');
+
+  let typeMatch = null;
+  let typeFix = null;
+  if (!row.asset_type?.trim()) {
+    errors.push('Asset Type is required');
+  } else {
+    typeMatch = findBestMatch(row.asset_type, assetTypes);
+    if (!typeMatch) errors.push(`Asset type "${row.asset_type}" not found`);
+    else if (typeMatch.name.toLowerCase() !== row.asset_type.trim().toLowerCase()) {
+      typeFix = typeMatch.name;
+    }
+  }
+
+  let locationMatch = null;
+  let locationFix = null;
+  if (!row.location?.trim()) {
+    errors.push('Location is required');
+  } else {
+    locationMatch = findBestMatch(row.location, locations);
+    if (!locationMatch) errors.push(`Location "${row.location}" not found`);
+    else if (locationMatch.name.toLowerCase() !== row.location.trim().toLowerCase()) {
+      locationFix = locationMatch.name;
+    }
+  }
+
+  const hasTagInput = row.tag_type?.trim() || (row.tag_type_id != null && row.tag_type_id !== '');
+  const tagRes = resolveMasterId(row, 'tag_type_id', 'tag_type', tagTypes, 'Tag type');
+  if (!hasTagInput) errors.push('Tag Type is required');
+  else if (tagRes.error) errors.push(tagRes.error);
+
+  const hasVendorInput = row.vendor?.trim() || (row.vendor_id != null && row.vendor_id !== '');
+  const vendorRes = resolveMasterId(row, 'vendor_id', 'vendor', vendors, 'Vendor');
+  if (!hasVendorInput) errors.push('Vendor is required');
+  else if (vendorRes.error) errors.push(vendorRes.error);
+
+  let status = 'active';
+  if (row.status != null && String(row.status).trim() !== '') {
+    const normalized = normalizeStatus(row.status);
+    if (!normalized) errors.push('Status must be active, inactive, or maintenance');
+    else status = normalized;
+  }
+
+  const existingMatch = serial ? existingAssets.find(a => a.asset_serial === serial) : null;
+
+  return {
+    ...row,
+    name: name || row.name,
+    asset_serial: serial || row.asset_serial,
+    tag_type_id: tagRes.id,
+    vendor_id: vendorRes.id,
+    status,
+    _status: errors.length ? 'error' : existingMatch ? 'update' : 'insert',
+    _errors: errors,
+    _typeFix: typeFix,
+    _locationFix: locationFix,
+    _tagTypeFix: tagRes.fix,
+    _vendorFix: vendorRes.fix,
+    _typeId: typeMatch ? typeMatch.id : null,
+    _locationId: locationMatch ? locationMatch.id : null,
+    _existingId: existingMatch ? existingMatch.id : null,
+  };
+}
+
 // Preview + validate locations
 router.post('/locations/preview', async (req, res) => {
-  const { rows } = req.body; // [{ Location, Parent Location, Description, ... }]
+  const { rows } = req.body;
   const [existing] = await db.query('SELECT id, name FROM locations');
 
   const result = rows.map(row => {
@@ -46,7 +244,6 @@ router.post('/locations/preview', async (req, res) => {
   res.json(result);
 });
 
-// Execute location import
 router.post('/locations/execute', async (req, res) => {
   const { rows } = req.body;
   let inserted = 0, updated = 0, skipped = 0, errors = 0;
@@ -69,13 +266,9 @@ router.post('/locations/execute', async (req, res) => {
   res.json({ inserted, updated, skipped, errors });
 });
 
-// Preview + validate asset types
 router.post('/asset-types/preview', async (req, res) => {
   const { rows } = req.body;
   const [existing] = await db.query('SELECT id, name FROM asset_types');
-
-  // Build a working list that includes types being inserted in this same batch
-  // so a child can reference a parent that is also in the import file
   const workingList = [...existing];
 
   const result = rows.map(row => {
@@ -92,8 +285,6 @@ router.post('/asset-types/preview', async (req, res) => {
       else if (parentMatch.name.toLowerCase() !== row.parent_name.trim().toLowerCase()) parentFix = parentMatch.name;
     }
 
-    // Add this row to workingList (with a placeholder id) so subsequent rows
-    // in the same batch can reference it as a parent
     if (!existingMatch && name) {
       workingList.push({ id: `_new_${name}`, name });
     }
@@ -103,7 +294,7 @@ router.post('/asset-types/preview', async (req, res) => {
       _status: errors.length ? 'error' : existingMatch ? 'update' : 'insert',
       _errors: errors,
       _parentFix: parentFix,
-      _parentId: parentMatch ? parentMatch.id : null,   // ← was missing
+      _parentId: parentMatch ? parentMatch.id : null,
       _existingId: existingMatch ? existingMatch.id : null,
     };
   });
@@ -111,24 +302,16 @@ router.post('/asset-types/preview', async (req, res) => {
   res.json(result);
 });
 
-// Execute asset type import
 router.post('/asset-types/execute', async (req, res) => {
   const { rows } = req.body;
   let inserted = 0, updated = 0, errors = 0;
-
-  // Keep a name→id map so child types inserted in this batch can find
-  // parents that were also inserted in this same batch
   const nameToId = {};
-
-  // Pre-seed with existing types from DB
   const [existingTypes] = await db.query('SELECT id, name FROM asset_types');
   existingTypes.forEach(t => { nameToId[t.name.toLowerCase()] = t.id; });
 
   for (const row of rows) {
     if (row._status === 'error') { errors++; continue; }
     try {
-      // Resolve parent_id: prefer the stored _parentId, but if it's a
-      // placeholder (_new_...) look it up in nameToId (inserted earlier in batch)
       let parentId = null;
       if (row.parent_name && row.parent_name.trim()) {
         const key = row.parent_name.trim().toLowerCase();
@@ -146,10 +329,8 @@ router.post('/asset-types/execute', async (req, res) => {
           'INSERT INTO asset_types (name, description, parent_id) VALUES (?,?,?)',
           [row.name, row.description || null, parentId]
         );
-        // Register in map so subsequent rows in this batch can use it as parent
         nameToId[row.name.toLowerCase()] = result.insertId;
 
-        // Handle attributes
         if (row.attributes && row.attributes.length) {
           for (const attr of row.attributes) {
             await db.query('INSERT INTO asset_type_attributes (asset_type_id, name, attr_type) VALUES (?,?,?)',
@@ -164,58 +345,50 @@ router.post('/asset-types/execute', async (req, res) => {
   res.json({ inserted, updated, errors });
 });
 
-// Check missing asset types and locations before preview
+// Check missing masters before preview (drives Smart Fix dialog)
 router.post('/assets/check', async (req, res) => {
-  const { rows } = req.body;
+  const rows = (req.body.rows || []).map(normalizeAssetImportRow);
   const [assetTypes] = await db.query('SELECT id, name FROM asset_types');
   const [locations] = await db.query('SELECT id, name FROM locations');
-
-  const missingTypesSet = new Set();
-  const missingLocationsSet = new Set();
-
-  rows.forEach(row => {
-    if (row.asset_type && row.asset_type.trim()) {
-      const match = findBestMatch(row.asset_type, assetTypes);
-      if (!match) missingTypesSet.add(row.asset_type.trim());
-    }
-    if (row.location && row.location.trim()) {
-      const match = findBestMatch(row.location, locations);
-      if (!match) missingLocationsSet.add(row.location.trim());
-    }
-  });
+  const [tagTypes] = await db.query('SELECT id, name FROM tag_types');
+  const [vendors] = await db.query('SELECT id, name FROM vendors');
 
   res.json({
-    missingTypes: [...missingTypesSet],
-    missingLocations: [...missingLocationsSet],
+    missingTypes: collectMissingNames(rows, 'asset_type', assetTypes),
+    missingLocations: collectMissingNames(rows, 'location', locations),
+    missingTagTypes: collectMissingNames(rows, 'tag_type', tagTypes),
+    missingVendors: collectMissingNames(rows, 'vendor', vendors),
   });
 });
 
-// Smart fix: create missing asset types and locations
+// Smart fix: auto-create missing asset types, locations, tag types, and vendors
 router.post('/assets/smartfix', async (req, res) => {
-  const { rows } = req.body;
+  const rows = (req.body.rows || []).map(normalizeAssetImportRow);
   const [assetTypes] = await db.query('SELECT id, name FROM asset_types');
   const [locations] = await db.query('SELECT id, name FROM locations');
+  const [tagTypes] = await db.query('SELECT id, name FROM tag_types');
+  const [vendors] = await db.query('SELECT id, name FROM vendors');
 
   const createdTypes = new Set();
   const createdLocations = new Set();
+  const createdTagTypes = new Set();
+  const createdVendors = new Set();
+  const createdTagTypeNames = [];
+  const createdVendorNames = [];
 
   for (const row of rows) {
-    if (row.asset_type && row.asset_type.trim()) {
-      const match = findBestMatch(row.asset_type, assetTypes);
-      if (!match && !createdTypes.has(row.asset_type.trim())) {
+    if (row.asset_type?.trim()) {
+      let typeMatch = findBestMatch(row.asset_type, assetTypes);
+      if (!typeMatch && !createdTypes.has(row.asset_type.trim())) {
         const [result] = await db.query('INSERT INTO asset_types (name) VALUES (?)', [row.asset_type.trim()]);
-        assetTypes.push({ id: result.insertId, name: row.asset_type.trim() });
-        // Create attributes if provided
-        if (row.attributes && row.attrTypes) {
-          for (const [attrName, attrType] of Object.entries(row.attrTypes)) {
-            await db.query('INSERT IGNORE INTO asset_type_attributes (asset_type_id, name, attr_type) VALUES (?,?,?)',
-              [result.insertId, attrName, attrType || 'string']);
-          }
-        }
+        typeMatch = { id: result.insertId, name: row.asset_type.trim() };
+        assetTypes.push(typeMatch);
         createdTypes.add(row.asset_type.trim());
       }
+      if (typeMatch) await ensureTypeAttributes(typeMatch.id, row);
     }
-    if (row.location && row.location.trim()) {
+
+    if (row.location?.trim()) {
       const match = findBestMatch(row.location, locations);
       if (!match && !createdLocations.has(row.location.trim())) {
         const [result] = await db.query('INSERT INTO locations (name) VALUES (?)', [row.location.trim()]);
@@ -223,76 +396,56 @@ router.post('/assets/smartfix', async (req, res) => {
         createdLocations.add(row.location.trim());
       }
     }
+
+    if (row.tag_type?.trim()) {
+      const before = findBestMatch(row.tag_type, tagTypes);
+      const entry = await ensureTagType(row.tag_type, tagTypes, createdTagTypes);
+      if (!before && entry && !createdTagTypeNames.includes(entry.name)) {
+        createdTagTypeNames.push(entry.name);
+      }
+    }
+
+    if (row.vendor?.trim()) {
+      const before = findBestMatch(row.vendor, vendors);
+      const entry = await ensureVendor(row.vendor, vendors, createdVendors);
+      if (!before && entry && !createdVendorNames.includes(entry.name)) {
+        createdVendorNames.push(entry.name);
+      }
+    }
   }
 
-  res.json({ createdTypes: [...createdTypes], createdLocations: [...createdLocations] });
+  res.json({
+    createdTypes: [...createdTypes],
+    createdLocations: [...createdLocations],
+    createdTagTypes: createdTagTypeNames,
+    createdVendors: createdVendorNames,
+  });
 });
 
-// Preview + validate assets
 router.post('/assets/preview', async (req, res) => {
-  const { rows } = req.body;
+  const rows = (req.body.rows || []).map(normalizeAssetImportRow);
   const [existingAssets] = await db.query('SELECT id, asset_serial FROM assets');
   const [assetTypes] = await db.query('SELECT id, name FROM asset_types');
   const [locations] = await db.query('SELECT id, name FROM locations');
+  const [tagTypes] = await db.query('SELECT id, name FROM tag_types');
+  const [vendors] = await db.query('SELECT id, name FROM vendors');
 
-  const result = rows.map(row => {
-    const serial = (row.asset_serial || '').trim();
-    const name = (row.name || '').trim();
-    const errors = [];
-
-    if (!serial) errors.push('Asset Serial is required');
-    if (!name) errors.push('Asset Name is required');
-
-    // Asset type match
-    let typeMatch = null, typeFix = null;
-    if (row.asset_type && row.asset_type.trim()) {
-      typeMatch = findBestMatch(row.asset_type, assetTypes);
-      if (!typeMatch) errors.push(`Asset type "${row.asset_type}" not found`);
-      else if (typeMatch.name.toLowerCase() !== row.asset_type.trim().toLowerCase()) typeFix = typeMatch.name;
-    }
-
-    // Location match
-    let locationMatch = null, locationFix = null;
-    if (row.location && row.location.trim()) {
-      locationMatch = findBestMatch(row.location, locations);
-      if (!locationMatch) errors.push(`Location "${row.location}" not found`);
-      else if (locationMatch.name.toLowerCase() !== row.location.trim().toLowerCase()) locationFix = locationMatch.name;
-    }
-
-    const existingMatch = serial ? existingAssets.find(a => a.asset_serial === serial) : null;
-
-    return {
-      ...row,
-      _status: errors.length ? 'error' : existingMatch ? 'update' : 'insert',
-      _errors: errors,
-      _typeFix: typeFix,
-      _locationFix: locationFix,
-      _typeId: typeMatch ? typeMatch.id : null,
-      _locationId: locationMatch ? locationMatch.id : null,
-      _existingId: existingMatch ? existingMatch.id : null,
-    };
-  });
-
+  const ctx = { assetTypes, locations, tagTypes, vendors, existingAssets };
+  const result = rows.map(row => validateAssetImportRow(row, ctx));
   res.json(result);
 });
 
-// Execute asset import
 router.post('/assets/execute', async (req, res) => {
-  const { rows } = req.body;
+  const rows = (req.body.rows || []).map(normalizeAssetImportRow);
   let inserted = 0, updated = 0, errors = 0;
 
-  // Pre-load all asset types and their attributes once
-  const [assetTypes] = await db.query('SELECT id, name FROM asset_types');
   const [allTypeAttrs] = await db.query('SELECT id, asset_type_id, name, attr_type FROM asset_type_attributes');
-
-  // Cache: typeId -> [{ id, name }]
   const attrCache = {};
   allTypeAttrs.forEach(a => {
     if (!attrCache[a.asset_type_id]) attrCache[a.asset_type_id] = [];
     attrCache[a.asset_type_id].push(a);
   });
 
-  // Ensure attributes exist on asset type, return attr id
   const ensureAttr = async (typeId, attrName, attrType) => {
     if (!attrCache[typeId]) attrCache[typeId] = [];
     let attr = attrCache[typeId].find(a => a.name.toLowerCase() === attrName.toLowerCase());
@@ -310,16 +463,42 @@ router.post('/assets/execute', async (req, res) => {
 
   for (const row of rows) {
     if (row._status === 'error') { errors++; continue; }
-    try {
-      const locationId = row._locationId || 1;
-      const typeId = row._typeId || null;
 
+    const locationId = row._locationId;
+    const typeId = row._typeId;
+    const tagTypeId = row.tag_type_id;
+    const vendorId = row.vendor_id;
+    const status = row.status || 'active';
+
+    if (!locationId || !typeId || !tagTypeId || !vendorId) {
+      console.error('Import row missing resolved ids:', {
+        asset_serial: row.asset_serial,
+        locationId,
+        typeId,
+        tagTypeId,
+        vendorId,
+      });
+      errors++;
+      continue;
+    }
+
+    try {
       if (row._status === 'update') {
         await db.query(
-          'UPDATE assets SET name=?, rfid_tag=?, tag_type_id=?, asset_type_id=?, current_location_id=?, description=? WHERE id=?',
-          [row.name, row.rfid_tag || null, row.tag_type_id || null, typeId, locationId, row.description || null, row._existingId]
+          `UPDATE assets SET name=?, rfid_tag=?, tag_type_id=?, vendor_id=?, asset_type_id=?,
+           current_location_id=?, status=?, description=? WHERE id=?`,
+          [
+            row.name,
+            row.rfid_tag || null,
+            tagTypeId,
+            vendorId,
+            typeId,
+            locationId,
+            status,
+            row.description || null,
+            row._existingId,
+          ]
         );
-        // Save attribute values on update too
         if (row.attributes && typeId) {
           for (const [attrName, attrVal] of Object.entries(row.attributes)) {
             if (attrVal === '' && attrVal !== 0) continue;
@@ -333,20 +512,28 @@ router.post('/assets/execute', async (req, res) => {
         }
         updated++;
       } else {
-        // Insert asset
         const [result] = await db.query(
-          'INSERT INTO assets (asset_serial, name, rfid_tag, tag_type_id, asset_type_id, current_location_id, status, description) VALUES (?,?,?,?,?,?,?,?)',
-          [row.asset_serial, row.name, row.rfid_tag || null, row.tag_type_id || null, typeId, locationId, 'active', row.description || null]
+          `INSERT INTO assets (asset_serial, name, rfid_tag, tag_type_id, vendor_id, asset_type_id,
+           current_location_id, status, description) VALUES (?,?,?,?,?,?,?,?,?)`,
+          [
+            row.asset_serial,
+            row.name,
+            row.rfid_tag || null,
+            tagTypeId,
+            vendorId,
+            typeId,
+            locationId,
+            status,
+            row.description || null,
+          ]
         );
         const assetId = result.insertId;
 
-        // Movement history
         await db.query(
           'INSERT INTO movement_history (asset_id, from_location_id, to_location_id, notes) VALUES (?, NULL, ?, ?)',
           [assetId, locationId, 'Imported']
         );
 
-        // Save attribute values
         if (row.attributes && typeId) {
           for (const [attrName, attrVal] of Object.entries(row.attributes)) {
             const attrType = (row.attrTypes && row.attrTypes[attrName]) || 'string';
@@ -364,7 +551,14 @@ router.post('/assets/execute', async (req, res) => {
       errors++;
     }
   }
-  await audit.log('Import', 'Import', `Assets imported: ${inserted} inserted, ${updated} updated, ${errors} errors`, req.auditUser, req.auditUserId);
+
+  await audit.log(
+    'Import',
+    'Import',
+    `Assets imported: ${inserted} inserted, ${updated} updated, ${errors} errors`,
+    req.auditUser,
+    req.auditUserId
+  );
   res.json({ inserted, updated, errors });
 });
 

@@ -1,16 +1,67 @@
-import React, { useState } from 'react';
-import * as XLSX from 'xlsx';
-import api from '../api';
+import React, { useEffect, useState } from 'react';
+import XLSX from 'xlsx-js-style';
+import api, { getTagTypes, getVendors } from '../api';
 import { toastApiFailure } from '../apiErrorHandling';
+import { useToast } from '../Toast';
 
-const SAMPLES = {
-  assets: [['Serial', 'Name', 'RFID', 'Asset Type', 'Location', 'Description', 'Attribute1', 'Attribute2']],
-  'asset-types': [['Asset Type', 'Parent Asset Type', 'Description', 'Attribute1', 'Attribute2']],
-  locations: [['Location', 'Parent Location', 'Description']],
+const SAMPLE_CONFIG = {
+  assets: {
+    headers: [
+      { label: 'Asset Serial', required: true },
+      { label: 'Asset Name', required: true },
+      { label: 'RFID', required: false },
+      { label: 'Asset Type', required: true },
+      { label: 'Tag Type', required: true },
+      { label: 'Vendor', required: true },
+      { label: 'Location', required: true },
+      { label: 'Status', required: false },
+      { label: 'Description', required: false },
+      { label: 'Attribute1', required: false },
+      { label: 'Attribute2', required: false },
+    ],
+    exampleRow: ['AST-001', 'Office Laptop 01', 'E280-001', 'Laptop', 'RFID', 'Acme Supplies', 'Main Warehouse', 'active', 'Sample row', 'Value 1', 'Value 2'],
+  },
+  'asset-types': {
+    headers: [
+      { label: 'Asset Type', required: true },
+      { label: 'Parent Asset Type', required: false },
+      { label: 'Description', required: false },
+      { label: 'Attribute1', required: false },
+      { label: 'Attribute2', required: false },
+    ],
+    exampleRow: ['Laptop', 'IT Equipment', 'Company laptops', 'Warranty', 'Brand'],
+  },
+  locations: {
+    headers: [
+      { label: 'Location', required: true },
+      { label: 'Parent Location', required: false },
+      { label: 'Description', required: false },
+    ],
+    exampleRow: ['Main Warehouse', 'Head Office', 'Primary storage'],
+  },
 };
 
+function styleSampleHeaderRow(ws, headers) {
+  headers.forEach((h, col) => {
+    const addr = XLSX.utils.encode_cell({ r: 0, c: col });
+    if (!ws[addr]) return;
+    ws[addr].s = {
+      font: {
+        bold: true,
+        color: { rgb: h.required ? 'FF0000' : '000000' },
+      },
+      alignment: { vertical: 'center', horizontal: 'center' },
+    };
+  });
+  ws['!cols'] = headers.map((h) => ({ wch: Math.max(h.label.length + 2, 14) }));
+}
+
 function downloadSample(type) {
-  const ws = XLSX.utils.aoa_to_sheet(SAMPLES[type]);
+  const config = SAMPLE_CONFIG[type];
+  if (!config) return;
+  const headerLabels = config.headers.map((h) => h.label);
+  const ws = XLSX.utils.aoa_to_sheet([headerLabels, config.exampleRow || headerLabels.map(() => '')]);
+  styleSampleHeaderRow(ws, config.headers);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
   XLSX.writeFile(wb, `sample-${type}.xlsx`);
@@ -28,30 +79,55 @@ function StatusBadge({ status }) {
 }
 
 // ── Smart Fix Dialog ───────────────────────────────────────────
-function SmartFixDialog({ missingTypes, missingLocations, attributeCols, onSmartFix, onIgnore, onAbort }) {
+function SmartFixDialog({
+  missingTypes,
+  missingLocations,
+  missingTagTypes,
+  missingVendors,
+  attributeCols,
+  onSmartFix,
+  onIgnore,
+  onAbort,
+}) {
+  const columns = [
+    { label: 'Asset Types', items: missingTypes || [] },
+    { label: 'Locations', items: missingLocations || [] },
+    { label: 'Tag Types', items: missingTagTypes || [] },
+    { label: 'Vendors', items: missingVendors || [] },
+    { label: 'Attributes', items: attributeCols || [] },
+  ];
+  const totalMissing =
+    (missingTypes?.length || 0) +
+    (missingLocations?.length || 0) +
+    (missingTagTypes?.length || 0) +
+    (missingVendors?.length || 0);
   return (
     <div className="modal-overlay" style={{ zIndex: 300 }}>
-      <div style={{ background: '#fff', borderRadius: 8, width: 680, maxWidth: '95vw', boxShadow: '0 4px 24px rgba(0,0,0,0.18)', overflow: 'hidden' }}>
+      <div style={{ background: '#fff', borderRadius: 8, width: 900, maxWidth: '95vw', boxShadow: '0 4px 24px rgba(0,0,0,0.18)', overflow: 'hidden' }}>
         <div style={{ background: '#f7f8fc', padding: '10px 16px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 13, fontWeight: 600 }}>
-            {missingTypes.length} Asset Type(s) and {missingLocations.length} location(s) were not available in the system
+            {totalMissing} master record(s) not in the system — Smart Fix can create them automatically
           </span>
           <button onClick={onAbort} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: '#888' }}>×</button>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', borderBottom: '1px solid #e2e8f0' }}>
-          {[{ label: 'Asset Types', items: missingTypes }, { label: 'Locations', items: missingLocations }, { label: 'Attributes', items: attributeCols }].map(({ label, items }) => (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', borderBottom: '1px solid #e2e8f0' }}>
+          {columns.map(({ label, items }) => (
             <div key={label} style={{ borderRight: '1px solid #e2e8f0' }}>
               <div style={{ fontWeight: 600, fontSize: 13, padding: '8px 12px', borderBottom: '1px solid #e2e8f0', background: '#fafafa' }}>{label}</div>
-              <div style={{ minHeight: 220, maxHeight: 280, overflowY: 'auto' }}>
-                {items.map((item, i) => (
-                  <div key={i} style={{ padding: '6px 12px', fontSize: 13, background: i === 0 ? '#fffde7' : 'inherit', borderBottom: '1px solid #f7f8fc' }}>{item}</div>
-                ))}
+              <div style={{ minHeight: 200, maxHeight: 260, overflowY: 'auto' }}>
+                {items.length === 0 ? (
+                  <div style={{ padding: '8px 12px', fontSize: 12, color: '#aaa' }}>—</div>
+                ) : (
+                  items.map((item, i) => (
+                    <div key={i} style={{ padding: '6px 12px', fontSize: 13, background: i === 0 ? '#fffde7' : 'inherit', borderBottom: '1px solid #f7f8fc' }}>{item}</div>
+                  ))
+                )}
               </div>
             </div>
           ))}
         </div>
         <div style={{ padding: '12px 16px' }}>
-          <div style={{ fontSize: 12, color: '#666', marginBottom: 12 }}>* Smart Fix will create missing Asset Types, Locations and Attributes</div>
+          <div style={{ fontSize: 12, color: '#666', marginBottom: 12 }}>* Smart Fix will create missing Asset Types, Locations, Tag Types, Vendors, and attribute definitions</div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button className="btn btn-primary btn-sm" onClick={onSmartFix}>Smart Fix</button>
             <button className="btn btn-secondary btn-sm" onClick={onIgnore}>Ignore</button>
@@ -64,7 +140,6 @@ function SmartFixDialog({ missingTypes, missingLocations, attributeCols, onSmart
 }
 
 // ── Field Mapper ───────────────────────────────────────────────
-// Unmapped cols show editable Attribute/Skip dropdown + data type selector
 function FieldMapper({ fields, columns, mapping, attrMapping, attrTypes, onMappingChange, onAttrMappingChange, onAttrTypeChange }) {
   const mappedCols = Object.values(mapping).filter(Boolean);
   const unmappedCols = columns.filter(c => !mappedCols.includes(c));
@@ -76,7 +151,6 @@ function FieldMapper({ fields, columns, mapping, attrMapping, attrTypes, onMappi
         <div style={{ fontWeight: 600, fontSize: 13, color: '#333' }}>System Keys</div>
         <div />
 
-        {/* Known system fields */}
         {fields.map(f => (
           <React.Fragment key={f.key}>
             <label style={{ fontSize: 13, fontWeight: 500, color: '#555' }}>
@@ -94,7 +168,6 @@ function FieldMapper({ fields, columns, mapping, attrMapping, attrTypes, onMappi
           </React.Fragment>
         ))}
 
-        {/* Unmapped columns — editable Attribute/Skip + data type */}
         {unmappedCols.map(col => (
           <React.Fragment key={col}>
             <label style={{ fontSize: 13, fontWeight: 500, color: '#7c8cf8' }}>{col}</label>
@@ -126,9 +199,11 @@ function FieldMapper({ fields, columns, mapping, attrMapping, attrTypes, onMappi
 }
 
 // ── Preview Table ──────────────────────────────────────────────
-function PreviewTable({ rows, columns, attrCols }) {
+function PreviewTable({ rows, columns, attrCols, fieldLabels }) {
   const counts = { insert: 0, update: 0, error: 0, skipped: 0 };
   rows.forEach(r => { if (counts[r._status] !== undefined) counts[r._status]++; });
+
+  const labelFor = (key) => fieldLabels?.[key] || key;
 
   return (
     <div>
@@ -137,7 +212,7 @@ function PreviewTable({ rows, columns, attrCols }) {
           <thead>
             <tr>
               <th style={{ width: 80 }}>Status</th>
-              {columns.map(c => <th key={c}>{c}</th>)}
+              {columns.map(c => <th key={c}>{labelFor(c)}</th>)}
               {attrCols.map(c => <th key={c}>{c}</th>)}
               <th>Notes</th>
             </tr>
@@ -146,7 +221,7 @@ function PreviewTable({ rows, columns, attrCols }) {
             {rows.map((row, i) => (
               <tr key={i} style={{ background: STATUS_BG[row._status] || 'inherit' }}>
                 <td><StatusBadge status={row._status} /></td>
-                {columns.map(c => <td key={c} style={{ fontSize: 13 }}>{row[c]}</td>)}
+                {columns.map(c => <td key={c} style={{ fontSize: 13 }}>{row[c] ?? ''}</td>)}
                 {attrCols.map(c => <td key={c} style={{ fontSize: 13 }}>{row.attributes?.[c] || ''}</td>)}
                 <td style={{ fontSize: 12, color: '#e53e3e' }}>{(row._errors || []).join('; ')}</td>
               </tr>
@@ -166,20 +241,34 @@ function PreviewTable({ rows, columns, attrCols }) {
 
 // ── Import Wizard ──────────────────────────────────────────────
 function ImportWizard({ title, fields, endpoint }) {
+  const { showToast } = useToast();
   const [step, setStep] = useState(1);
   const [columns, setColumns] = useState([]);
   const [rawRows, setRawRows] = useState([]);
   const [mapping, setMapping] = useState({});
-  const [attrMapping, setAttrMapping] = useState({}); // col -> 'attribute' | 'skip'
-  const [attrTypes, setAttrTypes] = useState({});     // col -> data type
+  const [attrMapping, setAttrMapping] = useState({});
+  const [attrTypes, setAttrTypes] = useState({});
   const [preview, setPreview] = useState([]);
   const [attrCols, setAttrCols] = useState([]);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [fileName, setFileName] = useState('');
   const [smartFixDialog, setSmartFixDialog] = useState(null);
+  const [tagTypes, setTagTypes] = useState([]);
+  const [vendors, setVendors] = useState([]);
 
-  // Persist & restore mapping per endpoint
+  const fieldLabels = Object.fromEntries(fields.map((f) => [f.key, f.label]));
+
+  useEffect(() => {
+    if (endpoint !== 'assets') return;
+    Promise.all([getTagTypes(), getVendors()])
+      .then(([tt, vv]) => {
+        setTagTypes(tt.data || []);
+        setVendors(vv.data || []);
+      })
+      .catch((e) => toastApiFailure(e, 'Import · Masters'));
+  }, [endpoint]);
+
   const loadSaved = (headers) => {
     try {
       const saved = JSON.parse(localStorage.getItem(`import_mapping_${endpoint}`) || '{}');
@@ -258,6 +347,11 @@ function ImportWizard({ title, fields, endpoint }) {
 
   const runPreview = async (mapped, unmapped) => {
     try {
+      if (endpoint === 'assets') {
+        const [tt, vv] = await Promise.all([getTagTypes(), getVendors()]);
+        setTagTypes(tt.data || []);
+        setVendors(vv.data || []);
+      }
       const res = await api.post(`/import/${endpoint}/preview`, { rows: mapped });
       setPreview(res.data);
       setAttrCols(unmapped || []);
@@ -267,6 +361,14 @@ function ImportWizard({ title, fields, endpoint }) {
 
   const handlePreviewClick = async () => {
     saveMapping(mapping, attrTypes, attrMapping);
+    const missingRequired = fields.filter((f) => f.required && !mapping[f.key]);
+    if (missingRequired.length) {
+      toastApiFailure(
+        { response: { data: { message: `Map required fields: ${missingRequired.map((f) => f.label).join(', ')}` } } },
+        'Import · Map fields'
+      );
+      return;
+    }
     if (endpoint !== 'assets') {
       setLoading(true);
       const { mapped, unmapped } = buildMappedRows();
@@ -278,9 +380,22 @@ function ImportWizard({ title, fields, endpoint }) {
     const { unmapped, mapped } = buildMappedRows();
     try {
       const res = await api.post('/import/assets/check', { rows: mapped });
-      const { missingTypes, missingLocations } = res.data;
-      if (missingTypes.length > 0 || missingLocations.length > 0) {
-        setSmartFixDialog({ missingTypes, missingLocations, attributeCols: unmapped, mappedRows: mapped, unmapped });
+      const { missingTypes, missingLocations, missingTagTypes, missingVendors } = res.data;
+      const needsFix =
+        missingTypes.length > 0 ||
+        missingLocations.length > 0 ||
+        (missingTagTypes?.length || 0) > 0 ||
+        (missingVendors?.length || 0) > 0;
+      if (needsFix) {
+        setSmartFixDialog({
+          missingTypes,
+          missingLocations,
+          missingTagTypes: missingTagTypes || [],
+          missingVendors: missingVendors || [],
+          attributeCols: unmapped,
+          mappedRows: mapped,
+          unmapped,
+        });
         setLoading(false);
         return;
       }
@@ -294,7 +409,29 @@ function ImportWizard({ title, fields, endpoint }) {
     setSmartFixDialog(null);
     setLoading(true);
     try {
-      await api.post('/import/assets/smartfix', { rows: mappedRows });
+      const fixRes = await api.post('/import/assets/smartfix', { rows: mappedRows });
+      const created = fixRes.data || {};
+      const checkRes = await api.post('/import/assets/check', { rows: mappedRows });
+      const stillMissing = [
+        ...(checkRes.data?.missingTagTypes || []),
+        ...(checkRes.data?.missingVendors || []),
+        ...(checkRes.data?.missingTypes || []),
+        ...(checkRes.data?.missingLocations || []),
+      ];
+      if (stillMissing.length) {
+        toastApiFailure(
+          { response: { data: { message: `Could not create: ${stillMissing.join(', ')}` } } },
+          'Import · Smart fix'
+        );
+        setLoading(false);
+        return;
+      }
+      const parts = [];
+      if (created.createdTagTypes?.length) parts.push(`${created.createdTagTypes.length} tag type(s)`);
+      if (created.createdVendors?.length) parts.push(`${created.createdVendors.length} vendor(s)`);
+      if (created.createdTypes?.length) parts.push(`${created.createdTypes.length} asset type(s)`);
+      if (created.createdLocations?.length) parts.push(`${created.createdLocations.length} location(s)`);
+      if (parts.length) showToast(`Created ${parts.join(', ')}`, 'success');
       await runPreview(mappedRows, unmapped);
     } catch (e) { toastApiFailure(e, 'Import · Smart fix'); }
     setLoading(false);
@@ -322,12 +459,16 @@ function ImportWizard({ title, fields, endpoint }) {
     setLoading(false);
   };
 
+  const previewColumns = fields.filter(f => mapping[f.key]).map(f => f.key);
+
   return (
     <div style={{ background: '#fff', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', overflow: 'hidden', marginBottom: 32 }}>
       {smartFixDialog && (
         <SmartFixDialog
           missingTypes={smartFixDialog.missingTypes}
           missingLocations={smartFixDialog.missingLocations}
+          missingTagTypes={smartFixDialog.missingTagTypes}
+          missingVendors={smartFixDialog.missingVendors}
           attributeCols={smartFixDialog.attributeCols}
           onSmartFix={handleSmartFix}
           onIgnore={handleIgnore}
@@ -359,7 +500,9 @@ function ImportWizard({ title, fields, endpoint }) {
             <button className="btn btn-secondary btn-sm" style={{ color: '#7c8cf8' }} onClick={() => downloadSample(endpoint)}>
               ⬇ Download sample spreadsheet
             </button>
-            <div style={{ width: '100%', fontSize: 12, color: '#888', marginTop: 4 }}>Supports *.csv, *.xls, *.xlsx</div>
+            <div style={{ width: '100%', fontSize: 12, color: '#888', marginTop: 4 }}>
+              Supports *.csv, *.xls, *.xlsx · Sample file uses <span style={{ color: '#e53e3e', fontWeight: 600 }}>red headers</span> for required columns
+            </div>
           </div>
         )}
 
@@ -381,7 +524,7 @@ function ImportWizard({ title, fields, endpoint }) {
 
         {step === 3 && (
           <div>
-            <PreviewTable rows={preview} columns={fields.filter(f => mapping[f.key]).map(f => f.key)} attrCols={attrCols} />
+            <PreviewTable rows={preview} columns={previewColumns} attrCols={attrCols} fieldLabels={fieldLabels} />
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16 }}>
               <button className="btn btn-secondary" onClick={() => setStep(2)}>Back</button>
               <button className="btn btn-primary" onClick={executeImport} disabled={loading || preview.every(r => r._status === 'error')}>
@@ -409,13 +552,16 @@ function ImportWizard({ title, fields, endpoint }) {
   );
 }
 
-// ── Field definitions ──────────────────────────────────────────
+// ── Field definitions (aligned with Add Asset form) ─────────────
 const ASSET_FIELDS = [
-  { key: 'asset_serial', label: 'Serial', required: true },
-  { key: 'name', label: 'Name', required: true },
+  { key: 'asset_serial', label: 'Asset Serial', required: true },
+  { key: 'name', label: 'Asset Name', required: true },
   { key: 'rfid_tag', label: 'RFID' },
-  { key: 'asset_type', label: 'Asset Type' },
-  { key: 'location', label: 'Location' },
+  { key: 'asset_type', label: 'Asset Type', required: true },
+  { key: 'tag_type', label: 'Tag Type', required: true },
+  { key: 'vendor', label: 'Vendor', required: true },
+  { key: 'location', label: 'Location', required: true },
+  { key: 'status', label: 'Status' },
   { key: 'description', label: 'Description' },
 ];
 
