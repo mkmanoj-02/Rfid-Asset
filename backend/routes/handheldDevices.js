@@ -40,6 +40,20 @@ async function replaceMappings(deviceId, attributeIds) {
   );
 }
 
+/** Same unique attributes as GET /api/attribute-list — used as default mapping on new devices. */
+async function getDefaultAttributeIds() {
+  const [rows] = await db.query(
+    `SELECT a.id
+     FROM asset_type_attributes a
+     INNER JOIN (
+       SELECT MIN(id) AS id
+       FROM asset_type_attributes
+       GROUP BY BINARY TRIM(name)
+     ) b ON a.id = b.id`
+  );
+  return rows.map((r) => r.id);
+}
+
 // GET all devices (with mapped attribute count)
 router.get('/', async (req, res, next) => {
   try {
@@ -136,11 +150,24 @@ router.post('/', async (req, res, next) => {
       [name, description, is_active]
     );
 
-    const attributeIds = parseAttributeIds(req.body);
-    if (attributeIds) await replaceMappings(result.insertId, attributeIds);
+    const explicitIds = parseAttributeIds(req.body);
+    const attributeIds = explicitIds !== null ? explicitIds : await getDefaultAttributeIds();
+    await replaceMappings(result.insertId, attributeIds);
 
-    await audit.log('Handheld', 'Added', `Handheld device "${name}" was created`, req.auditUser, req.auditUserId);
-    res.status(201).json({ id: result.insertId, name, description, is_active });
+    await audit.log(
+      'Handheld',
+      'Added',
+      `Handheld device "${name}" was created with ${attributeIds.length} attribute(s) mapped`,
+      req.auditUser,
+      req.auditUserId
+    );
+    res.status(201).json({
+      id: result.insertId,
+      name,
+      description,
+      is_active,
+      mapped_attribute_count: attributeIds.length,
+    });
   } catch (err) {
     next(err);
   }

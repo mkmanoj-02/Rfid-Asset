@@ -105,8 +105,14 @@ function ManageDevices() {
         await updateHandheldDevice(editing, payload);
         showToast('Device updated', 'success');
       } else {
-        await createHandheldDevice(payload);
-        showToast('Device added', 'success');
+        const res = await createHandheldDevice(payload);
+        const count = res.data?.mapped_attribute_count;
+        showToast(
+          count != null
+            ? `Device added — ${count} attribute${count !== 1 ? 's' : ''} mapped by default`
+            : 'Device added — all attributes mapped by default',
+          'success',
+        );
       }
       setModal(false);
       load();
