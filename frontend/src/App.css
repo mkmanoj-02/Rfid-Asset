@@ -1158,6 +1158,77 @@ tr:hover td { background: #f8fafc; }
 }
 .assets-attr-td { font-size: 13px; color: #334155; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* ── Scrollable modal overlay (form modals) ──────────────────── */
+.modal-overlay--scroll {
+  align-items: flex-start;
+  justify-content: center;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 24px 16px;
+  box-sizing: border-box;
+}
+.modal-overlay--scroll > .modal {
+  margin: auto;
+  flex-shrink: 0;
+}
+
+/* ── Add / Edit Asset Type modal ─────────────────────────────── */
+.asset-type-form-modal {
+  --asset-type-form-chrome: 120px;
+  width: 480px;
+  max-width: 95vw;
+  max-height: min(90vh, calc(100dvh - 48px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+.asset-type-form-modal h2 {
+  flex-shrink: 0;
+  margin-bottom: 0;
+  padding: 24px 28px 12px;
+}
+.asset-type-form-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: calc(min(90vh, calc(100dvh - 48px)) - var(--asset-type-form-chrome));
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 28px 16px;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+.asset-type-form-body::-webkit-scrollbar {
+  width: 6px;
+}
+.asset-type-form-body::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+.asset-type-form-parent-banner {
+  font-size: 13px;
+  color: #7c8cf8;
+  margin-bottom: 12px;
+  background: #f0f2ff;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+.asset-type-form-body .form-group:last-child {
+  margin-bottom: 0;
+}
+.asset-type-form-image {
+  margin-top: 4px;
+}
+.asset-type-form-modal .modal-actions {
+  flex-shrink: 0;
+  margin-top: 0;
+  padding: 14px 28px 22px;
+  border-top: 1px solid #f0f4f8;
+  background: #fff;
+}
+
 /* ── Add / Edit Asset modal ──────────────────────────────────── */
 .add-asset-modal {
   width: 520px;

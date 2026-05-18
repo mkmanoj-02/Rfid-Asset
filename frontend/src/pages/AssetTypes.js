@@ -642,11 +642,12 @@ export default function AssetTypes() {
       </div>
 
       {modal && (
-        <div className="modal-overlay">
-          <div className="modal">
+        <div className="modal-overlay modal-overlay--scroll">
+          <div className="modal asset-type-form-modal">
             <h2>{editing ? 'Edit Asset Type' : form.parent_id ? 'Add Sub Asset Type' : 'Add Asset Type'}</h2>
+            <div className="asset-type-form-body">
             {form.parent_id && (
-              <div style={{ fontSize: 13, color: '#7c8cf8', marginBottom: 12, background: '#f0f2ff', padding: '6px 10px', borderRadius: 6 }}>
+              <div className="asset-type-form-parent-banner">
                 Sub type of: <strong>{items.find(t => t.id === parseInt(form.parent_id))?.name}</strong>
               </div>
             )}
@@ -667,7 +668,7 @@ export default function AssetTypes() {
                 ))}
               </select>
             </div>
-            <div className="form-group" style={{ marginTop: 16 }}>
+            <div className="form-group asset-type-form-image">
               <ImageUploadField
                 label="Default type image"
                 previewUrl={!imageFile && !removeImage ? typePreviewUrl : null}
@@ -676,6 +677,7 @@ export default function AssetTypes() {
                 onFileChange={(f) => { setImageFile(f); setRemoveImage(false); }}
                 onClear={() => { setImageFile(null); setRemoveImage(true); }}
               />
+            </div>
             </div>
             <div className="modal-actions">
               <button className="btn btn-secondary" onClick={() => setModal(false)} disabled={saving}>Cancel</button>
