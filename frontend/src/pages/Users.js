@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import api from '../api';
 import { toastApiFailure } from '../apiErrorHandling';
+import ConfirmModal from '../components/ConfirmModal';
 
 const PROFILE_LABELS = {
   super_admin: 'Super Administrator',
@@ -753,6 +754,7 @@ export default function Users() {
   const [editUser, setEditUser]   = useState(null);
   const [myProfile, setMyProfile] = useState(null);
   const [userSearch, setUserSearch] = useState('');
+  const [confirmDialog, setConfirmDialog] = useState(null);
 
   const currentUser  = (() => { try { return JSON.parse(sessionStorage.getItem('rfid_user') || 'null'); } catch { return null; } })();
   const isSuperAdmin = currentUser?.profile_type === 'super_admin';
@@ -807,16 +809,25 @@ export default function Users() {
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!selected || !isSuperAdmin) return;
-    if (!window.confirm(`Delete user "${selected.username}"?`)) return;
-    try {
-      await api.delete(`/users/${selected.id}`);
-      setSelected(null);
-      reload();
-    } catch (e) {
-      toastApiFailure(e, 'Delete user');
-    }
+    const user = selected;
+    setConfirmDialog({
+      title: 'Delete User',
+      message: `Are you sure you want to delete "${user.username}"?`,
+      subMessage: 'This action cannot be undone. The user will lose access to the system immediately.',
+      confirmLabel: 'Delete',
+      confirmStyle: 'danger',
+      onConfirm: async () => {
+        try {
+          await api.delete(`/users/${user.id}`);
+          setSelected(null);
+          reload();
+        } catch (e) {
+          toastApiFailure(e, 'Delete user');
+        }
+      },
+    });
   };
 
   // ── Non-super-admin: show ONLY their own profile, read-only ──
@@ -932,6 +943,18 @@ export default function Users() {
         <UserForm user={editUser} locations={locations} assetTypes={assetTypes}
           onClose={() => setShowForm(false)}
           onSaved={() => { reload(); setShowForm(false); }} />
+      )}
+
+      {confirmDialog && (
+        <ConfirmModal
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          subMessage={confirmDialog.subMessage}
+          confirmLabel={confirmDialog.confirmLabel}
+          confirmStyle={confirmDialog.confirmStyle}
+          onConfirm={() => { confirmDialog.onConfirm(); setConfirmDialog(null); }}
+          onCancel={() => setConfirmDialog(null)}
+        />
       )}
     </div>
   );
