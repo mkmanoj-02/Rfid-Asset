@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   getHandheldDevices,
   createHandheldDevice,
@@ -142,32 +142,10 @@ function ManageDevices() {
     });
   };
 
-  const leftRef = useRef(null);
-  const rightRef = useRef(null);
-
-  useLayoutEffect(() => {
-    const L = leftRef.current;
-    const R = rightRef.current;
-    if (!L || !R) return;
-    const sync = () => { R.style.minHeight = `${L.offsetHeight}px`; };
-    sync();
-    const ro = new ResizeObserver(sync);
-    ro.observe(L);
-    window.addEventListener('resize', sync);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener('resize', sync);
-    };
-  }, [devices.length, filtered.length, query, selected?.id, isAdmin]);
-
   return (
     <>
-      <div className="location-types-split">
-        <div
-          ref={leftRef}
-          className="location-tree-panel"
-          style={{ marginRight: 0 }}
-        >
+      <div className="locations-layout">
+        <div className="location-tree-panel">
           <div className="panel-header">
             <span>Devices</span>
             {isAdmin && (
@@ -226,8 +204,9 @@ function ManageDevices() {
           </div>
         </div>
 
-        <div ref={rightRef} className="location-types-main">
+        <div className="location-detail-panel">
           {selected ? (
+            <div className="location-types-main">
             <div className="location-types-main-body">
               <div style={{ fontWeight: 700, fontSize: 15, textAlign: 'center', marginBottom: 24, borderBottom: '1px solid #f0f2f5', paddingBottom: 12 }}>
                 Device Details
@@ -251,10 +230,11 @@ function ManageDevices() {
                 </div>
               )}
             </div>
+            </div>
           ) : (
             <PageEmpty
-              title="Select a device to view details"
-              hint="Choose a device from the list on the left, or add a new handheld reader device."
+              title="Select a device from the list to view details"
+              hint="Choose a device on the left to see its details, or add a new reader."
               icon={(
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
