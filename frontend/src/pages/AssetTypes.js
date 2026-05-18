@@ -3,7 +3,7 @@ import {
   getAssetTypes, createAssetTypeMultipart, updateAssetTypeMultipart, deleteAssetType,
   getAttributes, createAttribute, updateAttribute, deleteAttribute
 } from '../api';
-import { ChevronRight, ChevronDown, Layers, Pencil, Trash2, Plus, List, Search } from 'lucide-react';
+import { ChevronRight, ChevronDown, ChevronsDown, ChevronsUp, Layers, Pencil, Trash2, Plus, List, Search } from 'lucide-react';
 import { useToast } from '../Toast';
 import { toastApiFailure } from '../apiErrorHandling';
 import ImageUploadField from '../components/ImageUploadField';
@@ -582,13 +582,21 @@ export default function AssetTypes() {
             <span className="asset-types-toolbar-search-icon" aria-hidden><Search size={16} /></span>
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name, description, parent…" aria-label="Search asset types" />
           </div>
-          <div className="asset-types-toolbar-links">
-            <button type="button" onClick={() => setExpandAll(true)}>Expand all</button>
-            <button type="button" onClick={() => setExpandAll(false)}>Collapse all</button>
+          <div className="asset-types-toolbar-actions">
+            <div className="asset-types-tree-controls" role="group" aria-label="Tree expansion">
+              <button type="button" className="asset-types-tree-btn" onClick={() => setExpandAll(true)}>
+                <ChevronsDown size={15} strokeWidth={2.25} aria-hidden />
+                <span>Expand all</span>
+              </button>
+              <button type="button" className="asset-types-tree-btn" onClick={() => setExpandAll(false)}>
+                <ChevronsUp size={15} strokeWidth={2.25} aria-hidden />
+                <span>Collapse all</span>
+              </button>
+            </div>
+            <span className="asset-types-toolbar-meta">
+              {searchQuery ? `${visibleTypeCount} matching type${visibleTypeCount !== 1 ? 's' : ''}` : `${items.length} type${items.length !== 1 ? 's' : ''}`}
+            </span>
           </div>
-          <span className="asset-types-toolbar-meta">
-            {searchQuery ? `${visibleTypeCount} matching type${visibleTypeCount !== 1 ? 's' : ''}` : `${items.length} type${items.length !== 1 ? 's' : ''}`}
-          </span>
         </div>
         <div className="asset-types-shell">
           <div className="asset-types-table-head">
