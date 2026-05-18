@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { loginRequest } from '../api';
 import { useAuth } from '../AuthContext';
@@ -267,6 +267,19 @@ export default function Login() {
   const [error, setError]     = useState('');
   const [loading, setLoading] = useState(false);
   const [showPw, setShowPw]   = useState(false);
+
+  useEffect(() => {
+    try {
+      const reason = sessionStorage.getItem('rfid_logout_reason');
+      if (reason) {
+        sessionStorage.removeItem('rfid_logout_reason');
+        setError(reason);
+        showToast(reason, 'error');
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [showToast]);
 
   const handleSubmit = (e) => {
     e.preventDefault();

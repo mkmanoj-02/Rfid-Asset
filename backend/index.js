@@ -71,9 +71,11 @@ app.use((req, res, next) => {
 });
 app.use('/api/auth', require('./routes/auth'));
 
-app.use(verifyToken); 
+// Public static files — must be before verifyToken (<img> cannot send Bearer tokens)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/uploads', express.static(path.join(__dirname, 'uploads')));
+
+app.use(verifyToken);
 app.use('/api/locations', require('./routes/locations'));
 app.use('/api/asset-types', require('./routes/assetTypes'));
 app.use('/api/attribute-list', require('./routes/attributeList'));

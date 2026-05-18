@@ -113,7 +113,8 @@ async function refreshToken(req, res) {
     await refreshTokenService.revokeById(session.id);
     return res.status(403).json({
       status: false,
-      message: 'User no longer exists',
+      message: 'User account no longer exists',
+      code: 'USER_NOT_FOUND',
     });
   }
 

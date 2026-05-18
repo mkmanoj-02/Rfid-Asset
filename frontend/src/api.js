@@ -62,9 +62,20 @@ async function refreshAccessToken() {
   }
 }
 
-function forceLogout() {
+function forceLogout(reason) {
+  if (reason) {
+    try {
+      sessionStorage.setItem('rfid_logout_reason', reason);
+    } catch {
+      /* ignore */
+    }
+  }
   clearAuthSession();
   if (onAuthFailure) onAuthFailure();
+}
+
+function isAccountRemovedError(error) {
+  return error.response?.data?.code === 'USER_NOT_FOUND';
 }
 
 api.interceptors.request.use((config) => {
@@ -98,6 +109,11 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
+    if (isAccountRemovedError(error)) {
+      forceLogout(error.response?.data?.message || 'Your account has been removed. Please sign in again.');
+      return Promise.reject(error);
+    }
+
     if (!shouldAttemptTokenRefresh(error)) {
       return Promise.reject(error);
     }
@@ -114,8 +130,12 @@ api.interceptors.response.use(
       original.headers = original.headers || {};
       original.headers.Authorization = `Bearer ${newAccessToken}`;
       return api(original);
-    } catch {
-      forceLogout();
+    } catch (refreshErr) {
+      if (isAccountRemovedError(refreshErr)) {
+        forceLogout(refreshErr.response?.data?.message || 'Your account has been removed. Please sign in again.');
+      } else {
+        forceLogout();
+      }
       return Promise.reject(error);
     }
   },

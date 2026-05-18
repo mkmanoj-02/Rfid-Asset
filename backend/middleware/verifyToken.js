@@ -1,3 +1,4 @@
+const db = require('../db');
 const { verifyAccessToken } = require('../helpers/jwt');
 
 /**
@@ -16,7 +17,7 @@ function extractBearerToken(req) {
  * - 401: missing token
  * - 403: invalid or expired token
  */
-function verifyToken(req, res, next) {
+async function verifyToken(req, res, next) {
   const token = extractBearerToken(req);
 
   if (!token) {
@@ -28,6 +29,14 @@ function verifyToken(req, res, next) {
 
   try {
     const decoded = verifyAccessToken(token);
+    const [rows] = await db.query('SELECT id FROM users WHERE id = ? LIMIT 1', [decoded.id]);
+    if (!rows.length) {
+      return res.status(403).json({
+        status: false,
+        message: 'User account no longer exists',
+        code: 'USER_NOT_FOUND',
+      });
+    }
     req.user = {
       id: decoded.id,
       username: decoded.username,
@@ -42,11 +51,14 @@ function verifyToken(req, res, next) {
         code: 'TOKEN_EXPIRED',
       });
     }
-    return res.status(403).json({
-      status: false,
-      message: 'Invalid access token',
-      code: 'TOKEN_INVALID',
-    });
+    if (err.name === 'JsonWebTokenError' || err.name === 'NotBeforeError') {
+      return res.status(403).json({
+        status: false,
+        message: 'Invalid access token',
+        code: 'TOKEN_INVALID',
+      });
+    }
+    return next(err);
   }
 }
 

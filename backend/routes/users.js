@@ -3,6 +3,7 @@ const router   = express.Router();
 const db       = require('../db');
 const bcrypt   = require('bcryptjs');
 const audit    = require('../audit');
+const refreshTokenService = require('../services/refreshTokenService');
 
 const SELECT_COLS = `
   id, username, email, profile_type,
@@ -147,6 +148,9 @@ router.delete('/bulk', async (req, res, next) => {
 
     const placeholders = ids.map(() => '?').join(',');
     const [rows] = await db.query(`SELECT username FROM users WHERE id IN (${placeholders})`, ids);
+    for (const id of ids) {
+      await refreshTokenService.revokeAllForUser(id);
+    }
     await db.query(`DELETE FROM users WHERE id IN (${placeholders})`, ids);
 
     for (const row of rows)
@@ -159,6 +163,7 @@ router.delete('/bulk', async (req, res, next) => {
 // DELETE user
 router.delete('/:id', async (req, res) => {
   const [rows] = await db.query('SELECT username FROM users WHERE id=?', [req.params.id]);
+  await refreshTokenService.revokeAllForUser(req.params.id);
   await db.query('DELETE FROM users WHERE id = ?', [req.params.id]);
   if (rows.length) await audit.log('User', 'Deleted', `User "${rows[0].username}" was deleted`, req.auditUser, req.auditUserId);
   res.json({ message: 'Deleted' });
