@@ -314,17 +314,17 @@ tr:hover td { background: #f8fafc; }
 .asset-type-tree-children {
   position: relative;
   margin-left: calc(var(--at-expand-x) - var(--at-line) / 2);
-  margin-top: 4px;
-  margin-bottom: 4px;
+  margin-top: 0;
+  margin-bottom: 0;
 }
-/* Drop from parent expand button into continuous trunk */
+/* Drop from parent card into child trunk — matches row gap */
 .asset-type-tree-children::before {
   content: '';
   position: absolute;
   left: 0;
-  top: calc(-1 * var(--at-row-mid) - 4px);
+  top: calc(-1 * var(--at-row-gap) - var(--at-line));
   width: var(--at-line);
-  height: calc(var(--at-row-mid) + 4px);
+  height: calc(var(--at-row-gap) + var(--at-line));
   background: var(--at-line-color);
   border-radius: 1px;
   z-index: 1;
@@ -350,6 +350,9 @@ tr:hover td { background: #f8fafc; }
 }
 .asset-type-row-wrap {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--at-row-gap);
   margin: 0 6px var(--at-row-gap) 0;
 }
 .asset-type-tree-root > .asset-type-tree-item:last-child > .asset-type-row-wrap,
@@ -606,7 +609,7 @@ tr:hover td { background: #f8fafc; }
 }
 .asset-type-attrs-panel {
   padding: 12px 14px 14px;
-  margin: 6px 0 6px calc(var(--at-expand-x) + var(--at-tree-branch) + 8px);
+  margin: 0 0 0 calc(var(--at-expand-x) + var(--at-tree-branch) + 8px);
   background: #fff;
   border: 1px solid #c7d2fe;
   border-radius: 8px;
