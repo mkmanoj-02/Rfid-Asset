@@ -22,6 +22,16 @@ export const PLACEHOLDER_IMAGE =
     </svg>`
   );
 
+/** Small placeholder for asset table thumbnails (32×32) */
+export const TABLE_THUMB_PLACEHOLDER =
+  'data:image/svg+xml,' +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+      <rect fill="#f1f5f9" width="32" height="32"/>
+      <text x="16" y="18" text-anchor="middle" fill="#94a3b8" font-family="system-ui,sans-serif" font-size="7">No image</text>
+    </svg>`
+  );
+
 export function validateImageFile(file) {
   if (!file) return null;
   const ext = file.name.includes('.') ? file.name.slice(file.name.lastIndexOf('.')).toLowerCase() : '';

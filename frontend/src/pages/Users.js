@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import api from '../api';
 import { toastApiFailure } from '../apiErrorHandling';
 
@@ -18,6 +18,20 @@ function parsePriv(val) {
   if (!val) return null;
   if (Array.isArray(val)) return val.length ? val : null;
   try { const p = JSON.parse(val); return p && p.length ? p : null; } catch { return null; }
+}
+
+function userMatchesSearch(user, q) {
+  if (!q) return true;
+  const hay = [
+    user.username,
+    user.email,
+    PROFILE_LABELS[user.profile_type],
+    user.profile_type,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  return hay.includes(q);
 }
 
 // ── Location Tree Privilege Picker ────────────────────────────
@@ -738,9 +752,16 @@ export default function Users() {
   const [showForm, setShowForm]   = useState(false);
   const [editUser, setEditUser]   = useState(null);
   const [myProfile, setMyProfile] = useState(null);
+  const [userSearch, setUserSearch] = useState('');
 
   const currentUser  = (() => { try { return JSON.parse(sessionStorage.getItem('rfid_user') || 'null'); } catch { return null; } })();
   const isSuperAdmin = currentUser?.profile_type === 'super_admin';
+
+  const userSearchQuery = userSearch.trim().toLowerCase();
+  const filteredUsers = useMemo(
+    () => users.filter((u) => userMatchesSearch(u, userSearchQuery)),
+    [users, userSearchQuery],
+  );
 
   useEffect(() => {
     if (isSuperAdmin) {
@@ -854,9 +875,34 @@ export default function Users() {
       <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
         {/* User list */}
         <div style={{ width: 220, flexShrink: 0, background: '#fff', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', overflow: 'hidden', border: '1px solid #e8edf2' }}>
-          <div style={{ fontWeight: 600, fontSize: 13, padding: '10px 14px', background: '#f8fafc', borderBottom: '1px solid #e8edf2', textAlign: 'center' }}>User</div>
-          <div style={{ maxHeight: 480, overflowY: 'auto' }}>
-            {users.map(u => (
+          <div style={{ fontWeight: 600, fontSize: 13, padding: '10px 14px', background: '#f8fafc', borderBottom: '1px solid #e8edf2', textAlign: 'center' }}>Users</div>
+          <div style={{ padding: '8px 10px', borderBottom: '1px solid #e2e8f0', background: '#fafbfc' }}>
+            <div style={{ position: 'relative' }}>
+              <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none', display: 'flex' }}>
+                <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                  <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+                </svg>
+              </span>
+              <input
+                type="search"
+                value={userSearch}
+                onChange={(e) => setUserSearch(e.target.value)}
+                placeholder="Search users…"
+                aria-label="Search users"
+                style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px 6px 28px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12 }}
+              />
+            </div>
+            {userSearchQuery && (
+              <button type="button" className="btn btn-secondary btn-sm" style={{ marginTop: 6, width: '100%' }} onClick={() => setUserSearch('')}>
+                Clear search
+              </button>
+            )}
+          </div>
+          <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+            {users.length > 0 && filteredUsers.length === 0 && userSearchQuery && (
+              <div style={{ padding: 16, color: '#aaa', fontSize: 13, textAlign: 'center' }}>No users match your search.</div>
+            )}
+            {filteredUsers.map((u) => (
               <div key={u.id} onClick={() => setSelected(u)}
                 style={{ padding: '9px 14px', cursor: 'pointer', fontSize: 14, background: selected?.id === u.id ? '#dbeafe' : 'inherit', color: selected?.id === u.id ? '#1d4ed8' : '#374151', fontWeight: selected?.id === u.id ? 600 : 400, borderBottom: '1px solid #f8fafc' }}>
                 {u.username}

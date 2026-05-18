@@ -12,7 +12,7 @@ import { useToast } from '../Toast';
 import { exportExcel, exportPDF, ExportButtons } from '../export';
 import ImageUploadField from '../components/ImageUploadField';
 import LocationTreeSelect from '../components/LocationTreeSelect';
-import { resolveImageUrl } from '../utils/imageUrl';
+import { resolveImageUrl, PLACEHOLDER_IMAGE, TABLE_THUMB_PLACEHOLDER } from '../utils/imageUrl';
 import { buildLocationPath } from '../utils/locationTree';
 
 function detailDisplay(value) {
@@ -730,18 +730,7 @@ function AssetDetail({ asset, types, locations, locationTree, tagTypes, vendors,
 
       {/* Asset info card */}
       <div className="detail-info-card" style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-        {asset.image_url && (
-          <div style={{ flexShrink: 0 }}>
-            <img
-              src={resolveImageUrl(asset.image_url)}
-              alt={asset.name}
-              style={{ width: 140, height: 105, objectFit: 'cover', borderRadius: 10, border: '1px solid #e2e8f0' }}
-            />
-            <div style={{ fontSize: 11, color: '#6b7280', marginTop: 6, textAlign: 'center' }}>
-              {Number(asset.is_custom_image) === 1 ? 'Custom Image' : 'Inherited Image'}
-            </div>
-          </div>
-        )}
+        <AssetDetailImage asset={asset} />
         <div className="detail-fields" style={{ flex: 1, minWidth: 240 }}>
           <div className="detail-row"><span className="detail-label">Asset Name</span><span>: {detailDisplay(asset.name)}</span></div>
           <div className="detail-row">
@@ -776,7 +765,7 @@ function AssetDetail({ asset, types, locations, locationTree, tagTypes, vendors,
         <div className="tab-content">
           <table>
             <thead>
-              <tr><th>From</th><th>To</th><th>Moved At</th><th>Duration</th></tr>
+              <tr><th>From</th><th>To</th><th>Last Seen Time</th><th>Duration</th></tr>
             </thead>
             <tbody>
               {trace.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: '#aaa', padding: 24 }}>No trace history yet.</td></tr>}
@@ -1054,31 +1043,46 @@ const assetTableThumbStyle = {
   border: '1px solid #e2e8f0',
 };
 
+function AssetDetailImage({ asset }) {
+  const [broken, setBroken] = useState(false);
+  const url = asset.image_url?.trim();
+  const hasImage = Boolean(url) && !broken;
+
+  return (
+    <div style={{ flexShrink: 0 }}>
+      <img
+        src={hasImage ? resolveImageUrl(url) : PLACEHOLDER_IMAGE}
+        alt={hasImage ? asset.name : 'No image'}
+        style={{
+          width: 140,
+          height: 105,
+          objectFit: 'cover',
+          borderRadius: 10,
+          border: '1px solid #e2e8f0',
+          display: 'block',
+          background: '#f1f5f9',
+        }}
+        onError={() => setBroken(true)}
+      />
+      <div style={{ fontSize: 11, color: '#6b7280', marginTop: 6, textAlign: 'center' }}>
+        {hasImage
+          ? (Number(asset.is_custom_image) === 1 ? 'Custom Image' : 'Inherited Image')
+          : 'No image'}
+      </div>
+    </div>
+  );
+}
+
 function AssetTableThumb({ imageUrl, name }) {
   const [broken, setBroken] = useState(false);
   const url = imageUrl?.trim();
-  if (!url || broken) {
-    return (
-      <div
-        style={{
-          ...assetTableThumbStyle,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: 16,
-          color: '#cbd5e1',
-        }}
-        aria-hidden
-      >
-        —
-      </div>
-    );
-  }
+  const showPlaceholder = !url || broken;
+
   return (
-    <div style={assetTableThumbStyle}>
+    <div style={assetTableThumbStyle} title={showPlaceholder ? 'No image' : undefined}>
       <img
-        src={resolveImageUrl(url)}
-        alt={name ? `${name} image` : 'Asset'}
+        src={showPlaceholder ? TABLE_THUMB_PLACEHOLDER : resolveImageUrl(url)}
+        alt={showPlaceholder ? 'No image' : (name ? `${name} image` : 'Asset')}
         style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
         onError={() => setBroken(true)}
       />
