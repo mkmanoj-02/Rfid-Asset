@@ -281,7 +281,8 @@ function AssetTypeRow({
   canModify,
   canDelete,
   searchQuery = '',
-  forceBranchOpen = false,
+  expandAll = null,
+  onManualBranchToggle,
   isLast = false,
 }) {
   const [attrsOpen, setAttrsOpen] = useState(false);
@@ -293,7 +294,8 @@ function AssetTypeRow({
   );
   const hasChildren = children.length > 0;
   const childCount = allTypes.filter((t) => t.parent_id === item.id).length;
-  const branchExpanded = forceBranchOpen || !!searchQuery || branchOpen;
+  const branchExpanded = !!searchQuery
+    || (expandAll === true ? true : expandAll === false ? false : branchOpen);
 
   const loadAttrs = async () => {
     try {
@@ -313,6 +315,11 @@ function AssetTypeRow({
     if (searchQuery) setBranchOpen(true);
   }, [searchQuery]);
 
+  useEffect(() => {
+    if (expandAll === true) setBranchOpen(true);
+    else if (expandAll === false) setBranchOpen(false);
+  }, [expandAll]);
+
   const depth = Math.min(level, 3);
   const depthClass = `asset-type-row--depth-${depth}`;
   const parentItem = level > 0 ? allTypes.find((t) => t.id === item.parent_id) : null;
@@ -328,7 +335,10 @@ function AssetTypeRow({
             <button
               type="button"
               className={`asset-type-expand-btn ${branchExpanded ? 'is-open' : ''}`}
-              onClick={() => setBranchOpen((o) => !o)}
+              onClick={() => {
+                if (expandAll !== null) onManualBranchToggle?.();
+                setBranchOpen((o) => !o);
+              }}
               aria-expanded={branchExpanded}
               aria-label={branchExpanded ? 'Collapse sub-types' : 'Expand sub-types'}
               title={branchExpanded ? 'Collapse sub-types' : 'Expand sub-types'}
@@ -410,7 +420,8 @@ function AssetTypeRow({
                   canModify={canModify}
                   canDelete={canDelete}
                   searchQuery={searchQuery}
-                  forceBranchOpen={forceBranchOpen}
+                  expandAll={expandAll}
+                  onManualBranchToggle={onManualBranchToggle}
                   isLast={idx === children.length - 1}
                 />
               ))}
@@ -453,8 +464,7 @@ export default function AssetTypes() {
   const [removeImage, setRemoveImage] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState(null);
-  const [expandAllBranches, setExpandAllBranches] = useState(false);
-  const [treeResetKey, setTreeResetKey] = useState(0);
+  const [expandAll, setExpandAll] = useState(null);
   const { showToast } = useToast();
 
   const currentUser = (() => { try { return JSON.parse(sessionStorage.getItem('rfid_user') || 'null'); } catch { return null; } })();
@@ -573,8 +583,8 @@ export default function AssetTypes() {
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name, description, parent…" aria-label="Search asset types" />
           </div>
           <div className="asset-types-toolbar-links">
-            <button type="button" onClick={() => { setExpandAllBranches(true); setTreeResetKey((k) => k + 1); }}>Expand all</button>
-            <button type="button" onClick={() => { setExpandAllBranches(false); setTreeResetKey((k) => k + 1); }}>Collapse all</button>
+            <button type="button" onClick={() => setExpandAll(true)}>Expand all</button>
+            <button type="button" onClick={() => setExpandAll(false)}>Collapse all</button>
           </div>
           <span className="asset-types-toolbar-meta">
             {searchQuery ? `${visibleTypeCount} matching type${visibleTypeCount !== 1 ? 's' : ''}` : `${items.length} type${items.length !== 1 ? 's' : ''}`}
@@ -603,7 +613,7 @@ export default function AssetTypes() {
             <ul className="asset-type-tree-root">
               {rootTypes.map((item, idx) => (
                 <AssetTypeRow
-                  key={`${item.id}-${treeResetKey}`}
+                  key={item.id}
                   item={item}
                   allTypes={items}
                   onEdit={openEdit}
@@ -613,7 +623,8 @@ export default function AssetTypes() {
                   canModify={canModify}
                   canDelete={canDelete}
                   searchQuery={searchQuery}
-                  forceBranchOpen={expandAllBranches}
+                  expandAll={expandAll}
+                  onManualBranchToggle={() => setExpandAll(null)}
                   isLast={idx === rootTypes.length - 1}
                 />
               ))}
