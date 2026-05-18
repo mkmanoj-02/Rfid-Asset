@@ -542,12 +542,18 @@ function UserForm({ user, locations, assetTypes, onClose, onSaved }) {
         <h2>{isEdit ? 'Edit User' : 'Add User'}</h2>
         {errors.submit && <div style={{ color: '#e53e3e', fontSize: 13, marginBottom: 12 }}>{errors.submit}</div>}
 
-        <div className="add-asset-form">
+        <form className="add-asset-form" autoComplete="off" onSubmit={(e) => e.preventDefault()}>
           {/* Username */}
           <div className="form-row">
             <label>User Name <span className="required">*</span></label>
             <div className="field-wrap">
-              <input value={form.username} onChange={e => setForm({ ...form, username: e.target.value })} placeholder="Enter username" />
+              <input
+                name="rfid-user-username"
+                autoComplete="off"
+                value={form.username}
+                onChange={e => setForm({ ...form, username: e.target.value })}
+                placeholder="Enter username"
+              />
               {errors.username && <span className="field-error">{errors.username}</span>}
             </div>
           </div>
@@ -556,7 +562,15 @@ function UserForm({ user, locations, assetTypes, onClose, onSaved }) {
           <div className="form-row">
             <label>Email</label>
             <div className="field-wrap">
-              <input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="Enter email (optional)" />
+              <input
+                type="text"
+                inputMode="email"
+                name="rfid-user-email"
+                autoComplete="off"
+                value={form.email}
+                onChange={e => setForm({ ...form, email: e.target.value })}
+                placeholder="Enter email (optional)"
+              />
             </div>
           </div>
 
@@ -577,14 +591,28 @@ function UserForm({ user, locations, assetTypes, onClose, onSaved }) {
           <div className="form-row">
             <label>Password{!isEdit && <span className="required"> *</span>}</label>
             <div className="field-wrap">
-              <input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder={isEdit ? 'Leave blank to keep current' : 'Enter password'} />
+              <input
+                type="password"
+                name="rfid-user-password"
+                autoComplete="new-password"
+                value={form.password}
+                onChange={e => setForm({ ...form, password: e.target.value })}
+                placeholder={isEdit ? 'Leave blank to keep current' : 'Enter password'}
+              />
               {errors.password && <span className="field-error">{errors.password}</span>}
             </div>
           </div>
           <div className="form-row">
             <label>Confirm Password</label>
             <div className="field-wrap">
-              <input type="password" value={form.confirm_password} onChange={e => setForm({ ...form, confirm_password: e.target.value })} placeholder="Retype password" />
+              <input
+                type="password"
+                name="rfid-user-password-confirm"
+                autoComplete="new-password"
+                value={form.confirm_password}
+                onChange={e => setForm({ ...form, confirm_password: e.target.value })}
+                placeholder="Retype password"
+              />
               {errors.confirm_password && <span className="field-error">{errors.confirm_password}</span>}
             </div>
           </div>
@@ -664,7 +692,7 @@ function UserForm({ user, locations, assetTypes, onClose, onSaved }) {
               </div>
             </div>
           </div>
-        </div>
+        </form>
 
         <div className="modal-actions">
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
@@ -704,6 +732,16 @@ function UserForm({ user, locations, assetTypes, onClose, onSaved }) {
   );
 }
 
+function UserPageEmpty({ icon, title, hint }) {
+  return (
+    <div className="empty-state" role="status">
+      <div className="empty-state-icon" aria-hidden>{icon}</div>
+      <p className="empty-state-title">{title}</p>
+      <p className="empty-state-hint">{hint}</p>
+    </div>
+  );
+}
+
 // ── User Detail Panel ──────────────────────────────────────────
 function UserDetail({ user, locations, assetTypes, onEdit, onDelete }) {
   const privLabel = (val, allLabel, items) => {
@@ -717,10 +755,11 @@ function UserDetail({ user, locations, assetTypes, onEdit, onDelete }) {
   };
 
   return (
-    <div style={{ flex: 1, background: '#fff', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', padding: 28 }}>
-      <div style={{ fontWeight: 700, fontSize: 15, textAlign: 'center', marginBottom: 24, borderBottom: '1px solid #f0f2f5', paddingBottom: 12 }}>
-        Details of User
-      </div>
+    <div className="location-types-main">
+      <div className="location-types-main-body">
+        <div style={{ fontWeight: 700, fontSize: 15, textAlign: 'center', marginBottom: 24, borderBottom: '1px solid #f0f2f5', paddingBottom: 12 }}>
+          Details of User
+        </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {[
           { label: 'User Name', value: user.username },
@@ -736,9 +775,10 @@ function UserDetail({ user, locations, assetTypes, onEdit, onDelete }) {
           </div>
         ))}
       </div>
-      <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 32 }}>
-        <button className="btn btn-secondary btn-sm" onClick={onEdit}>Edit</button>
-        <button className="btn btn-danger btn-sm" onClick={onDelete}>Delete</button>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 32 }}>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={onEdit}>Edit</button>
+          <button type="button" className="btn btn-danger btn-sm" onClick={onDelete}>Delete</button>
+        </div>
       </div>
     </div>
   );
@@ -883,9 +923,8 @@ export default function Users() {
   return (
     <div>
       <div className="page-header"><h1>Manage Users</h1></div>
-      <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
-        {/* User list */}
-        <div style={{ width: 260, flexShrink: 0, background: '#fff', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', overflow: 'hidden', border: '1px solid #e8edf2', display: 'flex', flexDirection: 'column' }}>
+      <div className="locations-layout">
+        <div className="location-tree-panel">
           <div className="panel-header">
             <span>Users</span>
             <button type="button" className="btn btn-primary btn-sm" onClick={() => { setEditUser(null); setShowForm(true); }}>+ Add</button>
@@ -912,9 +951,9 @@ export default function Users() {
               </button>
             )}
           </div>
-          <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+          <div className="tree-container">
             {users.length > 0 && filteredUsers.length === 0 && userSearchQuery && (
-              <div style={{ padding: 16, color: '#aaa', fontSize: 13, textAlign: 'center' }}>No users match your search.</div>
+              <p style={{ color: '#aaa', padding: 12, fontSize: 13, margin: 0 }}>No users match your search.</p>
             )}
             {filteredUsers.map((u) => (
               <div key={u.id} onClick={() => setSelected(u)}
@@ -923,20 +962,32 @@ export default function Users() {
                 <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 400 }}>{PROFILE_LABELS[u.profile_type]}</div>
               </div>
             ))}
-            {users.length === 0 && <div style={{ padding: 16, color: '#aaa', fontSize: 13, textAlign: 'center' }}>No users yet</div>}
+            {users.length === 0 && <p style={{ color: '#aaa', padding: 12, fontSize: 13, margin: 0 }}>No users yet</p>}
           </div>
         </div>
 
-        {/* Detail panel */}
-        {selected ? (
-          <UserDetail user={selected} locations={locations} assetTypes={assetTypes}
-            onEdit={() => { setEditUser(selected); setShowForm(true); }}
-            onDelete={handleDelete} />
-        ) : (
-          <div style={{ flex: 1, background: '#fff', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300, color: '#aaa', fontSize: 15, border: '1px solid #e8edf2' }}>
-            Select a user to view details
-          </div>
-        )}
+        <div className="location-detail-panel">
+          {selected ? (
+            <UserDetail
+              user={selected}
+              locations={locations}
+              assetTypes={assetTypes}
+              onEdit={() => { setEditUser(selected); setShowForm(true); }}
+              onDelete={handleDelete}
+            />
+          ) : (
+            <UserPageEmpty
+              title="Select a user from the list to view details"
+              hint="Choose a user on the left to see profile, privileges, and actions."
+              icon={(
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+              )}
+            />
+          )}
+        </div>
       </div>
 
       {showForm && (
