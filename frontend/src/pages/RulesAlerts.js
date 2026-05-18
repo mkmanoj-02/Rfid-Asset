@@ -1,6 +1,10 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import api from '../api';
+import api, { bulkDeleteRules } from '../api';
 import { toastApiFailure } from '../apiErrorHandling';
+import ConfirmModal from '../components/ConfirmModal';
+import { useToast } from '../Toast';
+
+const RULES_PAGE_SIZES = [10, 25, 50, 100];
 
 const FILTER_LABELS = { asset: 'Asset', inventory: 'Inventory', attribute: 'Attribute', maintenance: 'Maintenance' };
 const FILTER_COLORS = { asset: '#7c8cf8', inventory: '#68d391', attribute: '#f6ad55', maintenance: '#fc8181' };
@@ -453,10 +457,15 @@ function ruleMatchesSearch(rule, query) {
 
 // ── Rules Tab ──────────────────────────────────────────────────
 function RulesTab({ locations, assetTypes }) {
+  const { showToast } = useToast();
   const [rules, setRules] = useState([]);
   const [showWizard, setShowWizard] = useState(false);
   const [editRule, setEditRule] = useState(null);
   const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(RULES_PAGE_SIZES[0]);
+  const [checkedIds, setCheckedIds] = useState(() => new Set());
+  const [confirmDialog, setConfirmDialog] = useState(null);
 
   const searchQuery = search.trim().toLowerCase();
   const filteredRules = useMemo(
@@ -464,18 +473,92 @@ function RulesTab({ locations, assetTypes }) {
     [rules, searchQuery]
   );
 
+  const total = filteredRules.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize) || 1);
+
+  const pagedRules = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredRules.slice(start, start + pageSize);
+  }, [filteredRules, currentPage, pageSize]);
+
+  const pageIds = useMemo(() => pagedRules.map((r) => r.id), [pagedRules]);
+  const allPageChecked = pageIds.length > 0 && pageIds.every((id) => checkedIds.has(id));
+  const somePageChecked = pageIds.some((id) => checkedIds.has(id));
+
+  const toggleCheck = (id) => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllPage = () => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (allPageChecked) pageIds.forEach((id) => next.delete(id));
+      else pageIds.forEach((id) => next.add(id));
+      return next;
+    });
+  };
+
   const load = () => api.get('/rules').then(r => setRules(r.data))
     .catch((e) => toastApiFailure(e, 'Rules'));
   useEffect(() => { load(); }, []);
 
-  const deleteRule = async (id) => {
-    if (!window.confirm('Delete this rule?')) return;
-    try {
-      await api.delete(`/rules/${id}`);
-      load();
-    } catch (e) {
-      toastApiFailure(e, 'Rules');
-    }
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, pageSize]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [currentPage, totalPages]);
+
+  const deleteRule = (id) => {
+    const rule = rules.find((r) => r.id === id);
+    setConfirmDialog({
+      title: 'Delete Rule',
+      message: `Delete rule "${rule?.name || 'this rule'}"?`,
+      subMessage: 'Alerts from this rule will no longer be generated.',
+      confirmLabel: 'Delete',
+      confirmStyle: 'danger',
+      onConfirm: async () => {
+        try {
+          await api.delete(`/rules/${id}`);
+          showToast('Rule deleted', 'success');
+          setCheckedIds((prev) => {
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+          });
+          load();
+        } catch (e) {
+          toastApiFailure(e, 'Rules');
+        }
+      },
+    });
+  };
+
+  const bulkDelete = () => {
+    const ids = [...checkedIds];
+    setConfirmDialog({
+      title: `Delete ${ids.length} Rule${ids.length > 1 ? 's' : ''}`,
+      message: `Delete ${ids.length} selected rule${ids.length > 1 ? 's' : ''}?`,
+      subMessage: 'This action cannot be undone.',
+      confirmLabel: 'Delete',
+      confirmStyle: 'danger',
+      onConfirm: async () => {
+        try {
+          await bulkDeleteRules(ids);
+          showToast(`${ids.length} rule${ids.length > 1 ? 's' : ''} deleted`, 'success');
+          setCheckedIds(new Set());
+          load();
+        } catch (e) {
+          toastApiFailure(e, 'Bulk delete rules');
+        }
+      },
+    });
   };
 
   const toggleActive = async (rule) => {
@@ -508,20 +591,51 @@ function RulesTab({ locations, assetTypes }) {
         <button type="button" className="btn btn-primary" onClick={() => { setEditRule(null); setShowWizard(true); }}>+ Create Rule</button>
       </div>
 
-      <div style={{ background: '#fff', borderRadius: 8, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
-        <table>
+      {checkedIds.size > 0 && (
+        <div className="assets-bulk-bar" role="status" style={{ marginBottom: 12 }}>
+          <strong>{checkedIds.size} selected</strong>
+          <button type="button" className="btn btn-danger btn-sm" onClick={bulkDelete}>Delete</button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setCheckedIds(new Set())}>Clear selection</button>
+        </div>
+      )}
+
+      <div style={{ background: '#fff', borderRadius: 8, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ overflowX: 'auto' }}>
+        <table style={{ minWidth: 800 }}>
           <thead>
-            <tr><th>Rule Name</th><th>Type</th><th>Location</th><th>Asset Type</th><th>Action</th><th>Active</th><th>Actions</th></tr>
+            <tr>
+              <th style={{ width: 40, padding: '10px 12px' }}>
+                <input
+                  type="checkbox"
+                  aria-label="Select all on page"
+                  checked={allPageChecked}
+                  ref={(el) => { if (el) el.indeterminate = somePageChecked && !allPageChecked; }}
+                  onChange={toggleAllPage}
+                  disabled={pagedRules.length === 0}
+                />
+              </th>
+              <th style={{ width: 42 }}>#</th>
+              <th>Rule Name</th><th>Type</th><th>Location</th><th>Asset Type</th><th>Action</th><th>Active</th><th>Actions</th>
+            </tr>
           </thead>
           <tbody>
             {rules.length === 0 && (
-              <tr><td colSpan={7} style={{ textAlign: 'center', color: '#aaa', padding: 32 }}>No rules yet. Click "+ Create Rule" to get started.</td></tr>
+              <tr><td colSpan={9} style={{ textAlign: 'center', color: '#aaa', padding: 32 }}>No rules yet. Click "+ Create Rule" to get started.</td></tr>
             )}
             {rules.length > 0 && filteredRules.length === 0 && (
-              <tr><td colSpan={7} style={{ textAlign: 'center', color: '#aaa', padding: 32 }}>No rules match your search.</td></tr>
+              <tr><td colSpan={9} style={{ textAlign: 'center', color: '#aaa', padding: 32 }}>No rules match your search.</td></tr>
             )}
-            {filteredRules.map(r => (
-              <tr key={r.id}>
+            {pagedRules.map((r, i) => (
+              <tr key={r.id} style={{ background: checkedIds.has(r.id) ? '#f0f4ff' : 'inherit' }}>
+                <td style={{ padding: '10px 12px' }}>
+                  <input
+                    type="checkbox"
+                    aria-label={`Select ${r.name}`}
+                    checked={checkedIds.has(r.id)}
+                    onChange={() => toggleCheck(r.id)}
+                  />
+                </td>
+                <td style={{ color: '#9ca3af', fontSize: 12 }}>{(currentPage - 1) * pageSize + i + 1}</td>
                 <td>
                   <div style={{ fontWeight: 500, fontSize: 14 }}>{r.name}</div>
                   {r.description && <div style={{ fontSize: 12, color: '#888' }}>{r.description}</div>}
@@ -546,6 +660,75 @@ function RulesTab({ locations, assetTypes }) {
             ))}
           </tbody>
         </table>
+        </div>
+
+        {total > 0 && (
+          <div className="assets-page-pagination">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#555', flexWrap: 'wrap' }}>
+              <span>Rows per page:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                style={{ padding: '4px 8px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13 }}
+              >
+                {RULES_PAGE_SIZES.map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+              <span style={{ marginLeft: 8 }}>
+                {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, total)} of {total}
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <button
+                type="button"
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+                style={{ padding: '5px 10px', border: '1px solid #d1d5db', borderRadius: 6, background: currentPage === 1 ? '#f7f8fc' : '#fff', cursor: currentPage === 1 ? 'default' : 'pointer', color: currentPage === 1 ? '#bbb' : '#333', fontSize: 13 }}
+              >«</button>
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                style={{ padding: '5px 10px', border: '1px solid #d1d5db', borderRadius: 6, background: currentPage === 1 ? '#f7f8fc' : '#fff', cursor: currentPage === 1 ? 'default' : 'pointer', color: currentPage === 1 ? '#bbb' : '#333', fontSize: 13 }}
+              >‹</button>
+              {Array.from({ length: totalPages }, (_, idx) => idx + 1)
+                .filter((p) => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
+                .reduce((acc, p, i, arr) => {
+                  if (i > 0 && p - arr[i - 1] > 1) acc.push('...');
+                  acc.push(p);
+                  return acc;
+                }, [])
+                .map((p, idx) =>
+                  p === '...'
+                    ? <span key={`ellipsis-${idx}`} style={{ padding: '5px 8px', fontSize: 13, color: '#aaa' }}>…</span>
+                    : <button
+                        key={p}
+                        type="button"
+                        onClick={() => setCurrentPage(p)}
+                        style={{
+                          padding: '5px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13,
+                          background: currentPage === p ? '#1565c0' : '#fff',
+                          color: currentPage === p ? '#fff' : '#333',
+                          cursor: 'pointer', fontWeight: currentPage === p ? 600 : 400,
+                        }}
+                      >{p}</button>
+                )}
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                style={{ padding: '5px 10px', border: '1px solid #d1d5db', borderRadius: 6, background: currentPage === totalPages ? '#f7f8fc' : '#fff', cursor: currentPage === totalPages ? 'default' : 'pointer', color: currentPage === totalPages ? '#bbb' : '#333', fontSize: 13 }}
+              >›</button>
+              <button
+                type="button"
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage === totalPages}
+                style={{ padding: '5px 10px', border: '1px solid #d1d5db', borderRadius: 6, background: currentPage === totalPages ? '#f7f8fc' : '#fff', cursor: currentPage === totalPages ? 'default' : 'pointer', color: currentPage === totalPages ? '#bbb' : '#333', fontSize: 13 }}
+              >»</button>
+            </div>
+          </div>
+        )}
       </div>
 
       {showWizard && (
@@ -554,6 +737,18 @@ function RulesTab({ locations, assetTypes }) {
           editRule={editRule}
           onClose={() => setShowWizard(false)}
           onSaved={load}
+        />
+      )}
+
+      {confirmDialog && (
+        <ConfirmModal
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          subMessage={confirmDialog.subMessage}
+          confirmLabel={confirmDialog.confirmLabel}
+          confirmStyle={confirmDialog.confirmStyle}
+          onConfirm={() => { confirmDialog.onConfirm(); setConfirmDialog(null); }}
+          onCancel={() => setConfirmDialog(null)}
         />
       )}
     </div>

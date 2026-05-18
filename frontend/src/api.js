@@ -259,6 +259,8 @@ export const getDashboard = (locationId) =>
 export const previewImport = (type, rows) => api.post(`/import/${type}/preview`, { rows });
 export const executeImport = (type, rows) => api.post(`/import/${type}/execute`, { rows });
 
+export const bulkDeleteRules = (ids) => api.delete('/rules/bulk', { data: { ids } });
+
 export const getLocationTypes = () => api.get('/location-types');
 export const createLocationType = (data) => api.post('/location-types', data);
 export const updateLocationType = (id, data) => api.put(`/location-types/${id}`, data);
