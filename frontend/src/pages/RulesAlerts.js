@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import api from '../api';
 import { toastApiFailure } from '../apiErrorHandling';
 
@@ -431,11 +431,38 @@ function AlertsTab() {
   );
 }
 
+function ruleMatchesSearch(rule, query) {
+  if (!query) return true;
+  const action =
+    rule.action_type === 'system_alert' ? 'system' :
+    rule.action_type === 'email_alert' ? 'email' : 'both';
+  const haystack = [
+    rule.name,
+    rule.description,
+    rule.location_name,
+    rule.asset_type_name,
+    FILTER_LABELS[rule.filter_type],
+    action,
+    rule.is_active ? 'active on' : 'inactive off',
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  return haystack.includes(query);
+}
+
 // ── Rules Tab ──────────────────────────────────────────────────
 function RulesTab({ locations, assetTypes }) {
   const [rules, setRules] = useState([]);
   const [showWizard, setShowWizard] = useState(false);
   const [editRule, setEditRule] = useState(null);
+  const [search, setSearch] = useState('');
+
+  const searchQuery = search.trim().toLowerCase();
+  const filteredRules = useMemo(
+    () => rules.filter((r) => ruleMatchesSearch(r, searchQuery)),
+    [rules, searchQuery]
+  );
 
   const load = () => api.get('/rules').then(r => setRules(r.data))
     .catch((e) => toastApiFailure(e, 'Rules'));
@@ -462,8 +489,23 @@ function RulesTab({ locations, assetTypes }) {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-        <button className="btn btn-primary" onClick={() => { setEditRule(null); setShowWizard(true); }}>+ Create Rule</button>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div style={{ position: 'relative', flex: '1 1 240px', maxWidth: 360 }}>
+          <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none', display: 'flex' }}>
+            <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+              <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+            </svg>
+          </span>
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search rules…"
+            aria-label="Search rules"
+            style={{ width: '100%', boxSizing: 'border-box', padding: '8px 12px 8px 34px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 13 }}
+          />
+        </div>
+        <button type="button" className="btn btn-primary" onClick={() => { setEditRule(null); setShowWizard(true); }}>+ Create Rule</button>
       </div>
 
       <div style={{ background: '#fff', borderRadius: 8, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
@@ -475,7 +517,10 @@ function RulesTab({ locations, assetTypes }) {
             {rules.length === 0 && (
               <tr><td colSpan={7} style={{ textAlign: 'center', color: '#aaa', padding: 32 }}>No rules yet. Click "+ Create Rule" to get started.</td></tr>
             )}
-            {rules.map(r => (
+            {rules.length > 0 && filteredRules.length === 0 && (
+              <tr><td colSpan={7} style={{ textAlign: 'center', color: '#aaa', padding: 32 }}>No rules match your search.</td></tr>
+            )}
+            {filteredRules.map(r => (
               <tr key={r.id}>
                 <td>
                   <div style={{ fontWeight: 500, fontSize: 14 }}>{r.name}</div>
