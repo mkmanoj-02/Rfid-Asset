@@ -281,3 +281,15 @@ export const getVendors = () => api.get('/vendors');
 export const createVendor = (data) => api.post('/vendors', data);
 export const updateVendor = (id, data) => api.put(`/vendors/${id}`, data);
 export const deleteVendor = (id) => api.delete(`/vendors/${id}`);
+
+/** Handheld / mobile reader devices */
+export const getHandheldDevices = () => api.get('/handheld-devices');
+export const getHandheldDevice = (id) => api.get(`/handheld-devices/${id}`);
+export const createHandheldDevice = (data) => api.post('/handheld-devices', data);
+export const updateHandheldDevice = (id, data) => api.put(`/handheld-devices/${id}`, data);
+export const deleteHandheldDevice = (id) => api.delete(`/handheld-devices/${id}`);
+export const getHandheldDeviceAttributes = (id) => api.get(`/handheld-devices/${id}/attributes`);
+export const saveHandheldDeviceAttributes = (id, attributeIds) =>
+  api.put(`/handheld-devices/${id}/attributes`, { attribute_ids: attributeIds });
+export const getHandheldMobileAttributes = (deviceName) =>
+  api.get('/handheld-devices/mobile/attributes', { params: { device_name: deviceName } });

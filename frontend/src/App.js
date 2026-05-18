@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, NavLink, useNavigate, Navigate } from 're
 import {
   LayoutDashboard, Package, Tag, MapPin, Users, History,
   Bell, BarChart2, ClipboardList, Upload, ChevronDown,
-  Menu, X, LogOut, Settings as SettingsIcon, Truck, TrendingDown,
+  Menu, X, LogOut, Settings as SettingsIcon, Truck, TrendingDown, Smartphone,
 } from 'lucide-react';
 import Dashboard         from './pages/Dashboard';
 import Locations         from './pages/Locations';
@@ -20,6 +20,7 @@ import TagTypesSettings  from './pages/TagTypesSettings';
 import VendorsSettings   from './pages/VendorsSettings';
 import AppSettings       from './pages/Settings';
 import Depreciation      from './pages/Depreciation';
+import HandheldDevices   from './pages/HandheldDevices';
 import { AuthProvider, useAuth } from './AuthContext';
 import { ToastProvider }         from './Toast';
 import ToastRouteSync            from './ToastRouteSync';
@@ -381,6 +382,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
             <NavItem to="/asset-types" icon={Tag}     label="Asset Types" indent />
             <NavItem to="/locations"   icon={MapPin}  label="Locations"   indent />
             <NavItem to="/users"       icon={Users}   label={isSuperAdmin ? 'Users' : 'My Profile'} indent />
+            {isAdmin && <NavItem to="/handheld-devices" icon={Smartphone} label="Handheld Devices" indent />}
           </NavGroup>
 
           <SidebarDivider />
@@ -493,6 +495,7 @@ function AppShell() {
             <Route path="/movements"             element={<Movements />} />
             <Route path="/import"                element={<Import />} />
             <Route path="/users"                 element={<UsersPage />} />
+            <Route path="/handheld-devices"      element={<HandheldDevices />} />
             <Route path="/rules-alerts"          element={<RulesAlerts />} />
             <Route path="/reports"               element={<Reports />} />
             <Route path="/audit-log"             element={<AuditLog />} />

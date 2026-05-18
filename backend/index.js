@@ -93,6 +93,7 @@ app.use('/api/location-types', require('./routes/locationTypes'));
 app.use('/api/tag-types', require('./routes/tagTypes'));
 app.use('/api/vendors',  require('./routes/vendors'));
 app.use('/api/depreciation', require('./routes/depreciation'));
+app.use('/api/handheld-devices', require('./routes/handheldDevices'));
 
 const { startRuleEngine } = require('./ruleEngine');
 startRuleEngine();
