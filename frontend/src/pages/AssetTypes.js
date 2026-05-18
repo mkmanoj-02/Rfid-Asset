@@ -3,6 +3,7 @@ import {
   getAssetTypes, createAssetTypeMultipart, updateAssetTypeMultipart, deleteAssetType,
   getAttributes, createAttribute, updateAttribute, deleteAttribute
 } from '../api';
+import { ChevronRight, ChevronDown, Layers, Pencil, Trash2, Plus, List, Search } from 'lucide-react';
 import { useToast } from '../Toast';
 import { toastApiFailure } from '../apiErrorHandling';
 import ImageUploadField from '../components/ImageUploadField';
@@ -248,51 +249,51 @@ function AddAttributeForm({ typeId, onSaved, showInfo }) {
   );
 }
 
-const typeThumbStyle = {
-  width: 48,
-  height: 48,
-  borderRadius: 8,
-  flexShrink: 0,
-  overflow: 'hidden',
-  background: '#f0f2f5',
-  border: '1px solid #e8edf2',
-};
-
 function AssetTypeThumb({ imageUrl, name }) {
   const [broken, setBroken] = useState(false);
   if (!imageUrl || broken) {
     return (
-      <div
-        style={{
-          ...typeThumbStyle,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: 18,
-          color: '#c4c9d4',
-        }}
-        aria-hidden
-      >
-        📦
+      <div className="asset-type-thumb" aria-hidden>
+        <Layers size={18} strokeWidth={1.75} />
       </div>
     );
   }
   return (
-    <div style={typeThumbStyle}>
+    <div className="asset-type-thumb">
       <img
         src={resolveImageUrl(imageUrl)}
         alt={name ? `${name} image` : 'Asset type'}
-        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
         onError={() => setBroken(true)}
       />
     </div>
   );
 }
 
-// ── Asset Type Card (with attributes + sub-types) ──────────────
-function AssetTypeCard({ item, allTypes, onEdit, onDelete, onAddSub, onAttributeDeleteRequest, showInfo, level = 0, canModify, canDelete, searchQuery = '' }) {
-  const [expanded, setExpanded] = useState(false);
+// ── Asset Type row (hierarchy table) ───────────────────────────
+function AssetTypeRow({
+  item,
+  allTypes,
+  onEdit,
+  onDelete,
+  onAddSub,
+  onAttributeDeleteRequest,
+  level = 0,
+  canModify,
+  canDelete,
+  searchQuery = '',
+  forceBranchOpen = false,
+  isLast = false,
+}) {
+  const [attrsOpen, setAttrsOpen] = useState(false);
+  const [branchOpen, setBranchOpen] = useState(false);
   const [attrs, setAttrs] = useState([]);
+
+  const children = allTypes.filter(
+    (t) => t.parent_id === item.id && visibleInAssetTypeSearch(t, allTypes, searchQuery)
+  );
+  const hasChildren = children.length > 0;
+  const childCount = allTypes.filter((t) => t.parent_id === item.id).length;
+  const branchExpanded = forceBranchOpen || !!searchQuery || branchOpen;
 
   const loadAttrs = async () => {
     try {
@@ -304,39 +305,125 @@ function AssetTypeCard({ item, allTypes, onEdit, onDelete, onAddSub, onAttribute
     }
   };
 
-  useEffect(() => { if (expanded) loadAttrs(); }, [expanded]);
+  useEffect(() => {
+    if (attrsOpen) loadAttrs();
+  }, [attrsOpen]);
 
-  const children = allTypes.filter(t => t.parent_id === item.id && visibleInAssetTypeSearch(t, allTypes, searchQuery));
+  useEffect(() => {
+    if (searchQuery) setBranchOpen(true);
+  }, [searchQuery]);
+
+  const depth = Math.min(level, 3);
+  const depthClass = `asset-type-row--depth-${depth}`;
+  const parentItem = level > 0 ? allTypes.find((t) => t.id === item.parent_id) : null;
 
   return (
-    <div style={{ marginLeft: level * 24, marginBottom: 8 }}>
-      <div className="type-card">
-        <div className="type-card-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            {level > 0 && <span style={{ color: '#7c8cf8', fontSize: 12 }}>{'└─'}</span>}
-            <AssetTypeThumb imageUrl={item.image_url} name={item.name} />
-            <div>
-              <strong style={{ fontSize: level === 0 ? 15 : 14 }}>{item.name}</strong>
-              {item.parent_name && level === 0 && (
-                <span style={{ fontSize: 11, color: '#888', marginLeft: 8 }}>sub of {item.parent_name}</span>
-              )}
-              {item.description && <span style={{ color: '#888', marginLeft: 8, fontSize: 13 }}>{item.description}</span>}
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button className="btn btn-secondary btn-sm" onClick={() => { setExpanded(!expanded); }}>
-              {expanded ? 'Hide Attrs' : 'Attributes'}
+    <li
+      className={`asset-type-tree-item ${isLast ? 'asset-type-tree-item--last' : ''} ${level === 0 ? 'asset-type-tree-item--root' : ''} ${hasChildren && branchExpanded ? 'asset-type-tree-item--branch-open' : ''}`}
+    >
+      <div className="asset-type-row-wrap">
+        <div className={`asset-type-row ${depthClass} ${hasChildren ? 'asset-type-row--parent' : ''}`}>
+        <div className="asset-type-tree-col">
+          {hasChildren ? (
+            <button
+              type="button"
+              className={`asset-type-expand-btn ${branchExpanded ? 'is-open' : ''}`}
+              onClick={() => setBranchOpen((o) => !o)}
+              aria-expanded={branchExpanded}
+              aria-label={branchExpanded ? 'Collapse sub-types' : 'Expand sub-types'}
+              title={branchExpanded ? 'Collapse sub-types' : 'Expand sub-types'}
+            >
+              {branchExpanded ? <ChevronDown size={16} strokeWidth={2.5} /> : <ChevronRight size={16} strokeWidth={2.5} />}
             </button>
-            {canModify && <button className="btn btn-secondary btn-sm" onClick={() => onAddSub(item.id)}>+ Sub Type</button>}
-            {canModify && <button className="btn btn-secondary btn-sm" onClick={() => onEdit(item)}>Edit</button>}
-            {canDelete && <button className="btn btn-danger btn-sm" onClick={() => onDelete(item.id)}>Delete</button>}
+          ) : (
+            <span className="asset-type-tree-leaf" aria-hidden />
+          )}
+        </div>
+
+        <div className="asset-type-row-lead">
+          <AssetTypeThumb imageUrl={item.image_url} name={item.name} />
+          <div className="asset-type-info">
+            <div className="asset-type-name-row">
+              <span className="asset-type-name" title={item.name}>{item.name}</span>
+              {level === 0 ? (
+                <span className="asset-type-level-tag asset-type-level-tag--root">Root</span>
+              ) : (
+                <span className="asset-type-level-tag asset-type-level-tag--child">Level {level + 1}</span>
+              )}
+            </div>
+            {item.description ? (
+              <span className="asset-type-desc" title={item.description}>{item.description}</span>
+            ) : level > 0 && (parentItem?.name || item.parent_name) ? (
+              <span className="asset-type-desc asset-type-desc--parent">
+                Under <strong>{parentItem?.name || item.parent_name}</strong>
+              </span>
+            ) : null}
           </div>
         </div>
 
-        {expanded && (
-          <div className="attr-list">
-            {attrs.length === 0 && <p style={{ color: '#aaa', fontSize: 13 }}>No attributes yet.</p>}
-            {attrs.map(attr => (
+        <div className="asset-type-row-end">
+          {childCount > 0 && (
+            <span className="asset-type-meta-pill asset-type-meta-pill--subs">{childCount} sub-type{childCount !== 1 ? 's' : ''}</span>
+          )}
+          <div className="asset-type-actions">
+            <button
+              type="button"
+              className={`asset-type-icon-btn ${attrsOpen ? 'asset-type-icon-btn--attrs-active' : ''}`}
+              title="Attributes"
+              onClick={() => setAttrsOpen((o) => !o)}
+              aria-expanded={attrsOpen}
+            >
+              <List size={16} />
+            </button>
+            {canModify && (
+              <button type="button" className="asset-type-icon-btn asset-type-icon-btn--primary" title="Add sub-type" onClick={() => onAddSub(item.id)}>
+                <Plus size={16} />
+              </button>
+            )}
+            {canModify && (
+              <button type="button" className="asset-type-icon-btn" title="Edit" onClick={() => onEdit(item)}>
+                <Pencil size={15} />
+              </button>
+            )}
+            {canDelete && (
+              <button type="button" className="asset-type-icon-btn asset-type-icon-btn--danger" title="Delete" onClick={() => onDelete(item.id)}>
+                <Trash2 size={15} />
+              </button>
+            )}
+          </div>
+        </div>
+        </div>
+
+        {branchExpanded && children.length > 0 && (
+          <div className="asset-type-tree-children">
+            <ul className="asset-type-tree-list">
+              {children.map((child, idx) => (
+                <AssetTypeRow
+                  key={child.id}
+                  item={child}
+                  allTypes={allTypes}
+                  onEdit={onEdit}
+                  onDelete={onDelete}
+                  onAddSub={onAddSub}
+                  onAttributeDeleteRequest={onAttributeDeleteRequest}
+                  level={level + 1}
+                  canModify={canModify}
+                  canDelete={canDelete}
+                  searchQuery={searchQuery}
+                  forceBranchOpen={forceBranchOpen}
+                  isLast={idx === children.length - 1}
+                />
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {attrsOpen && (
+          <div className="asset-type-attrs-panel">
+            {attrs.length === 0 && (
+              <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 10px' }}>No attributes defined yet.</p>
+            )}
+            {attrs.map((attr) => (
               <AttributeRow
                 key={attr.id}
                 attr={attr}
@@ -351,14 +438,7 @@ function AssetTypeCard({ item, allTypes, onEdit, onDelete, onAddSub, onAttribute
           </div>
         )}
       </div>
-
-      {children.map(child => (
-        <AssetTypeCard key={child.id} item={child} allTypes={allTypes}
-          onEdit={onEdit} onDelete={onDelete} onAddSub={onAddSub} onAttributeDeleteRequest={onAttributeDeleteRequest}
-          level={level + 1}
-          canModify={canModify} canDelete={canDelete} searchQuery={searchQuery} />
-      ))}
-    </div>
+    </li>
   );
 }
 
@@ -373,6 +453,8 @@ export default function AssetTypes() {
   const [removeImage, setRemoveImage] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState(null);
+  const [expandAllBranches, setExpandAllBranches] = useState(false);
+  const [treeResetKey, setTreeResetKey] = useState(0);
   const { showToast } = useToast();
 
   const currentUser = (() => { try { return JSON.parse(sessionStorage.getItem('rfid_user') || 'null'); } catch { return null; } })();
@@ -484,43 +566,64 @@ export default function AssetTypes() {
         {canModify && <button className="btn btn-primary" onClick={() => openAdd()}>+ Add Asset Type</button>}
       </div>
 
-      <div style={{ background: '#fff', borderRadius: 8, padding: '12px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginBottom: 16, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative', flex: '1 1 220px', minWidth: 180, maxWidth: 420 }}>
-          <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', display: 'flex', alignItems: 'center', pointerEvents: 'none' }}>
-            <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
-            </svg>
+      <div className="asset-types-panel" style={{ marginBottom: 16 }}>
+        <div className="asset-types-toolbar">
+          <div className="asset-types-toolbar-search">
+            <span className="asset-types-toolbar-search-icon" aria-hidden><Search size={16} /></span>
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name, description, parent…" aria-label="Search asset types" />
+          </div>
+          <div className="asset-types-toolbar-links">
+            <button type="button" onClick={() => { setExpandAllBranches(true); setTreeResetKey((k) => k + 1); }}>Expand all</button>
+            <button type="button" onClick={() => { setExpandAllBranches(false); setTreeResetKey((k) => k + 1); }}>Collapse all</button>
+          </div>
+          <div className="asset-types-legend" aria-hidden>
+            <span>— branch line</span>
+            <span>▸ expand</span>
+          </div>
+          <span className="asset-types-toolbar-meta">
+            {searchQuery ? `${visibleTypeCount} matching type${visibleTypeCount !== 1 ? 's' : ''}` : `${items.length} type${items.length !== 1 ? 's' : ''}`}
           </span>
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search by name, description, parent…"
-            style={{ width: '100%', padding: '7px 10px 7px 30px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, boxSizing: 'border-box' }}
-          />
         </div>
-        {searchQuery && (
-          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSearch('')}>✕ Clear</button>
-        )}
-        <span style={{ fontSize: 12, color: '#888', marginLeft: 'auto' }}>
-          {searchQuery
-            ? `${visibleTypeCount} matching type${visibleTypeCount !== 1 ? 's' : ''}`
-            : `${items.length} type${items.length !== 1 ? 's' : ''}`}
-        </span>
-      </div>
-
-      <div className="type-cards">
-        {items.length === 0 && (
-          <div style={{ textAlign: 'center', color: '#aaa', padding: 32 }}>No asset types yet.</div>
-        )}
-        {items.length > 0 && rootTypes.length === 0 && searchQuery && (
-          <div style={{ textAlign: 'center', color: '#aaa', padding: 32 }}>No asset types match your search.</div>
-        )}
-        {rootTypes.map(item => (
-          <AssetTypeCard key={item.id} item={item} allTypes={items}
-            onEdit={openEdit} onDelete={removeAssetType} onAddSub={(parentId) => openAdd(parentId)}
-            onAttributeDeleteRequest={openAttributeDeleteConfirm}
-            canModify={canModify} canDelete={canDelete} searchQuery={searchQuery} />
-        ))}
+        <div className="asset-types-shell">
+          <div className="asset-types-table-head">
+            <span>Hierarchy / Type</span>
+            <span>Actions</span>
+          </div>
+          <div className="asset-types-body">
+            {items.length === 0 && (
+              <div className="asset-types-empty">
+                <Layers size={40} strokeWidth={1.25} color="#cbd5e1" />
+                <p className="asset-types-empty-title">No asset types yet</p>
+                <p className="asset-types-empty-hint">Add a top-level type to organize your assets.</p>
+              </div>
+            )}
+            {items.length > 0 && rootTypes.length === 0 && searchQuery && (
+              <div className="asset-types-empty">
+                <Search size={40} strokeWidth={1.25} color="#cbd5e1" />
+                <p className="asset-types-empty-title">No matches</p>
+                <p className="asset-types-empty-hint">Try a different search term.</p>
+              </div>
+            )}
+            <ul className="asset-type-tree-root">
+              {rootTypes.map((item, idx) => (
+                <AssetTypeRow
+                  key={`${item.id}-${treeResetKey}`}
+                  item={item}
+                  allTypes={items}
+                  onEdit={openEdit}
+                  onDelete={removeAssetType}
+                  onAddSub={(parentId) => openAdd(parentId)}
+                  onAttributeDeleteRequest={openAttributeDeleteConfirm}
+                  canModify={canModify}
+                  canDelete={canDelete}
+                  searchQuery={searchQuery}
+                  forceBranchOpen={expandAllBranches}
+                  isLast={idx === rootTypes.length - 1}
+                />
+              ))}
+            </ul>
+          </div>
+        </div>
       </div>
 
       {modal && (
