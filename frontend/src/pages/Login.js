@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { loginRequest } from '../api';
 import { useAuth } from '../AuthContext';
@@ -257,6 +257,12 @@ export default function Login() {
   const [error, setError]     = useState('');
   const [loading, setLoading] = useState(false);
   const [showPw, setShowPw]   = useState(false);
+  const usernameRef = useRef(null);
+  const passwordRef = useRef(null);
+
+  useEffect(() => {
+    usernameRef.current?.focus();
+  }, []);
 
   useEffect(() => {
     try {
@@ -347,11 +353,19 @@ export default function Login() {
             <form onSubmit={handleSubmit}>
 
               <div className="lp-field">
-                <label className="lp-label">Username</label>
+                <label className="lp-label" htmlFor="login-username">Username</label>
                 <input
+                  ref={usernameRef}
+                  id="login-username"
                   className="lp-input"
                   value={form.username}
                   onChange={e => setForm({ ...form, username: e.target.value })}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      passwordRef.current?.focus();
+                    }
+                  }}
                   placeholder="Enter your username"
                   autoFocus
                   autoComplete="username"
@@ -359,9 +373,11 @@ export default function Login() {
               </div>
 
               <div className="lp-field">
-                <label className="lp-label">Password</label>
+                <label className="lp-label" htmlFor="login-password">Password</label>
                 <div className="lp-pw-wrap">
                   <input
+                    ref={passwordRef}
+                    id="login-password"
                     className="lp-input"
                     type={showPw ? 'text' : 'password'}
                     value={form.password}
