@@ -8,6 +8,7 @@ import { toastApiFailure } from '../apiErrorHandling';
 import ImageUploadField from '../components/ImageUploadField';
 import ConfirmModal from '../components/ConfirmModal';
 import { resolveImageUrl } from '../utils/imageUrl';
+import { useAuth } from '../AuthContext';
 
 function locationNodeMatches(node, q) {
   if (!q) return true;
@@ -82,11 +83,11 @@ function ManageLocations() {
   const [manageSearch, setManageSearch] = useState('');
   const [confirmDialog, setConfirmDialog] = useState(null);
   const { showToast } = useToast();
+  const { currentUser } = useAuth();
 
   const manageQuery = manageSearch.trim().toLowerCase();
   const filteredTree = useMemo(() => filterLocationTree(tree, manageQuery), [tree, manageQuery]);
 
-  const currentUser = (() => { try { return JSON.parse(sessionStorage.getItem('rfid_user') || 'null'); } catch { return null; } })();
   const isSuperAdmin = currentUser?.profile_type === 'super_admin';
   const canModify = isSuperAdmin || !!currentUser?.location_can_modify;
   const canDelete = isSuperAdmin || !!currentUser?.location_can_delete;
@@ -365,7 +366,7 @@ function LocationTypes() {
   const [confirmDialog, setConfirmDialog] = useState(null);
   const { showToast } = useToast();
 
-  const currentUser = (() => { try { return JSON.parse(sessionStorage.getItem('rfid_user') || 'null'); } catch { return null; } })();
+  const { currentUser } = useAuth();
   const isSuperAdmin = currentUser?.profile_type === 'super_admin';
   const canModify = isSuperAdmin || !!currentUser?.location_type_can_modify;
   const canDelete = isSuperAdmin || !!currentUser?.location_type_can_delete;

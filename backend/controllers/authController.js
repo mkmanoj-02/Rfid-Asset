@@ -9,12 +9,37 @@ const {
 } = require('../helpers/jwt');
 const refreshTokenService = require('../services/refreshTokenService');
 
-/** Public user fields returned after login. */
+const AUTH_USER_SELECT = `
+  id, username, email, profile_type,
+  location_privileges, location_can_modify, location_can_delete,
+  location_type_privileges, location_type_can_modify, location_type_can_delete,
+  asset_type_privileges, asset_type_can_modify, asset_type_can_delete,
+  asset_privileges, asset_can_modify, asset_can_delete
+`;
+
+function asBool(v) {
+  return v === 1 || v === true || v === '1';
+}
+
+/** Public user fields returned after login and /auth/me. */
 function toAuthUser(user) {
   return {
     id: user.id,
     username: user.username,
+    email: user.email,
     profile_type: user.profile_type,
+    location_privileges: user.location_privileges,
+    location_can_modify: asBool(user.location_can_modify),
+    location_can_delete: asBool(user.location_can_delete),
+    location_type_privileges: user.location_type_privileges,
+    location_type_can_modify: asBool(user.location_type_can_modify),
+    location_type_can_delete: asBool(user.location_type_can_delete),
+    asset_type_privileges: user.asset_type_privileges,
+    asset_type_can_modify: asBool(user.asset_type_can_modify),
+    asset_type_can_delete: asBool(user.asset_type_can_delete),
+    asset_privileges: user.asset_privileges,
+    asset_can_modify: asBool(user.asset_can_modify),
+    asset_can_delete: asBool(user.asset_can_delete),
   };
 }
 
@@ -32,7 +57,7 @@ async function login(req, res) {
   }
 
   const [rows] = await db.query(
-    'SELECT id, username, password_hash, profile_type FROM users WHERE username = ? LIMIT 1',
+    `SELECT ${AUTH_USER_SELECT}, password_hash FROM users WHERE username = ? LIMIT 1`,
     [username.trim()]
   );
 
@@ -166,13 +191,7 @@ async function logout(req, res) {
  */
 async function me(req, res) {
   const [rows] = await db.query(
-    `SELECT id, username, email, profile_type,
-      location_privileges, location_can_modify, location_can_delete,
-      location_type_privileges, location_type_can_modify, location_type_can_delete,
-      asset_type_privileges, asset_type_can_modify, asset_type_can_delete,
-      asset_privileges, asset_can_modify, asset_can_delete,
-      created_at
-     FROM users WHERE id = ? LIMIT 1`,
+    `SELECT ${AUTH_USER_SELECT} FROM users WHERE id = ? LIMIT 1`,
     [req.user.id]
   );
 
@@ -180,7 +199,7 @@ async function me(req, res) {
     return res.status(401).json({ status: false, message: 'User not found' });
   }
 
-  return res.json({ status: true, user: rows[0] });
+  return res.json({ status: true, user: toAuthUser(rows[0]) });
 }
 
 /**

@@ -1,11 +1,12 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { setOnAuthFailure, logoutRequest } from './api';
+import { setOnAuthFailure, logoutRequest, getMe } from './api';
 import {
   getStoredUser,
   setAuthSession,
   clearAuthSession,
   getRefreshToken,
   hasAuthSession,
+  updateStoredUser,
 } from './authToken';
 
 const AuthContext = createContext(null);
@@ -35,6 +36,21 @@ export function AuthProvider({ children }) {
       setCurrentUser(null);
     });
     return () => setOnAuthFailure(null);
+  }, []);
+
+  // Refresh privilege flags for existing sessions (login used to omit them).
+  useEffect(() => {
+    if (!hasAuthSession()) return undefined;
+    let cancelled = false;
+    getMe()
+      .then((res) => {
+        if (cancelled || !res.data?.user) return;
+        const user = res.data.user;
+        updateStoredUser(user);
+        setCurrentUser(user);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   const login = useCallback((user, accessToken, refreshToken) => {

@@ -145,6 +145,8 @@ export default api;
 
 export const loginRequest = (credentials) => authClient.post('/auth/login', credentials);
 
+export const getMe = () => api.get('/auth/me');
+
 export const logoutRequest = (refreshToken) =>
   authClient.post('/auth/logout', { refreshToken });
 

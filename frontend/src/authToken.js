@@ -24,6 +24,10 @@ export function setAuthSession({ user, accessToken, refreshToken }) {
   if (refreshToken) sessionStorage.setItem(REFRESH_KEY, refreshToken);
 }
 
+export function updateStoredUser(user) {
+  if (user) sessionStorage.setItem(USER_KEY, JSON.stringify(user));
+}
+
 export function setTokens(accessToken, refreshToken) {
   if (accessToken) sessionStorage.setItem(ACCESS_KEY, accessToken);
   if (refreshToken) sessionStorage.setItem(REFRESH_KEY, refreshToken);
