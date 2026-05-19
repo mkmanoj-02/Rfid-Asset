@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { validateImageFile } from '../utils/imageUrl';
+import { validateImageFile, resolveImageUrl } from '../utils/imageUrl';
 
 /**
  * Reusable image picker with drag-and-drop, preview, and validation.
@@ -65,7 +65,7 @@ export default function ImageUploadField({
     if (f) applyFile(f);
   };
 
-  const displayUrl = blobUrl || previewUrl;
+  const displayUrl = blobUrl || (previewUrl ? resolveImageUrl(previewUrl) : null);
 
   return (
     <div className="image-upload-field" data-skip-enter-nav>

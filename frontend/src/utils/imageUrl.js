@@ -1,22 +1,54 @@
-const API_BASE = (process.env.REACT_APP_API_BASE_URL || 'http://localhost:5004').replace(/\/+$/, '');
+import { API_BASE_URL } from '../api';
 
-/** Resolve /uploads/... paths to absolute URLs for <img src>. */
+const UPLOAD_PATH_RE = /^\/(?:api\/)?uploads\//i;
+
+/** Extract /uploads/... path (ignores host — fixes old http://localhost:5004/... in DB). */
+function toUploadPath(imageUrl) {
+  const raw = String(imageUrl).trim();
+  if (!raw) return null;
+
+  if (UPLOAD_PATH_RE.test(raw)) {
+    return raw.startsWith('/api/uploads/') ? raw.replace(/^\/api/, '') : raw;
+  }
+
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      const pathname = new URL(raw).pathname;
+      if (UPLOAD_PATH_RE.test(pathname)) {
+        return pathname.startsWith('/api/uploads/')
+          ? pathname.replace(/^\/api/, '')
+          : pathname;
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+/** Absolute URL for uploads — always uses API_BASE_URL from api.js. */
 export function resolveImageUrl(imageUrl) {
   if (!imageUrl) return null;
-  if (/^https?:\/\//i.test(imageUrl)) return imageUrl;
-  if (imageUrl.startsWith('/')) return `${API_BASE}${imageUrl}`;
-  return `${API_BASE}/${imageUrl}`;
+
+  const raw = String(imageUrl).trim();
+  if (raw.startsWith('data:') || raw.startsWith('blob:')) return raw;
+
+  const uploadPath = toUploadPath(imageUrl);
+  if (uploadPath) return `${API_BASE_URL}${uploadPath}`;
+
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (raw.startsWith('/')) return `${API_BASE_URL}${raw}`;
+  return `${API_BASE_URL}/${raw}`;
 }
 
 export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml'];
 export const ALLOWED_IMAGE_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg'];
 
-/** Branding logo — same formats, shown at original aspect ratio (no conversion). */
 export const BRANDING_IMAGE_TYPES = ALLOWED_IMAGE_TYPES;
 export const BRANDING_IMAGE_EXT = ALLOWED_IMAGE_EXT;
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
-/** Inline SVG placeholder when location/asset has no image */
 export const PLACEHOLDER_IMAGE =
   'data:image/svg+xml,' +
   encodeURIComponent(
@@ -26,7 +58,6 @@ export const PLACEHOLDER_IMAGE =
     </svg>`
   );
 
-/** Small placeholder for asset table thumbnails (32×32) */
 export const TABLE_THUMB_PLACEHOLDER =
   'data:image/svg+xml,' +
   encodeURIComponent(
