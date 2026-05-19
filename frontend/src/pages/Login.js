@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { loginRequest } from '../api';
 import { useAuth } from '../AuthContext';
@@ -390,8 +391,14 @@ export default function Login() {
                     className="lp-pw-toggle"
                     onClick={() => setShowPw(v => !v)}
                     tabIndex={-1}
+                    aria-label={showPw ? 'Hide password' : 'Show password'}
+                    title={showPw ? 'Hide password' : 'Show password'}
                   >
-                    {showPw ? '🙈' : '👁'}
+                    {showPw ? (
+                      <Eye size={18} strokeWidth={2} aria-hidden />
+                    ) : (
+                      <EyeOff size={18} strokeWidth={2} aria-hidden />
+                    )}
                   </button>
                 </div>
               </div>
