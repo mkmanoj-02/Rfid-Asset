@@ -21,6 +21,53 @@ function parsePriv(val) {
   try { const p = JSON.parse(val); return p && p.length ? p : null; } catch { return null; }
 }
 
+/** null = allow all; otherwise numeric id list (coerced from API strings). */
+function normalizePrivSelection(selected) {
+  if (selected == null) return null;
+  const arr = Array.isArray(selected) ? selected : [];
+  if (!arr.length) return null;
+  return arr.map((id) => Number(id));
+}
+
+function privSelectionIncludes(sel, id) {
+  if (!sel) return false;
+  const nid = Number(id);
+  return sel.some((x) => Number(x) === nid);
+}
+
+function buildPrivilegeTree(items, parentId = null) {
+  return items
+    .filter((i) => (i.parent_id ?? null) == parentId)
+    .map((i) => ({ ...i, children: buildPrivilegeTree(items, i.id) }));
+}
+
+/** All parent ids up to the root (for auto-selecting parents when a child is checked). */
+function getAncestorIds(items, id) {
+  const byId = new Map(items.map((i) => [Number(i.id), i]));
+  const ancestors = [];
+  let current = byId.get(Number(id));
+  while (current?.parent_id != null && current.parent_id !== '') {
+    const pid = Number(current.parent_id);
+    if (!byId.has(pid)) break;
+    ancestors.push(pid);
+    current = byId.get(pid);
+  }
+  return ancestors;
+}
+
+function addPrivSelectionWithAncestors(items, sel, id) {
+  const toAdd = [Number(id), ...getAncestorIds(items, id)];
+  const next = [...sel];
+  toAdd.forEach((x) => {
+    if (!next.some((v) => Number(v) === x)) next.push(x);
+  });
+  return next;
+}
+
+function allPrivItemIds(items) {
+  return items.map((i) => Number(i.id));
+}
+
 function userMatchesSearch(user, q) {
   if (!q) return true;
   const hay = [
@@ -35,39 +82,60 @@ function userMatchesSearch(user, q) {
   return hay.includes(q);
 }
 
-// ── Location Tree Privilege Picker ────────────────────────────
-// Shows the full location hierarchy as a tree with checkboxes
-function LocationTreePicker({ locations, selected, onClose, onSave }) {
-  const [sel, setSel] = useState(selected || null); // null = Any, or array of ids
-  const [expanded, setExpanded] = useState({}); // { id: bool }
+// ── Shared tree picker (locations + asset types) ─────────────────
+function PrivilegeTreePicker({
+  items,
+  selected,
+  onClose,
+  onSave,
+  title,
+  hint,
+  allLabel,
+  radioName,
+  saveLabelSingular,
+  emptyLabel,
+  renderNodeExtra,
+}) {
+  const [sel, setSel] = useState(() => normalizePrivSelection(selected));
+  const [expanded, setExpanded] = useState({});
+  const allowAll = sel === null;
+  const tree = useMemo(() => buildPrivilegeTree(items), [items]);
 
-  // Build tree from flat list
-  const buildTree = (items, parentId = null) =>
-    items
-      .filter(i => (i.parent_id || null) == parentId)
-      .map(i => ({ ...i, children: buildTree(items, i.id) }));
-  const tree = buildTree(locations);
+  useEffect(() => {
+    setSel(normalizePrivSelection(selected));
+  }, [selected]);
 
-  // Default all parents expanded
   useEffect(() => {
     const exp = {};
-    locations.forEach(l => { if (l.parent_id === null || l.parent_id === undefined) exp[l.id] = true; });
+    items.forEach((item) => {
+      if (item.parent_id === null || item.parent_id === undefined) exp[item.id] = true;
+    });
     setExpanded(exp);
-  }, [locations]);
+  }, [items]);
+
+  const selectAll = () => setSel(allPrivItemIds(items));
+  const unselectAll = () => setSel(null);
 
   const toggle = (id) => {
-    if (sel === null) { setSel([id]); return; }
-    const next = sel.includes(id) ? sel.filter(x => x !== id) : [...sel, id];
+    const nid = Number(id);
+    if (allowAll) {
+      setSel(addPrivSelectionWithAncestors(items, [], nid));
+      return;
+    }
+    const next = privSelectionIncludes(sel, nid)
+      ? sel.filter((x) => Number(x) !== nid)
+      : addPrivSelectionWithAncestors(items, sel, nid);
     setSel(next.length ? next : null);
   };
 
-  const toggleExpand = (id) => setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
+  const toggleExpand = (id) => setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
 
-  const isChecked = (id) => sel === null || sel.includes(id);
+  const isChecked = (id) => !allowAll && privSelectionIncludes(sel, id);
 
   const renderNode = (node, depth = 0) => {
     const hasChildren = node.children && node.children.length > 0;
-    const isOpen = expanded[node.id] !== false; // default open
+    const isOpen = expanded[node.id] !== false;
+    const checked = isChecked(node.id);
 
     return (
       <div key={node.id}>
@@ -75,17 +143,16 @@ function LocationTreePicker({ locations, selected, onClose, onSave }) {
           style={{
             display: 'flex', alignItems: 'center', gap: 0,
             padding: `7px 12px 7px ${12 + depth * 20}px`,
-            cursor: 'pointer', fontSize: 13,
+            fontSize: 13,
             borderBottom: '1px solid #f1f5f9',
-            background: isChecked(node.id) && sel !== null ? '#eff6ff' : 'transparent',
+            background: checked ? '#eff6ff' : 'transparent',
             transition: 'background 0.1s',
           }}
-          onMouseEnter={e => { if (!isChecked(node.id) || sel === null) e.currentTarget.style.background = '#f8fafc'; }}
-          onMouseLeave={e => { e.currentTarget.style.background = isChecked(node.id) && sel !== null ? '#eff6ff' : 'transparent'; }}
+          onMouseEnter={(e) => { if (!checked) e.currentTarget.style.background = '#f8fafc'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = checked ? '#eff6ff' : 'transparent'; }}
         >
-          {/* Expand/collapse — only for nodes with children */}
           <span
-            onClick={e => { e.stopPropagation(); if (hasChildren) toggleExpand(node.id); }}
+            onClick={(e) => { e.stopPropagation(); if (hasChildren) toggleExpand(node.id); }}
             style={{
               width: 18, flexShrink: 0, textAlign: 'center',
               color: '#94a3b8', fontSize: 10,
@@ -96,38 +163,25 @@ function LocationTreePicker({ locations, selected, onClose, onSave }) {
             {hasChildren ? (isOpen ? '▾' : '▸') : ''}
           </span>
 
-          {/* Checkbox + name */}
-          <span
-            onClick={() => toggle(node.id)}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}
-          >
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, cursor: 'pointer', margin: 0 }}>
             <input
               type="checkbox"
-              readOnly
-              checked={isChecked(node.id)}
-              style={{ pointerEvents: 'none', accentColor: '#2563EB', flexShrink: 0 }}
+              checked={checked}
+              onChange={() => toggle(node.id)}
+              style={{ accentColor: '#2563EB', flexShrink: 0 }}
             />
-            <span style={{
-              fontWeight: depth === 0 ? 600 : 400,
-              color: isChecked(node.id) && sel !== null ? '#1d4ed8' : '#1e293b',
-            }}>
+            <span style={{ fontWeight: depth === 0 ? 600 : 400, color: checked ? '#1d4ed8' : '#1e293b' }}>
               {node.name}
             </span>
-            {node.location_type_name && (
-              <span style={{ fontSize: 10, background: '#e0e7ff', color: '#4338ca', padding: '1px 6px', borderRadius: 8, flexShrink: 0 }}>
-                {node.location_type_name}
-              </span>
-            )}
+            {renderNodeExtra?.(node, depth)}
             {hasChildren && (
               <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 'auto', flexShrink: 0 }}>
                 {node.children.length} sub
               </span>
             )}
-          </span>
+          </label>
         </div>
-
-        {/* Children */}
-        {isOpen && hasChildren && node.children.map(child => renderNode(child, depth + 1))}
+        {isOpen && hasChildren && node.children.map((child) => renderNode(child, depth + 1))}
       </div>
     );
   };
@@ -138,46 +192,51 @@ function LocationTreePicker({ locations, selected, onClose, onSave }) {
     <div className="modal-overlay" style={{ zIndex: 400 }}>
       <div className="modal" style={{ width: 440 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <h2 style={{ fontSize: 15, margin: 0 }}>Location Privileges</h2>
-          {sel !== null && (
+          <h2 style={{ fontSize: 15, margin: 0 }}>{title}</h2>
+          {!allowAll && (
             <span style={{ fontSize: 12, color: '#2563EB', fontWeight: 600, background: '#eff6ff', padding: '2px 8px', borderRadius: 5 }}>
               {selectedCount} selected
             </span>
           )}
         </div>
-        <p style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>
-          Select locations. Sub-locations are automatically included at runtime.
-        </p>
+        <p style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>{hint}</p>
 
-        {/* Any (All) option */}
-        <div
-          onClick={() => setSel(null)}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={selectAll} disabled={!items.length}>
+            Select all
+          </button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={unselectAll} disabled={!items.length}>
+            Unselect all
+          </button>
+        </div>
+
+        <label
           style={{
             padding: '9px 12px', cursor: 'pointer', fontSize: 13,
-            background: sel === null ? '#eff6ff' : '#fafbfc',
-            fontWeight: sel === null ? 600 : 400,
-            color: sel === null ? '#2563EB' : '#374151',
+            background: allowAll ? '#eff6ff' : '#fafbfc',
+            fontWeight: allowAll ? 600 : 400,
+            color: allowAll ? '#2563EB' : '#374151',
             borderBottom: '2px solid #e2e8f0',
             borderRadius: '6px 6px 0 0',
             display: 'flex', alignItems: 'center', gap: 8,
+            margin: 0,
           }}
         >
-          <input type="checkbox" readOnly checked={sel === null} style={{ pointerEvents: 'none', accentColor: '#2563EB' }} />
-          — Any Location (All) —
-        </div>
+          <input type="radio" name={radioName} checked={allowAll} onChange={() => setSel(null)} style={{ accentColor: '#2563EB' }} />
+          {allLabel}
+        </label>
 
-        {/* Tree */}
         <div style={{ maxHeight: 360, overflowY: 'auto', border: '1px solid #e2e8f0', borderTop: 'none', borderRadius: '0 0 6px 6px', marginBottom: 16 }}>
-          {locations.length === 0
-            ? <div style={{ padding: 16, color: '#aaa', fontSize: 13, textAlign: 'center' }}>No locations found</div>
-            : tree.map(node => renderNode(node))
+          {items.length === 0
+            ? <div style={{ padding: 16, color: '#aaa', fontSize: 13, textAlign: 'center' }}>{emptyLabel}</div>
+            : tree.map((node) => renderNode(node))
           }
         </div>
 
         <div className="modal-actions">
-          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={() => onSave(sel)}>
-            {sel === null ? 'Allow All' : `Allow ${selectedCount} Location${selectedCount !== 1 ? 's' : ''}`}
+          <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn btn-primary" onClick={() => onSave(sel)}>
+            {allowAll ? 'Allow All' : `Allow ${selectedCount} ${saveLabelSingular}${selectedCount !== 1 ? 's' : ''}`}
           </button>
         </div>
       </div>
@@ -185,154 +244,47 @@ function LocationTreePicker({ locations, selected, onClose, onSave }) {
   );
 }
 
-// ── Asset Type Tree Privilege Picker ──────────────────────────
-// Mirrors LocationTreePicker — shows asset types in parent/child hierarchy
-function AssetTypeTreePicker({ assetTypes, selected, onClose, onSave }) {
-  const [sel, setSel] = useState(selected || null); // null = Any, array of ids = restricted
-  const [expanded, setExpanded] = useState({});
-
-  // Build tree from flat list using parent_id
-  const buildTree = (items, parentId = null) =>
-    items
-      .filter(i => (i.parent_id || null) == parentId)
-      .map(i => ({ ...i, children: buildTree(items, i.id) }));
-  const tree = buildTree(assetTypes);
-
-  // Default: expand all root nodes
-  useEffect(() => {
-    const exp = {};
-    assetTypes.forEach(t => { if (!t.parent_id) exp[t.id] = true; });
-    setExpanded(exp);
-  }, [assetTypes]);
-
-  const toggle = (id) => {
-    if (sel === null) { setSel([id]); return; }
-    const next = sel.includes(id) ? sel.filter(x => x !== id) : [...sel, id];
-    setSel(next.length ? next : null);
-  };
-
-  const toggleExpand = (id) =>
-    setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
-
-  const isChecked = (id) => sel === null || sel.includes(id);
-
-  const renderNode = (node, depth = 0) => {
-    const hasChildren = node.children && node.children.length > 0;
-    const isOpen = expanded[node.id] !== false;
-
-    return (
-      <div key={node.id}>
-        <div
-          style={{
-            display: 'flex', alignItems: 'center',
-            padding: `7px 12px 7px ${12 + depth * 20}px`,
-            borderBottom: '1px solid #f1f5f9',
-            background: isChecked(node.id) && sel !== null ? '#eff6ff' : 'transparent',
-            transition: 'background 0.1s',
-          }}
-          onMouseEnter={e => { if (!isChecked(node.id) || sel === null) e.currentTarget.style.background = '#f8fafc'; }}
-          onMouseLeave={e => { e.currentTarget.style.background = isChecked(node.id) && sel !== null ? '#eff6ff' : 'transparent'; }}
-        >
-          {/* Expand/collapse — only for nodes with children */}
-          <span
-            onClick={e => { e.stopPropagation(); if (hasChildren) toggleExpand(node.id); }}
-            style={{
-              width: 18, flexShrink: 0, textAlign: 'center',
-              color: '#94a3b8', fontSize: 10,
-              cursor: hasChildren ? 'pointer' : 'default',
-              userSelect: 'none',
-            }}
-          >
-            {hasChildren ? (isOpen ? '▾' : '▸') : ''}
-          </span>
-
-          {/* Checkbox + name */}
-          <span
-            onClick={() => toggle(node.id)}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, cursor: 'pointer' }}
-          >
-            <input
-              type="checkbox"
-              readOnly
-              checked={isChecked(node.id)}
-              style={{ pointerEvents: 'none', accentColor: '#2563EB', flexShrink: 0 }}
-            />
-            <span style={{
-              fontWeight: depth === 0 ? 600 : 400,
-              fontSize: 13,
-              color: isChecked(node.id) && sel !== null ? '#1d4ed8' : '#1e293b',
-            }}>
-              {node.name}
-            </span>
-            {node.parent_name && depth === 0 && (
-              <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 2 }}>
-                (sub of {node.parent_name})
-              </span>
-            )}
-            {hasChildren && (
-              <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 'auto', flexShrink: 0 }}>
-                {node.children.length} sub
-              </span>
-            )}
-          </span>
-        </div>
-
-        {/* Children */}
-        {isOpen && hasChildren && node.children.map(child => renderNode(child, depth + 1))}
-      </div>
-    );
-  };
-
-  const selectedCount = sel ? sel.length : 0;
-
+function LocationTreePicker(props) {
   return (
-    <div className="modal-overlay" style={{ zIndex: 400 }}>
-      <div className="modal" style={{ width: 440 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <h2 style={{ fontSize: 15, margin: 0 }}>Asset Type Privileges</h2>
-          {sel !== null && (
-            <span style={{ fontSize: 12, color: '#2563EB', fontWeight: 600, background: '#eff6ff', padding: '2px 8px', borderRadius: 5 }}>
-              {selectedCount} selected
-            </span>
-          )}
-        </div>
-        <p style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>
-          Select asset types. Child types under a selected parent are included automatically.
-        </p>
+    <PrivilegeTreePicker
+      {...props}
+      items={props.locations}
+      title="Location Privileges"
+      hint="Select locations. Sub-locations are automatically included at runtime."
+      allLabel="— Any Location (All) —"
+      radioName="location-priv-allow-all"
+      saveLabelSingular="Location"
+      emptyLabel="No locations found"
+      renderNodeExtra={(node) => (
+        node.location_type_name ? (
+          <span style={{ fontSize: 10, background: '#e0e7ff', color: '#4338ca', padding: '1px 6px', borderRadius: 8, flexShrink: 0 }}>
+            {node.location_type_name}
+          </span>
+        ) : null
+      )}
+    />
+  );
+}
 
-        {/* Any (All) option */}
-        <div
-          onClick={() => setSel(null)}
-          style={{
-            padding: '9px 12px', cursor: 'pointer', fontSize: 13,
-            background: sel === null ? '#eff6ff' : '#fafbfc',
-            fontWeight: sel === null ? 600 : 400,
-            color: sel === null ? '#2563EB' : '#374151',
-            borderBottom: '2px solid #e2e8f0',
-            borderRadius: '6px 6px 0 0',
-            display: 'flex', alignItems: 'center', gap: 8,
-          }}
-        >
-          <input type="checkbox" readOnly checked={sel === null} style={{ pointerEvents: 'none', accentColor: '#2563EB' }} />
-          — Any Asset Type (All) —
-        </div>
-
-        {/* Tree */}
-        <div style={{ maxHeight: 360, overflowY: 'auto', border: '1px solid #e2e8f0', borderTop: 'none', borderRadius: '0 0 6px 6px', marginBottom: 16 }}>
-          {assetTypes.length === 0
-            ? <div style={{ padding: 16, color: '#aaa', fontSize: 13, textAlign: 'center' }}>No asset types found</div>
-            : tree.map(node => renderNode(node))
-          }
-        </div>
-
-        <div className="modal-actions">
-          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={() => onSave(sel)}>
-            {sel === null ? 'Allow All' : `Allow ${selectedCount} Type${selectedCount !== 1 ? 's' : ''}`}
-          </button>
-        </div>
-      </div>
-    </div>
+function AssetTypeTreePicker(props) {
+  return (
+    <PrivilegeTreePicker
+      {...props}
+      items={props.assetTypes}
+      title="Asset Type Privileges"
+      hint="Select asset types. Child types under a selected parent are included automatically."
+      allLabel="— Any Asset Type (All) —"
+      radioName="asset-type-priv-allow-all"
+      saveLabelSingular="Type"
+      emptyLabel="No asset types found"
+      renderNodeExtra={(node, depth) => (
+        node.parent_name && depth === 0 ? (
+          <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 2 }}>
+            (sub of {node.parent_name})
+          </span>
+        ) : null
+      )}
+    />
   );
 }
 
@@ -519,7 +471,7 @@ function UserForm({ user, locations, assetTypes, onClose, onSaved }) {
   const locPrivLabel = (val) => {
     if (!val || !val.length) return '— Any Location —';
     // Show names of selected locations
-    const names = val.map(id => locations.find(l => l.id === id)?.name || `#${id}`);
+    const names = val.map((id) => locations.find((l) => Number(l.id) === Number(id))?.name || `#${id}`);
     if (names.length <= 2) return names.join(', ');
     return `${names.slice(0, 2).join(', ')} +${names.length - 2} more`;
   };
@@ -531,7 +483,7 @@ function UserForm({ user, locations, assetTypes, onClose, onSaved }) {
 
   const assetTypePrivLabel = (val) => {
     if (!val || !val.length) return '— Any Asset Type —';
-    const names = val.map(id => assetTypes.find(t => t.id === id)?.name || `#${id}`);
+    const names = val.map((id) => assetTypes.find((t) => Number(t.id) === Number(id))?.name || `#${id}`);
     if (names.length <= 2) return names.join(', ');
     return `${names.slice(0, 2).join(', ')} +${names.length - 2} more`;
   };
@@ -749,7 +701,7 @@ function UserDetail({ user, locations, assetTypes, onEdit, onDelete }) {
     let arr = val;
     if (typeof arr === 'string') { try { arr = JSON.parse(arr); } catch { return allLabel; } }
     if (!arr || !arr.length) return allLabel;
-    if (items) return arr.map(id => items.find(i => i.id === id)?.name || id).join(', ');
+    if (items) return arr.map((id) => items.find((i) => Number(i.id) === Number(id))?.name || id).join(', ');
     // attribute-based
     return arr.map(e => `${e.attribute_name}=${e.value}`).join(', ');
   };
@@ -877,7 +829,7 @@ export default function Users() {
       let arr = val;
       if (typeof arr === 'string') { try { arr = JSON.parse(arr); } catch { return allLabel; } }
       if (!arr || !arr.length) return allLabel;
-      if (items) return arr.map(id => items.find(i => i.id === id)?.name || id).join(', ');
+      if (items) return arr.map((id) => items.find((i) => Number(i.id) === Number(id))?.name || id).join(', ');
       return arr.map(e => `${e.attribute_name}=${e.value}`).join(', ');
     };
 
