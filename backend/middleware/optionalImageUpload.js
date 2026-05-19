@@ -6,7 +6,7 @@ const { uploadImageMiddleware, handleMulterImageError } = require('../helper/upl
 const { isMultipartRequest } = require('../controllers/imageInheritance');
 
 /**
- * @param {'assets'|'locations'|'asset_types'} entityKey
+ * @param {'assets'|'locations'|'asset_types'|'site_branding'} entityKey
  */
 function optionalImageUpload(entityKey) {
   const multerMw = uploadImageMiddleware(entityKey);

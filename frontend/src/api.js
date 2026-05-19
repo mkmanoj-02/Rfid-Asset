@@ -297,3 +297,20 @@ export const saveHandheldDeviceAttributes = (id, attributeIds) =>
   api.put(`/handheld-devices/${id}/attributes`, { attribute_ids: attributeIds });
 export const getHandheldMobileAttributes = (deviceName) =>
   api.get('/handheld-devices/mobile/attributes', { params: { device_name: deviceName } });
+
+/** Public site branding (logo, app name) — no auth required */
+export const getSiteBranding = () => authClient.get('/site-branding');
+
+export function buildSiteBrandingFormData(fields, imageFile, { removeLogo } = {}) {
+  const fd = new FormData();
+  if (fields.app_name != null) fd.append('app_name', fields.app_name);
+  if (fields.app_subtitle != null) fd.append('app_subtitle', fields.app_subtitle);
+  if (removeLogo) fd.append('remove_logo', 'true');
+  if (imageFile) fd.append('image', imageFile);
+  return fd;
+}
+
+export const updateSiteBranding = (fields, imageFile, opts) =>
+  api.put('/site-branding', buildSiteBrandingFormData(fields, imageFile, opts), {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });

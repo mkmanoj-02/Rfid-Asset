@@ -71,6 +71,9 @@ app.use((req, res, next) => {
 });
 app.use('/api/auth', require('./routes/auth'));
 
+const siteBrandingRoutes = require('./routes/siteBranding');
+app.get('/api/site-branding', siteBrandingRoutes.getBranding);
+
 // Public static files — must be before verifyToken (<img> cannot send Bearer tokens)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -94,6 +97,7 @@ app.use('/api/tag-types', require('./routes/tagTypes'));
 app.use('/api/vendors',  require('./routes/vendors'));
 app.use('/api/depreciation', require('./routes/depreciation'));
 app.use('/api/handheld-devices', require('./routes/handheldDevices'));
+app.use('/api/site-branding', siteBrandingRoutes);
 
 const { startRuleEngine } = require('./ruleEngine');
 startRuleEngine();

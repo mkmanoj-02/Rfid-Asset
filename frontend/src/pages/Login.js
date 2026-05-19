@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { loginRequest } from '../api';
 import { useAuth } from '../AuthContext';
+import { useBranding } from '../BrandingContext';
+import AppBrand from '../components/AppBrand';
 import { useToast, useSingleFlight } from '../Toast';
 
 const CSS = `
@@ -170,19 +172,6 @@ const CSS = `
     transform: translateY(-4px);
   }
 
-  /* Mobile logo */
-  .lp-mobile-logo {
-    display: flex; align-items: center; gap: 10px;
-    justify-content: center; margin-bottom: 28px;
-  }
-  .lp-mobile-logo-icon {
-    width: 38px; height: 38px; border-radius: 9px;
-    background: #2563EB;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 19px;
-  }
-  @media (min-width: 900px) { .lp-mobile-logo { display: none; } }
-
   .lp-heading    { font-size: 23px; font-weight: 700; color: #0F172A; letter-spacing:-.01em; margin:0 0 5px; }
   .lp-subheading { font-size: 13.5px; color: #64748B; margin: 0 0 26px; }
 
@@ -260,6 +249,7 @@ const CSS = `
 
 export default function Login() {
   const { login }      = useAuth();
+  const { branding }   = useBranding();
   const navigate       = useNavigate();
   const { showToast }  = useToast();
   const runOnce        = useSingleFlight();
@@ -318,13 +308,12 @@ export default function Login() {
           <div className="lp-ambient" />
 
           <div className="lp-left-content">
-            <div className="lp-logo">
-              <div className="lp-logo-icon">📡</div>
-              <div>
-                <div className="lp-logo-name">RFID Asset</div>
-                <div className="lp-logo-sub">Management System</div>
-              </div>
-            </div>
+            <AppBrand
+              appName={branding.app_name}
+              appSubtitle={branding.app_subtitle}
+              logoUrl={branding.logo_url}
+              variant="login-dark"
+            />
 
             <div>
               <h2 className="lp-hero-title">
@@ -351,15 +340,6 @@ export default function Login() {
           <div className="lp-right-glow" />
 
           <div className="lp-card">
-
-            {/* Mobile logo */}
-            <div className="lp-mobile-logo">
-              <div className="lp-mobile-logo-icon">📡</div>
-              <div>
-                <div style={{ fontSize:15, fontWeight:700, color:'#0F172A' }}>RFID Asset</div>
-                <div style={{ fontSize:11, color:'#9CA3AF' }}>Management System</div>
-              </div>
-            </div>
 
             <h1 className="lp-heading">Welcome back</h1>
             <p className="lp-subheading">Sign in to your account to continue</p>
@@ -413,7 +393,7 @@ export default function Login() {
             </form>
 
             <div className="lp-form-footer">
-              RFID Asset Management · Secure Login
+              {branding.app_name} · Secure Login
             </div>
           </div>
         </div>

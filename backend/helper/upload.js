@@ -22,6 +22,7 @@ const ENTITY_UPLOAD_SUBDIR = {
   assets: 'assets',
   locations: 'locations',
   asset_types: 'asset-types',
+  site_branding: 'site-branding',
 };
 
 /** Allowed extensions and acceptable MIME types */

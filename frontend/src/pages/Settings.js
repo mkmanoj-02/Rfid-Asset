@@ -249,7 +249,7 @@ export default function Settings() {
 
   return (
     <div>
-      <div className="page-header"><h1>Settings</h1></div>
+      <div className="page-header"><h1>Tag Management</h1></div>
       <div className="detail-tabs" style={{ marginBottom: 24 }}>
         <button className={`tab-btn ${tab === 'tag-types' ? 'active' : ''}`} onClick={() => setTab('tag-types')}>
           🏷️ Tag Types

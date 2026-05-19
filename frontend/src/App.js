@@ -3,8 +3,10 @@ import { BrowserRouter, Routes, Route, NavLink, useNavigate, Navigate } from 're
 import {
   LayoutDashboard, Package, Tag, MapPin, Users, History,
   Bell, BarChart2, ClipboardList, Upload, ChevronDown,
-  Menu, X, LogOut, Settings as SettingsIcon, Truck, TrendingDown, Smartphone,
+  Menu, X, LogOut, Settings as SettingsIcon, Truck, TrendingDown, Smartphone, Building2,
 } from 'lucide-react';
+import AppBrand from './components/AppBrand';
+import { BrandingProvider, useBranding } from './BrandingContext';
 import Dashboard         from './pages/Dashboard';
 import Locations         from './pages/Locations';
 import AssetTypes        from './pages/AssetTypes';
@@ -19,6 +21,7 @@ import AuditLog          from './pages/AuditLog';
 import TagTypesSettings  from './pages/TagTypesSettings';
 import VendorsSettings   from './pages/VendorsSettings';
 import AppSettings       from './pages/Settings';
+import ProfileSettings   from './pages/ProfileSettings';
 import Depreciation      from './pages/Depreciation';
 import HandheldDevices   from './pages/HandheldDevices';
 import { AuthProvider, useAuth } from './AuthContext';
@@ -201,6 +204,7 @@ function SettingsDropdown() {
   }, []);
 
   const items = [
+    { icon: Building2, label: 'Profile', path: '/settings/profile', desc: 'Logo, app name & tagline' },
     { icon: Tag, label: 'Tag Management', path: '/settings', desc: 'Manage tag types & tag recommendations' },
     { icon: Truck, label: 'Vendors', path: '/settings/vendors', desc: 'Manage asset vendors & suppliers' },
   ];
@@ -333,6 +337,7 @@ function SuperAdminRoute({ children }) {
 /* ─── Sidebar ────────────────────────────────────────────────── */
 function Sidebar({ mobileOpen, onMobileClose }) {
   const { currentUser, logout } = useAuth();
+  const { branding } = useBranding();
   const isSuperAdmin = currentUser?.profile_type === 'super_admin';
   const isAdmin      = currentUser?.profile_type === 'admin' || isSuperAdmin;
 
@@ -353,19 +358,12 @@ function Sidebar({ mobileOpen, onMobileClose }) {
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '16px 16px 14px', borderBottom: '1px solid ' + S.divider, flexShrink: 0,
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{
-              width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-              background: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(8px)',
-              border: '1px solid rgba(255,255,255,0.3)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 18, boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-            }}>📡</div>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 800, color: '#fff', letterSpacing: '0.01em', lineHeight: 1.2 }}>RFID Asset</div>
-              <div style={{ fontSize: 10.5, color: S.muted, letterSpacing: '0.03em', marginTop: 1 }}>Management System</div>
-            </div>
-          </div>
+          <AppBrand
+            appName={branding.app_name}
+            appSubtitle={branding.app_subtitle}
+            logoUrl={branding.logo_url}
+            variant="sidebar"
+          />
           {mobileOpen !== undefined && (
             <IconBtn onClick={onMobileClose} title="Close"><X size={16} /></IconBtn>
           )}
@@ -446,6 +444,7 @@ function MobileOverlay({ open, onClose }) {
 /* ─── App Shell ──────────────────────────────────────────────── */
 function AppShell() {
   const { currentUser } = useAuth();
+  const { branding } = useBranding();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   if (!currentUser) return <Login />;
@@ -483,7 +482,7 @@ function AppShell() {
           }}>
             <Menu size={18} />
           </button>
-          <span style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>RFID Asset</span>
+          <span style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>{branding.app_name}</span>
         </div>
 
         {/* Desktop top bar with settings gear */}
@@ -503,6 +502,7 @@ function AppShell() {
             <Route path="/reports"               element={<Reports />} />
             <Route path="/audit-log"             element={<AuditLog />} />
             <Route path="/settings"             element={<SuperAdminRoute><AppSettings /></SuperAdminRoute>} />
+            <Route path="/settings/profile"   element={<SuperAdminRoute><ProfileSettings /></SuperAdminRoute>} />
             <Route path="/settings/tag-types" element={<SuperAdminRoute><TagTypesSettings /></SuperAdminRoute>} />
             <Route path="/settings/vendors"   element={<SuperAdminRoute><VendorsSettings /></SuperAdminRoute>} />
             <Route path="/depreciation"          element={<Depreciation />} />
@@ -516,12 +516,14 @@ function AppShell() {
 export default function App() {
   return (
     <AuthProvider>
-      <ToastProvider>
-        <BrowserRouter>
-          <ToastRouteSync />
-          <AppShell />
-        </BrowserRouter>
-      </ToastProvider>
+      <BrandingProvider>
+        <ToastProvider>
+          <BrowserRouter>
+            <ToastRouteSync />
+            <AppShell />
+          </BrowserRouter>
+        </ToastProvider>
+      </BrandingProvider>
     </AuthProvider>
   );
 }
