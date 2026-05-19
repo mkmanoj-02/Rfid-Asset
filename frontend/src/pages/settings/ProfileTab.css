@@ -488,7 +488,8 @@
   min-height: 0;
   display: flex;
   align-items: center;
-  padding: 16px 18px;
+  padding: 12px 14px;
+  overflow: hidden;
 }
 
 .profile-frame-stage--sidebar {
@@ -514,6 +515,9 @@
 .profile-frame-stage--login > * {
   position: relative;
   z-index: 1;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* ── Responsive ──────────────────────────────────────────────── */

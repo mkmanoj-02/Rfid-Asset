@@ -91,6 +91,11 @@ const CSS = `
     justify-content: space-between;
     height: 100%;
     padding: 44px 50px;
+    min-width: 0;
+  }
+
+  .lp-left-content .app-brand {
+    flex-shrink: 0;
   }
 
   .lp-logo { display: flex; align-items: center; gap: 12px; }

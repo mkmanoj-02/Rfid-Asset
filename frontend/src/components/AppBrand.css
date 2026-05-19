@@ -1,0 +1,150 @@
+/* Shared app branding — logo + name; constrained for sidebar / login / preview */
+
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.app-brand__mark {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.app-brand__mark img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.app-brand__fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.app-brand__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.app-brand__name,
+.app-brand__subtitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.25;
+}
+
+.app-brand__subtitle {
+  margin-top: 1px;
+}
+
+/* Sidebar — narrow column (~218px content) */
+.app-brand--sidebar {
+  gap: 8px;
+}
+
+.app-brand--sidebar .app-brand__mark {
+  width: 42px;
+  height: 34px;
+}
+
+.app-brand--sidebar .app-brand__fallback {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  font-size: 17px;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(8px);
+}
+
+.app-brand--sidebar .app-brand__name {
+  font-size: 14px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: 0.01em;
+}
+
+.app-brand--sidebar .app-brand__subtitle {
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.65);
+  letter-spacing: 0.03em;
+}
+
+/* Login left panel — more horizontal room */
+.app-brand--login-dark {
+  gap: 12px;
+  max-width: 420px;
+}
+
+.app-brand--login-dark .app-brand__mark {
+  width: 56px;
+  height: 48px;
+}
+
+.app-brand--login-dark .app-brand__fallback {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  font-size: 20px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.app-brand--login-dark .app-brand__name {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.01em;
+}
+
+.app-brand--login-dark .app-brand__subtitle {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+  letter-spacing: 0.03em;
+}
+
+.app-brand--login-light {
+  gap: 12px;
+  max-width: 420px;
+}
+
+.app-brand--login-light .app-brand__mark {
+  width: 56px;
+  height: 48px;
+}
+
+.app-brand--login-light .app-brand__fallback {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  font-size: 20px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+}
+
+.app-brand--login-light .app-brand__name {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.app-brand--login-light .app-brand__subtitle {
+  font-size: 11px;
+  color: #9ca3af;
+  letter-spacing: 0.03em;
+}

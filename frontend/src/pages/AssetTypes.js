@@ -343,7 +343,7 @@ function AssetTypeRow({
               aria-label={branchExpanded ? 'Collapse sub-types' : 'Expand sub-types'}
               title={branchExpanded ? 'Collapse sub-types' : 'Expand sub-types'}
             >
-              {branchExpanded ? <ChevronDown size={16} strokeWidth={2.5} /> : <ChevronRight size={16} strokeWidth={2.5} />}
+              {branchExpanded ? <ChevronDown size={13} strokeWidth={2.25} /> : <ChevronRight size={13} strokeWidth={2.25} />}
             </button>
           ) : (
             <span className="asset-type-tree-leaf" aria-hidden />
@@ -355,19 +355,23 @@ function AssetTypeRow({
           <div className="asset-type-info">
             <div className="asset-type-name-row">
               <span className="asset-type-name" title={item.name}>{item.name}</span>
-              {level === 0 ? (
-                <span className="asset-type-level-tag asset-type-level-tag--root">Root</span>
-              ) : (
-                <span className="asset-type-level-tag asset-type-level-tag--child">Level {level + 1}</span>
-              )}
             </div>
-            {item.description ? (
-              <span className="asset-type-desc" title={item.description}>{item.description}</span>
-            ) : level > 0 && (parentItem?.name || item.parent_name) ? (
-              <span className="asset-type-desc asset-type-desc--parent">
-                Under <strong>{parentItem?.name || item.parent_name}</strong>
-              </span>
-            ) : null}
+            {(level > 0 || item.description) && (
+            <div className="asset-type-subline">
+              {level > 0 && (
+                <span className="asset-type-level-tag asset-type-level-tag--child">
+                  Level {level + 1}
+                </span>
+              )}
+              {item.description ? (
+                <span className="asset-type-desc" title={item.description}>{item.description}</span>
+              ) : level > 0 && (parentItem?.name || item.parent_name) ? (
+                <span className="asset-type-desc asset-type-desc--parent">
+                  Under <strong>{parentItem?.name || item.parent_name}</strong>
+                </span>
+              ) : null}
+            </div>
+            )}
           </div>
         </div>
 

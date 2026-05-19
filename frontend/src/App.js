@@ -356,14 +356,17 @@ function Sidebar({ mobileOpen, onMobileClose }) {
         {/* Logo */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '16px 16px 14px', borderBottom: '1px solid ' + S.divider, flexShrink: 0,
+          gap: 8,
+          padding: '12px 12px 10px', borderBottom: '1px solid ' + S.divider, flexShrink: 0,
         }}>
-          <AppBrand
-            appName={branding.app_name}
-            appSubtitle={branding.app_subtitle}
-            logoUrl={branding.logo_url}
-            variant="sidebar"
-          />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <AppBrand
+              appName={branding.app_name}
+              appSubtitle={branding.app_subtitle}
+              logoUrl={branding.logo_url}
+              variant="sidebar"
+            />
+          </div>
           {mobileOpen !== undefined && (
             <IconBtn onClick={onMobileClose} title="Close"><X size={16} /></IconBtn>
           )}
