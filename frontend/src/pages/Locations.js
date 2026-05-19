@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { MapPin } from 'lucide-react';
 import {
   getLocationTree, getLocations, createLocationMultipart, updateLocationMultipart, deleteLocation,
   getLocationTypes, createLocationType, updateLocationType, deleteLocationType,
@@ -54,6 +55,30 @@ function TreeNode({ node, selectedId, onSelect, level = 0 }) {
       {expanded && hasChildren && node.children.map(child => (
         <TreeNode key={child.id} node={child} selectedId={selectedId} onSelect={onSelect} level={level + 1} />
       ))}
+    </div>
+  );
+}
+
+function LocationImage({ imageUrl, name }) {
+  const [broken, setBroken] = useState(false);
+  const hasImage = Boolean(imageUrl?.trim()) && !broken;
+
+  if (!hasImage) {
+    return (
+      <div className="location-image location-image--empty" role="img" aria-label="No image">
+        <MapPin size={26} strokeWidth={1.75} aria-hidden />
+        <span>No image</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="location-image">
+      <img
+        src={resolveImageUrl(imageUrl)}
+        alt={name ? `${name} location` : 'Location'}
+        onError={() => setBroken(true)}
+      />
     </div>
   );
 }
@@ -241,13 +266,7 @@ function ManageLocations() {
           <div className="location-detail-body">
             <div className="page-header">
               <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-              {selected.image_url && (
-                <img
-                  src={resolveImageUrl(selected.image_url)}
-                  alt={selected.name}
-                  style={{ width: 100, height: 75, objectFit: 'cover', borderRadius: 8, border: '1px solid #e2e8f0' }}
-                />
-              )}
+              <LocationImage imageUrl={selected.image_url} name={selected.name} />
               <div>
                 <h1>{selected.name}</h1>
                 {selected.location_type_name && (
@@ -322,8 +341,8 @@ function ManageLocations() {
             <div className="form-group" style={{ marginTop: 16 }}>
               <ImageUploadField
                 label="Location image"
-                previewUrl={!imageFile && !removeImage ? locationPreviewUrl : null}
-                sourceLabel={imageFile ? 'New upload' : (locationPreviewUrl ? 'Current image' : null)}
+                previewUrl={!imageFile ? locationPreviewUrl : null}
+                sourceLabel={imageFile ? 'New upload' : (editingItem?.image_url && !removeImage ? 'Current image' : 'No image')}
                 file={imageFile}
                 onFileChange={(f) => { setImageFile(f); setRemoveImage(false); }}
                 onClear={() => { setImageFile(null); setRemoveImage(true); }}
