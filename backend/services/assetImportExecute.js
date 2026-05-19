@@ -2,6 +2,11 @@ const {
   chunkArray,
   withTransaction,
 } = require('../lib/importHelpers');
+const {
+  RFID_TAG_MOVEMENT_NOTE,
+  isValidRfidTag,
+  shouldLogRfidTagMovement,
+} = require('../lib/rfidMovements');
 
 const ASSET_COLS =
   'asset_serial, name, rfid_tag, tag_type_id, vendor_id, asset_type_id, current_location_id, status, description';
@@ -142,11 +147,17 @@ async function batchUpdateAssets(conn, rows) {
   );
 }
 
+/** movements: [assetId, fromLocationId, toLocationId, notes] */
 async function batchInsertMovements(conn, movements) {
   if (!movements.length) return;
   for (const batch of chunkArray(movements, 400)) {
     const placeholders = batch.map(() => '(?,?,?,?)').join(',');
-    const vals = batch.flatMap(([assetId, locationId]) => [assetId, null, locationId, 'Imported']);
+    const vals = batch.flatMap(([assetId, fromLoc, toLoc, notes]) => [
+      assetId,
+      fromLoc,
+      toLoc,
+      notes,
+    ]);
     await conn.query(
       `INSERT INTO movement_history (asset_id, from_location_id, to_location_id, notes) VALUES ${placeholders}`,
       vals
@@ -169,6 +180,11 @@ async function executeAssetChunk(conn, rows, attrState) {
       errors++;
       continue;
     }
+    const rfidTag = row.rfid_tag != null ? row.rfid_tag.toString().trim() : '';
+    if (rfidTag && rfidTag.length !== 24) {
+      errors++;
+      continue;
+    }
     valid.push(row);
   }
 
@@ -179,8 +195,21 @@ async function executeAssetChunk(conn, rows, attrState) {
 
   if (updates.length) {
     for (const batch of chunkArray(updates, 200)) {
+      const ids = batch.map((r) => r._existingId);
+      const [existingRows] = await conn.query(
+        `SELECT id, rfid_tag FROM assets WHERE id IN (${ids.map(() => '?').join(',')})`,
+        ids
+      );
+      const rfidById = new Map(existingRows.map((r) => [r.id, r.rfid_tag]));
       await batchUpdateAssets(conn, batch);
       updated += batch.length;
+      const rfidMovements = [];
+      for (const row of batch) {
+        if (shouldLogRfidTagMovement(rfidById.get(row._existingId), row.rfid_tag) && row._locationId) {
+          rfidMovements.push([row._existingId, row._locationId, row._locationId, RFID_TAG_MOVEMENT_NOTE]);
+        }
+      }
+      await batchInsertMovements(conn, rfidMovements);
     }
     const attrPairs = collectAttributePairs(updates, attrState, (r) => r._existingId);
     await bulkUpsertAttributeValues(conn, attrPairs);
@@ -191,8 +220,16 @@ async function executeAssetChunk(conn, rows, attrState) {
       const linked = await batchInsertAssets(conn, batch);
       inserted += linked.length;
       const idBySerial = new Map(linked.map(({ row, assetId }) => [row.asset_serial, assetId]));
-      const movements = linked.map(({ assetId, row }) => [assetId, row._locationId]);
-      await batchInsertMovements(conn, movements);
+      const placementMovements = [];
+      const rfidMovements = [];
+      for (const { assetId, row } of linked) {
+        placementMovements.push([assetId, null, row._locationId, 'Imported']);
+        if (isValidRfidTag(row.rfid_tag)) {
+          rfidMovements.push([assetId, row._locationId, row._locationId, RFID_TAG_MOVEMENT_NOTE]);
+        }
+      }
+      await batchInsertMovements(conn, placementMovements);
+      await batchInsertMovements(conn, rfidMovements);
       const attrPairs = collectAttributePairs(batch, attrState, (row) => idBySerial.get(row.asset_serial));
       await bulkUpsertAttributeValues(conn, attrPairs);
     }

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { RFID_TAG_MOVEMENT_NOTE } = require('../lib/rfidMovements');
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -242,7 +243,7 @@ router.get('/assets-by-location', async (req, res) => {
   });
 });
 
-// Tagging Progress Report
+// Tagging Progress Report — assets that received an RFID tag (movement note "RFID tagged")
 router.get('/tagging-progress', async (req, res) => {
   const range = parseReportRange(req.query);
   if (!range.ok) return res.status(400).json({ message: range.message });
@@ -250,15 +251,18 @@ router.get('/tagging-progress', async (req, res) => {
 
   const [rows] = await db.query(
     `
-    SELECT DATE(moved_at) AS date, COUNT(DISTINCT asset_id) AS count
-    FROM movement_history
-    WHERE notes IN ('Initial placement', 'Imported')
-      AND moved_at >= ?
-      AND moved_at < DATE_ADD(?, INTERVAL 1 DAY)
-    GROUP BY DATE(moved_at)
+    SELECT DATE(mh.moved_at) AS date, COUNT(DISTINCT mh.asset_id) AS count
+    FROM movement_history mh
+    INNER JOIN assets a ON a.id = mh.asset_id
+    WHERE mh.notes = ?
+      AND a.rfid_tag IS NOT NULL AND TRIM(a.rfid_tag) != ''
+      AND CHAR_LENGTH(TRIM(a.rfid_tag)) = 24
+      AND mh.moved_at >= ?
+      AND mh.moved_at < DATE_ADD(?, INTERVAL 1 DAY)
+    GROUP BY DATE(mh.moved_at)
     ORDER BY date ASC
   `,
-    [fromDate, toDate]
+    [RFID_TAG_MOVEMENT_NOTE, fromDate, toDate]
   );
 
   let cumulative = 0;

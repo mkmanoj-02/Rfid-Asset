@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { runRules } = require('../ruleEngine');
+const { shouldLogRfidTagMovement, insertRfidTagMovement } = require('../lib/rfidMovements');
 const audit = require('../audit');
 const resourceImages = require('../controllers/resourceImages');
 const { uploadImageMiddleware, handleMulterImageError } = require('../helper/upload');
@@ -408,6 +409,9 @@ router.post('/', optionalImageUpload('assets'), async (req, res, next) => {
     'INSERT INTO movement_history (asset_id, from_location_id, to_location_id, notes) VALUES (?, NULL, ?, ?)',
     [assetId, locationId, 'Initial placement']
   );
+  if (shouldLogRfidTagMovement(null, rfid_tag)) {
+    await insertRfidTagMovement(db, assetId, locationId);
+  }
   // Trigger rule engine for is_added rules
   setImmediate(() => runRules().catch(e => console.error('Rule engine error:', e.message)));
   await audit.log('Asset', 'Added', `Asset "${name}" (Serial: ${asset_serial || 'N/A'}) was added`, req.auditUser, req.auditUserId);
@@ -461,7 +465,7 @@ router.put('/:id', optionalImageUpload('assets'), async (req, res, next) => {
   if (editErrors.length) return res.status(400).json({ message: editErrors.join('; ') });
 
   const [existing] = await db.query(
-    'SELECT current_location_id, asset_inventory_status, image_url, is_custom_image, asset_type_id FROM assets WHERE id = ?',
+    'SELECT current_location_id, rfid_tag, asset_inventory_status, image_url, is_custom_image, asset_type_id FROM assets WHERE id = ?',
     [id]
   );
   if (!existing.length) return res.status(404).json({ message: 'Not found' });
@@ -490,6 +494,7 @@ router.put('/:id', optionalImageUpload('assets'), async (req, res, next) => {
   );
 
   const oldLocation = existing[0].current_location_id;
+  const locId = current_location_id || oldLocation;
   if (current_location_id && current_location_id != oldLocation) {
     await db.query(
       'INSERT INTO movement_history (asset_id, from_location_id, to_location_id, notes) VALUES (?, ?, ?, ?)',
@@ -497,6 +502,9 @@ router.put('/:id', optionalImageUpload('assets'), async (req, res, next) => {
     );
     // Trigger rule engine immediately for real-time alerts
     setImmediate(() => runRules().catch(e => console.error('Rule engine error:', e.message)));
+  }
+  if (shouldLogRfidTagMovement(existing[0].rfid_tag, rfid_tag) && locId) {
+    await insertRfidTagMovement(db, id, locId);
   }
   await audit.log('Asset', 'Modified', `Asset ID ${id} was updated`, req.auditUser, req.auditUserId);
   res.json({

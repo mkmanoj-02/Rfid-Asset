@@ -648,7 +648,7 @@ function TaggingReports() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
 
-        <ReportCard title="Daily Tagging Activity" subtitle="Assets tagged per day">
+        <ReportCard title="Daily Tagging Activity" subtitle="Assets that received a 24-character RFID tag per day">
           {data.length === 0 ? <Empty /> : (
             <ResponsiveContainer width="100%" height={240}>
               <LineChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 4 }}>
@@ -664,7 +664,7 @@ function TaggingReports() {
           )}
         </ReportCard>
 
-        <ReportCard title="Cumulative Tagging Progress" subtitle="Running total of tagged assets">
+        <ReportCard title="Cumulative Tagging Progress" subtitle="Running total of RFID tag assignments in range">
           {data.length === 0 ? <Empty /> : (
             <ResponsiveContainer width="100%" height={240}>
               <LineChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 4 }}>
