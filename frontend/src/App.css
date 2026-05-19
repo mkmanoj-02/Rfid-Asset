@@ -24,6 +24,20 @@ body { font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; background: #F1F
   flex-direction: column;
 }
 
+/* Profile: fit viewport — no main area scroll on desktop */
+.main-content:has(.profile-settings-page) {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 20px 14px;
+}
+.main-content:has(.profile-settings-page) > * {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 /* ── Page Header ─────────────────────────────────────────────── */
 .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
 .page-header h1 { font-size: 22px; font-weight: 700; color: #1a202c; }

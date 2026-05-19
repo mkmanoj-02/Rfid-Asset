@@ -1,32 +1,182 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ImageIcon, Upload, Type, LayoutTemplate, PanelLeft, Monitor,
+} from 'lucide-react';
 import { updateSiteBranding } from '../../api';
 import { useBranding } from '../../BrandingContext';
 import AppBrand from '../../components/AppBrand';
-import ImageUploadField from '../../components/ImageUploadField';
 import { toastApiFailure } from '../../apiErrorHandling';
-import { resolveImageUrl, validateBrandingImageFile, BRANDING_IMAGE_EXT } from '../../utils/imageUrl';
+import {
+  resolveImageUrl,
+  validateBrandingImageFile,
+  BRANDING_IMAGE_EXT,
+} from '../../utils/imageUrl';
 import { useToast } from '../../Toast';
+import './ProfileTab.css';
 
-const SIDEBAR_BG = 'linear-gradient(160deg, #0EA5E9 0%, #1296DB 40%, #2563EB 100%)';
+const ACCEPT =
+  '.jpg,.jpeg,.png,.webp,.gif,.svg,image/jpeg,image/png,image/webp,image/gif,image/svg+xml';
+const FORMAT_TAGS = BRANDING_IMAGE_EXT.map((e) => e.replace('.', '').toUpperCase());
 
-function PreviewCard({ title, description, children }) {
+function SectionHead({ icon: Icon, title, description }) {
   return (
-    <div
-      style={{
-        borderRadius: 14,
-        border: '1px solid #e2e8f0',
-        overflow: 'hidden',
-        background: '#fff',
-        boxShadow: '0 1px 3px rgba(15,23,42,0.06)',
-      }}
-    >
-      <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9', background: '#fafbfc' }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>{title}</div>
-        {description && (
-          <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{description}</div>
+    <div className="profile-section-head">
+      <div className="profile-section-icon">
+        <Icon size={16} strokeWidth={2} />
+      </div>
+      <div>
+        <h3 className="profile-section-title">{title}</h3>
+        {description && <p className="profile-section-desc">{description}</p>}
+      </div>
+    </div>
+  );
+}
+
+function LogoUploadZone({
+  file,
+  previewUrl,
+  blobUrl,
+  onFileChange,
+  onClear,
+  inputKey,
+}) {
+  const inputRef = useRef(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [error, setError] = useState('');
+
+  const displayUrl = blobUrl || previewUrl;
+  const hasImage = Boolean(displayUrl);
+
+  const pickFile = (nextFile) => {
+    if (!nextFile) return;
+    const msg = validateBrandingImageFile(nextFile);
+    if (msg) {
+      setError(msg);
+      return;
+    }
+    setError('');
+    onFileChange(nextFile);
+  };
+
+  const onInputChange = (e) => {
+    const picked = e.target.files?.[0];
+    e.target.value = '';
+    if (picked) pickFile(picked);
+  };
+
+  useEffect(() => {
+    if (!file && inputRef.current) inputRef.current.value = '';
+  }, [file, inputKey]);
+
+  const onDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const f = e.dataTransfer.files?.[0];
+    if (f) pickFile(f);
+  };
+
+  return (
+    <div className="profile-upload-wrap">
+      <input
+        key={inputKey}
+        ref={inputRef}
+        type="file"
+        accept={ACCEPT}
+        className="profile-upload-input"
+        onChange={onInputChange}
+      />
+      <div
+        role="button"
+        tabIndex={0}
+        className={`profile-upload${hasImage ? ' profile-upload--filled' : ''}${dragOver ? ' profile-upload--active' : ''}`}
+        onClick={() => !hasImage && inputRef.current?.click()}
+        onKeyDown={(e) => e.key === 'Enter' && !hasImage && inputRef.current?.click()}
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={onDrop}
+      >
+        {hasImage ? (
+          <div className="profile-upload-filled">
+            <div className="profile-upload-thumb">
+              <img src={displayUrl} alt="" />
+            </div>
+            <div className="profile-upload-meta">
+              <span className="profile-upload-name">{file ? file.name : 'Current logo'}</span>
+              <span className="profile-upload-hint">Stored exactly as uploaded · max 5MB</span>
+              {file && <span className="profile-upload-badge">Unsaved changes</span>}
+              <div className="profile-upload-btns">
+                <button
+                  type="button"
+                  className="profile-btn profile-btn--ghost"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    inputRef.current?.click();
+                  }}
+                >
+                  Replace
+                </button>
+                <button
+                  type="button"
+                  className="profile-btn profile-btn--ghost profile-btn--danger"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (inputRef.current) inputRef.current.value = '';
+                    setError('');
+                    onClear();
+                  }}
+                >
+                  {file ? 'Cancel' : 'Remove'}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="profile-upload-empty">
+            <div className="profile-upload-empty-icon">
+              <Upload size={20} strokeWidth={2} />
+            </div>
+            <div className="profile-upload-empty-text">
+              <span className="profile-upload-empty-title">Upload your logo</span>
+              <span className="profile-upload-empty-sub">Drag and drop or click to browse</span>
+            </div>
+            <div className="profile-format-tags">
+              {FORMAT_TAGS.map((tag) => (
+                <span key={tag} className="profile-format-tag">{tag}</span>
+              ))}
+            </div>
+          </div>
         )}
       </div>
-      <div style={{ padding: 16 }}>{children}</div>
+      {error && <p className="profile-upload-error">{error}</p>}
+    </div>
+  );
+}
+
+const LOGIN_PREVIEW_BG = `${process.env.PUBLIC_URL || ''}/srmcompressed.jpeg`;
+
+function PreviewFrame({ label, context, variant, children }) {
+  const Icon = variant === 'sidebar' ? PanelLeft : Monitor;
+  const stageStyle = variant === 'login'
+    ? {
+        backgroundImage: `linear-gradient(155deg, rgba(15, 23, 42, 0.88) 0%, rgba(30, 58, 95, 0.82) 100%), url(${LOGIN_PREVIEW_BG})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+      }
+    : undefined;
+
+  return (
+    <div className="profile-frame">
+      <div className="profile-frame-chrome">
+        <Icon size={12} strokeWidth={2} />
+        <span>{label}</span>
+        <em>{context}</em>
+      </div>
+      <div
+        className={`profile-frame-stage profile-frame-stage--${variant}`}
+        style={stageStyle}
+      >
+        {children}
+      </div>
     </div>
   );
 }
@@ -64,6 +214,7 @@ export default function ProfileTab() {
 
   const savedLogoUrl = branding.logo_url && !removeLogo ? branding.logo_url : null;
   const previewLogoUrl = removeLogo ? null : savedLogoUrl;
+  const storedPreviewUrl = previewLogoUrl ? resolveImageUrl(previewLogoUrl) : null;
 
   const dirty = useMemo(() => {
     const nameChanged = appName.trim() !== (branding.app_name || '').trim();
@@ -97,6 +248,7 @@ export default function ProfileTab() {
       await refreshBranding();
       setLogoFile(null);
       setRemoveLogo(false);
+      setUploadFieldKey((k) => k + 1);
       showToast('Profile saved', 'success');
     } catch (e) {
       toastApiFailure(e, 'Profile');
@@ -107,132 +259,116 @@ export default function ProfileTab() {
   };
 
   return (
-    <div className="profile-branding-layout" style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 28, alignItems: 'start' }}>
-      <div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-          <div className="form-group" style={{ margin: 0 }}>
-            <label style={{ fontWeight: 600, fontSize: 13, color: '#374151' }}>App name</label>
-            <input
-              value={appName}
-              onChange={(e) => setAppName(e.target.value)}
-              placeholder="e.g. RFID Asset"
-              maxLength={120}
-              style={{ marginTop: 6 }}
-            />
-            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Main title next to the logo</div>
+    <div className="profile-page">
+      <div className="profile-layout">
+        <article className="profile-editor">
+          <div className="profile-editor-body">
+            <section className="profile-block">
+              <SectionHead
+                icon={Type}
+                title="Application name"
+                description="Displayed next to your logo in the sidebar and login screen."
+              />
+              <div className="profile-fields">
+                <div className="profile-field">
+                  <label htmlFor="profile-app-name">App name</label>
+                  <input
+                    id="profile-app-name"
+                    value={appName}
+                    onChange={(e) => setAppName(e.target.value)}
+                    placeholder="RFID Asset"
+                    maxLength={120}
+                  />
+                </div>
+                <div className="profile-field">
+                  <label htmlFor="profile-subtitle">Subtitle</label>
+                  <input
+                    id="profile-subtitle"
+                    value={appSubtitle}
+                    onChange={(e) => setAppSubtitle(e.target.value)}
+                    placeholder="Management System"
+                    maxLength={120}
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section className="profile-block">
+              <SectionHead
+                icon={ImageIcon}
+                title="Logo"
+                description="Your image is saved in its original format — no conversion."
+              />
+              <LogoUploadZone
+                inputKey={uploadFieldKey}
+                file={logoFile}
+                previewUrl={storedPreviewUrl}
+                blobUrl={blobUrl}
+                onFileChange={(f) => {
+                  setLogoFile(f);
+                  setRemoveLogo(false);
+                }}
+                onClear={() => {
+                  if (logoFile) setLogoFile(null);
+                  else if (branding.logo_url) setRemoveLogo(true);
+                }}
+              />
+            </section>
           </div>
 
-          <div className="form-group" style={{ margin: 0 }}>
-            <label style={{ fontWeight: 600, fontSize: 13, color: '#374151' }}>Subtitle</label>
-            <input
-              value={appSubtitle}
-              onChange={(e) => setAppSubtitle(e.target.value)}
-              placeholder="e.g. Management System"
-              maxLength={120}
-              style={{ marginTop: 6 }}
-            />
-            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Secondary line below the name</div>
-          </div>
+          {error && <div className="profile-alert" role="alert">{error}</div>}
 
-          <ImageUploadField
-            key={uploadFieldKey}
-            label="Website logo"
-            hint={`Your file is saved as-is (no conversion) · ${BRANDING_IMAGE_EXT.map((e) => e.replace('.', '').toUpperCase()).join(', ')} · max 5MB`}
-            exactPreview
-            accept=".jpg,.jpeg,.png,.webp,.gif,.svg,image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
-            validateFn={validateBrandingImageFile}
-            previewUrl={removeLogo ? null : (previewLogoUrl ? resolveImageUrl(previewLogoUrl) : null)}
-            file={logoFile}
-            onFileChange={(f) => {
-              setLogoFile(f);
-              if (f) setRemoveLogo(false);
-            }}
-            onClear={() => {
-              if (logoFile) {
-                setLogoFile(null);
-              } else if (branding.logo_url) {
-                setRemoveLogo(true);
-              }
-            }}
-            clearLabel={logoFile ? 'Cancel upload' : 'Remove logo'}
-          />
-
-          {error && (
-            <p style={{ color: '#dc2626', fontSize: 13, margin: 0 }}>⚠ {error}</p>
-          )}
-
-          <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
+          <footer className="profile-editor-footer">
             <button
               type="button"
-              className="btn btn-primary"
-              onClick={save}
-              disabled={saving || !dirty}
-            >
-              {saving ? 'Saving…' : 'Save changes'}
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
+              className="profile-btn profile-btn--secondary"
               onClick={resetForm}
               disabled={saving || !dirty}
             >
               Reset
             </button>
+            <button
+              type="button"
+              className="profile-btn profile-btn--primary"
+              onClick={save}
+              disabled={saving || !dirty}
+            >
+              {saving ? 'Saving…' : 'Save changes'}
+            </button>
+          </footer>
+        </article>
+
+        <aside className="profile-preview-col">
+          <div className="profile-preview-head">
+            <LayoutTemplate size={15} strokeWidth={2} />
+            <span>Live preview</span>
+            <div className="profile-preview-live">Live</div>
           </div>
-        </div>
+
+          <div className="profile-preview-stack">
+            <PreviewFrame label="Sidebar" context="Navigation" variant="sidebar">
+              <AppBrand
+                appName={appName}
+                appSubtitle={appSubtitle}
+                logoUrl={previewLogoUrl}
+                previewFileUrl={blobUrl}
+                variant="sidebar"
+              />
+            </PreviewFrame>
+
+            <PreviewFrame label="Login" context="Desktop" variant="login">
+              <AppBrand
+                appName={appName}
+                appSubtitle={appSubtitle}
+                logoUrl={previewLogoUrl}
+                previewFileUrl={blobUrl}
+                variant="login-dark"
+              />
+            </PreviewFrame>
+          </div>
+        </aside>
       </div>
-
-      <div style={{ position: 'sticky', top: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#94a3b8' }}>
-          Live preview
-        </div>
-
-        <PreviewCard title="Sidebar" description="Navigation header">
-          <div
-            style={{
-              borderRadius: 12,
-              padding: '14px 16px',
-              background: SIDEBAR_BG,
-              borderBottom: '1px solid rgba(255,255,255,0.15)',
-            }}
-          >
-            <AppBrand
-              appName={appName}
-              appSubtitle={appSubtitle}
-              logoUrl={previewLogoUrl}
-              previewFileUrl={blobUrl}
-              variant="sidebar"
-            />
-          </div>
-        </PreviewCard>
-
-        <PreviewCard title="Login page" description="Dark panel (desktop)">
-          <div
-            style={{
-              borderRadius: 12,
-              padding: 16,
-              background: 'linear-gradient(155deg, #0f172a 0%, #1e3a5f 100%)',
-            }}
-          >
-            <AppBrand
-              appName={appName}
-              appSubtitle={appSubtitle}
-              logoUrl={previewLogoUrl}
-              previewFileUrl={blobUrl}
-              variant="login-dark"
-            />
-          </div>
-        </PreviewCard>
-
-      </div>
-
-      <style>{`
-        @media (max-width: 960px) {
-          .profile-branding-layout {
-            grid-template-columns: 1fr !important;
-          }
-        }
-      `}</style>
     </div>
   );
 }
+

@@ -1,16 +1,19 @@
+import { Sparkles } from 'lucide-react';
 import ProfileTab from './settings/ProfileTab';
 
 export default function ProfileSettings() {
   return (
-    <div>
-      <div className="page-header">
-        <div>
+    <div className="profile-settings-page">
+      <header className="profile-settings-header">
+        <div className="profile-settings-header-text">
           <h1>Profile</h1>
-          <p style={{ fontSize: 13, color: '#64748b', margin: '6px 0 0', fontWeight: 400 }}>
-            Customize the logo and display name shown in the sidebar and on the login page.
-          </p>
+          <p>Brand your application with a custom logo and display name.</p>
         </div>
-      </div>
+        <div className="profile-settings-header-badge" aria-hidden>
+          <Sparkles size={14} strokeWidth={2} />
+          <span>Branding</span>
+        </div>
+      </header>
       <ProfileTab />
     </div>
   );
