@@ -49,9 +49,67 @@ export const chartLoadingShellStyle = {
 const DIST_CHART_MARGIN = { top: 12, right: 20, left: 12, bottom: 16 };
 const DIST_Y_AXIS_WIDTH = 40;
 
-function truncateAxisLabel(name, maxLen = 11) {
-  const s = String(name ?? '');
+/** Max characters shown on axis before ellipsis (full text on hover via SVG title). */
+export const AXIS_LABEL_MAX_LEN = 16;
+
+export function truncateAxisLabel(name, maxLen = AXIS_LABEL_MAX_LEN) {
+  const s = String(name ?? '').trim();
+  if (!s) return '';
   return s.length > maxLen ? `${s.slice(0, maxLen - 1)}…` : s;
+}
+
+/** Native browser tooltip on hover when label is truncated. */
+function AxisTickWithTitle({
+  x,
+  y,
+  payload,
+  maxLen = AXIS_LABEL_MAX_LEN,
+  textAnchor = 'middle',
+  angle = 0,
+  dy = 0,
+  dx = 0,
+  fill = CHART_TICK.fill,
+  fontSize = 11,
+  xOverride,
+}) {
+  const full = String(payload?.value ?? '').trim();
+  const display = truncateAxisLabel(full, maxLen);
+  const tx = xOverride != null ? xOverride : x;
+
+  if (angle !== 0) {
+    return (
+      <g transform={`translate(${tx},${y})`}>
+        <title>{full}</title>
+        <text
+          transform={`rotate(${angle})`}
+          textAnchor={textAnchor}
+          dy={dy}
+          dx={dx}
+          fill={fill}
+          fontSize={fontSize}
+          fontFamily="inherit"
+        >
+          {display}
+        </text>
+      </g>
+    );
+  }
+
+  return (
+    <text
+      x={tx}
+      y={y}
+      dy={dy}
+      dx={dx}
+      textAnchor={textAnchor}
+      fill={fill}
+      fontSize={fontSize}
+      fontFamily="inherit"
+    >
+      <title>{full}</title>
+      {display}
+    </text>
+  );
 }
 
 function ChartViewport({ children }) {
@@ -104,10 +162,11 @@ function niceYMax(maxVal) {
 
 function BarAreaTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
+  const fullName = payload[0]?.payload?.name ?? label ?? '';
   return (
     <div style={TOOLTIP_BOX}>
-      {label != null && label !== '' && (
-        <div style={{ color: '#94a3b8', fontSize: 11, marginBottom: 4 }}>{label}</div>
+      {fullName !== '' && (
+        <div style={{ color: '#94a3b8', fontSize: 11, marginBottom: 4 }}>{fullName}</div>
       )}
       <div style={{ fontWeight: 600 }}>{Number(payload[0].value).toLocaleString()} assets</div>
     </div>
@@ -137,65 +196,36 @@ function ChartEmpty({ message = 'No data for this view' }) {
 
 const ASSET_TYPE_SCROLL_AT = 9;
 const ASSET_TYPE_ROW_PX = 28;
-const ASSET_TYPE_ROW_PX_WRAPPED = 36;
-const ASSET_LABEL_CHARS_PER_LINE = 13;
-const ASSET_LABEL_MAX_LINES = 2;
 const ASSET_LABEL_LEFT = 2;
-const ASSET_LABEL_LINE_HEIGHT = 13;
 
-/** Split long asset names into up to two lines (word-aware when possible). */
-function wrapAssetLabel(name, perLine = ASSET_LABEL_CHARS_PER_LINE, maxLines = ASSET_LABEL_MAX_LINES) {
-  const s = String(name ?? '').trim();
-  if (!s) return [''];
-  if (s.length <= perLine) return [s];
-
-  const lines = [];
-  let remaining = s;
-
-  while (remaining && lines.length < maxLines) {
-    if (remaining.length <= perLine) {
-      lines.push(remaining);
-      break;
-    }
-    let chunk = remaining.slice(0, perLine);
-    const lastSpace = chunk.lastIndexOf(' ');
-    if (lastSpace > 3 && lines.length < maxLines - 1) {
-      chunk = remaining.slice(0, lastSpace);
-      remaining = remaining.slice(lastSpace + 1).trim();
-    } else {
-      remaining = remaining.slice(perLine);
-    }
-    lines.push(chunk);
-  }
-
-  if (remaining && lines.length) {
-    const last = lines[lines.length - 1];
-    lines[lines.length - 1] = last.length >= perLine ? `${last.slice(0, perLine - 1)}…` : `${last}…`;
-  }
-
-  return lines.slice(0, maxLines);
-}
+const LOC_SCROLL_AT = 10;
+const LOC_COL_PX = 52;
 
 function AssetYAxisTick({ y, payload }) {
-  const lines = wrapAssetLabel(payload?.value ?? '');
-  const centerOffset = lines.length > 1 ? -((lines.length - 1) * ASSET_LABEL_LINE_HEIGHT) / 2 : 0;
-
   return (
-    <text
-      x={ASSET_LABEL_LEFT}
+    <AxisTickWithTitle
       y={y}
-      dy={4 + centerOffset}
+      payload={payload}
+      maxLen={AXIS_LABEL_MAX_LEN}
       textAnchor="start"
+      xOverride={ASSET_LABEL_LEFT}
+      dy={4}
       fill={TICK_DARK.fill}
-      fontSize={11}
-      fontFamily="inherit"
-    >
-      {lines.map((line, i) => (
-        <tspan key={`${line}-${i}`} x={ASSET_LABEL_LEFT} dy={i === 0 ? 0 : ASSET_LABEL_LINE_HEIGHT}>
-          {line}
-        </tspan>
-      ))}
-    </text>
+    />
+  );
+}
+
+function LocationXAxisTick(props) {
+  return (
+    <AxisTickWithTitle
+      {...props}
+      maxLen={14}
+      angle={-32}
+      textAnchor="end"
+      dy={8}
+      dx={-4}
+      fill={TICK_DARK.fill}
+    />
   );
 }
 
@@ -216,26 +246,21 @@ export function AssetTypeDistributionBarChart({ rows }) {
     [rows],
   );
 
-  const hasWrappedLabels = useMemo(
-    () => data.some((d) => wrapAssetLabel(d.name).length > 1),
-    [data],
-  );
-
-  const rowPx = hasWrappedLabels ? ASSET_TYPE_ROW_PX_WRAPPED : ASSET_TYPE_ROW_PX;
+  const rowPx = ASSET_TYPE_ROW_PX;
 
   const yAxisWidth = useMemo(() => {
     if (!data.length) return 52;
-    const wrapped = data.map((d) => wrapAssetLabel(d.name));
-    const maxLineLen = Math.max(...wrapped.flat().map((line) => line.length));
-    return Math.min(98, Math.max(44, Math.ceil(maxLineLen * 6.1) + 6));
+    const maxDisplayLen = Math.max(
+      ...data.map((d) => Math.min(AXIS_LABEL_MAX_LEN, String(d.name ?? '').length)),
+    );
+    return Math.min(112, Math.max(52, Math.ceil(maxDisplayLen * 6.5) + 10));
   }, [data]);
 
   const maxBarSize = useMemo(() => {
     if (!data.length) return 24;
     const slot = (DASHBOARD_DIST_CHART_HEIGHT - 44) / data.length;
-    const cap = hasWrappedLabels ? 32 : 38;
-    return Math.min(cap, Math.max(14, Math.floor(slot * 0.62)));
-  }, [data.length, hasWrappedLabels]);
+    return Math.min(38, Math.max(14, Math.floor(slot * 0.62)));
+  }, [data.length]);
 
   const needsScroll = data.length >= ASSET_TYPE_SCROLL_AT;
   const scrollInnerHeight = data.length * rowPx + 36;
@@ -288,6 +313,7 @@ export function AssetTypeDistributionBarChart({ rows }) {
               dataKey="name"
               width={yAxisWidth}
               tick={AssetYAxisTick}
+              interval={0}
               axisLine={false}
               tickLine={false}
             />
@@ -313,7 +339,7 @@ export function AssetTypeDistributionBarChart({ rows }) {
   );
 }
 
-export function LocationDistributionBarChart({ rows, maxCategories = 12 }) {
+export function LocationDistributionBarChart({ rows, maxCategories = 999 }) {
   const data = useMemo(
     () => normalizeLocationRows(rows).slice(0, maxCategories),
     [rows, maxCategories],
@@ -322,13 +348,35 @@ export function LocationDistributionBarChart({ rows, maxCategories = 12 }) {
     () => niceYMax(Math.max(0, ...data.map((d) => d.count))),
     [data],
   );
+  const chartMargin = useMemo(
+    () => ({
+      top: 12,
+      right: 16,
+      left: 12,
+      bottom: data.length > 8 ? 64 : 52,
+    }),
+    [data.length],
+  );
+  const maxBarSize = useMemo(() => {
+    if (data.length <= 8) return 52;
+    return Math.max(16, Math.floor(220 / data.length));
+  }, [data.length]);
+
+  const needsScroll = data.length >= LOC_SCROLL_AT;
+  const scrollInnerWidth = data.length * LOC_COL_PX + 72;
 
   if (data.length === 0) return <ChartEmpty />;
 
+  const plotClass = `dash-chart-plot${needsScroll ? ' dash-chart-plot--scroll-x' : ''}`;
+
   return (
-    <ChartViewport>
+    <div className={plotClass}>
+      <div
+        className="dash-chart-plot__inner"
+        style={needsScroll ? { minWidth: scrollInnerWidth, width: scrollInnerWidth } : undefined}
+      >
       <ResponsiveContainer width="100%" height="100%">
-      <BarChart data={data} margin={DIST_CHART_MARGIN}>
+      <BarChart data={data} margin={chartMargin}>
         <defs>
           <linearGradient id="dashLocSky" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#3BB5F5" />
@@ -338,15 +386,12 @@ export function LocationDistributionBarChart({ rows, maxCategories = 12 }) {
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID} />
         <XAxis
           dataKey="name"
-          tick={TICK_DARK}
+          tick={LocationXAxisTick}
           axisLine={false}
           tickLine={false}
           interval={0}
-          angle={-32}
-          textAnchor="end"
-          height={36}
-          tickMargin={4}
-          tickFormatter={truncateAxisLabel}
+          height={52}
+          tickMargin={6}
         />
         <YAxis
           width={DIST_Y_AXIS_WIDTH}
@@ -358,14 +403,15 @@ export function LocationDistributionBarChart({ rows, maxCategories = 12 }) {
           tickFormatter={(v) => v.toLocaleString()}
         />
         <Tooltip content={<BarAreaTooltip />} cursor={{ fill: 'rgba(59, 181, 245, 0.1)' }} />
-        <Bar dataKey="count" radius={[10, 10, 0, 0]} maxBarSize={52} fill="url(#dashLocSky)">
+        <Bar dataKey="count" radius={[10, 10, 0, 0]} maxBarSize={maxBarSize} fill="url(#dashLocSky)">
           {data.map((entry) => (
             <Cell key={entry.name} fill="url(#dashLocSky)" />
           ))}
         </Bar>
       </BarChart>
       </ResponsiveContainer>
-    </ChartViewport>
+      </div>
+    </div>
   );
 }
 

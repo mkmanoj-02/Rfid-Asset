@@ -256,6 +256,15 @@
   min-height: 0;
 }
 
+.dash-chart-plot--scroll-x {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.dash-chart-plot--scroll-x .dash-chart-plot__inner {
+  min-height: 260px;
+}
+
 @media (max-width: 960px) {
   .dash-charts-row {
     grid-template-columns: 1fr;
