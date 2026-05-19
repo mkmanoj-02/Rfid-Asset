@@ -1,7 +1,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { MapPin } from 'lucide-react';
 import {
-  getLocationTree, getLocations, createLocationMultipart, updateLocationMultipart, deleteLocation,
+  getLocationTree, getLocations, createLocationMultipart, updateLocationMultipart, updateLocation, deleteLocation,
   getLocationTypes, createLocationType, updateLocationType, deleteLocationType,
 } from '../api';
 import { useToast } from '../Toast';
