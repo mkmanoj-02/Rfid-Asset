@@ -125,8 +125,12 @@ function validateAssetImportRow(row, ctx) {
 
   const serial = (row.asset_serial || '').trim();
   const name = (row.name || '').trim();
+  const rfidTag = row.rfid_tag != null ? row.rfid_tag.toString().trim() : '';
   if (!serial) errors.push('Asset Serial is required');
   if (!name) errors.push('Asset Name is required');
+  if (rfidTag && rfidTag.length !== 24) {
+    errors.push('RFID tag must be exactly 24 characters');
+  }
 
   let typeMatch = null;
   let typeFix = null;
@@ -174,7 +178,7 @@ function validateAssetImportRow(row, ctx) {
   return slimAssetPreviewRow({
     asset_serial: serial || row.asset_serial,
     name: name || row.name,
-    rfid_tag: row.rfid_tag,
+    rfid_tag: rfidTag || row.rfid_tag,
     asset_type: row.asset_type,
     location: row.location,
     tag_type: row.tag_type,
