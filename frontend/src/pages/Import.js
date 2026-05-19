@@ -200,44 +200,45 @@ function FieldMapper({ fields, columns, mapping, attrMapping, attrTypes, onMappi
   );
 }
 
-// ── Preview Table ──────────────────────────────────────────────
-function PreviewTable({ rows, columns, attrCols, fieldLabels }) {
+function PreviewStatusLegend({ rows }) {
   const counts = { insert: 0, update: 0, error: 0, skipped: 0 };
-  rows.forEach(r => { if (counts[r._status] !== undefined) counts[r._status]++; });
+  rows.forEach((r) => { if (counts[r._status] !== undefined) counts[r._status]++; });
 
+  return (
+    <div className="import-preview-legend">
+      <span><span className="import-preview-legend-swatch import-preview-legend-swatch--all" />All ({rows.length})</span>
+      <span><span className="import-preview-legend-swatch import-preview-legend-swatch--insert" />Insert ({counts.insert})</span>
+      <span><span className="import-preview-legend-swatch import-preview-legend-swatch--update" />Update ({counts.update})</span>
+      <span><span className="import-preview-legend-swatch import-preview-legend-swatch--error" />Error ({counts.error})</span>
+    </div>
+  );
+}
+
+// ── Preview Table (scrollable body — footer/actions stay fixed below) ──
+function PreviewTable({ rows, columns, attrCols, fieldLabels }) {
   const labelFor = (key) => fieldLabels?.[key] || key;
 
   return (
-    <div>
-      <div style={{ overflowX: 'auto', background: '#fff', borderRadius: 8, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginBottom: 16 }}>
-        <table style={{ minWidth: 600 }}>
-          <thead>
-            <tr>
-              <th style={{ width: 80 }}>Status</th>
-              {columns.map(c => <th key={c}>{labelFor(c)}</th>)}
-              {attrCols.map(c => <th key={c}>{c}</th>)}
-              <th>Notes</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, i) => (
-              <tr key={i} style={{ background: STATUS_BG[row._status] || 'inherit' }}>
-                <td><StatusBadge status={row._status} /></td>
-                {columns.map(c => <td key={c} style={{ fontSize: 13 }}>{row[c] ?? ''}</td>)}
-                {attrCols.map(c => <td key={c} style={{ fontSize: 13 }}>{row.attributes?.[c] || ''}</td>)}
-                <td style={{ fontSize: 12, color: '#e53e3e' }}>{(row._errors || []).join('; ')}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div style={{ display: 'flex', gap: 24, fontSize: 13, alignItems: 'center' }}>
-        <span><span style={{ display: 'inline-block', width: 14, height: 14, background: '#e2e8f0', border: '1px solid #ccc', marginRight: 6, verticalAlign: 'middle' }} />All ({rows.length})</span>
-        <span><span style={{ display: 'inline-block', width: 14, height: 14, background: '#c6f6d5', marginRight: 6, verticalAlign: 'middle' }} />Insert ({counts.insert})</span>
-        <span><span style={{ display: 'inline-block', width: 14, height: 14, background: '#dbeafe', marginRight: 6, verticalAlign: 'middle' }} />Update ({counts.update})</span>
-        <span><span style={{ display: 'inline-block', width: 14, height: 14, background: '#fed7d7', marginRight: 6, verticalAlign: 'middle' }} />Error ({counts.error})</span>
-      </div>
-    </div>
+    <table className="import-preview-table">
+      <thead>
+        <tr>
+          <th style={{ width: 80 }}>Status</th>
+          {columns.map((c) => <th key={c}>{labelFor(c)}</th>)}
+          {attrCols.map((c) => <th key={c}>{c}</th>)}
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row, i) => (
+          <tr key={i} style={{ background: STATUS_BG[row._status] || 'inherit' }}>
+            <td><StatusBadge status={row._status} /></td>
+            {columns.map((c) => <td key={c} style={{ fontSize: 13 }}>{row[c] ?? ''}</td>)}
+            {attrCols.map((c) => <td key={c} style={{ fontSize: 13 }}>{row.attributes?.[c] || ''}</td>)}
+            <td style={{ fontSize: 12, color: '#e53e3e' }}>{(row._errors || []).join('; ')}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
@@ -493,7 +494,7 @@ function ImportWizard({ title, fields, endpoint }) {
   const previewColumns = fields.filter(f => mapping[f.key]).map(f => f.key);
 
   return (
-    <div style={{ background: '#fff', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', overflow: 'hidden', marginBottom: 32 }}>
+    <div className="import-wizard">
       {smartFixDialog && (
         <SmartFixDialog
           missingTypes={smartFixDialog.missingTypes}
@@ -507,7 +508,7 @@ function ImportWizard({ title, fields, endpoint }) {
         />
       )}
 
-      <div style={{ background: '#f7f8fc', padding: '12px 20px', borderBottom: '1px solid #e2e8f0', fontWeight: 600, fontSize: 15, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="import-wizard-header">
         <span>{title}</span>
         <div style={{ display: 'flex', gap: 8 }}>
           {['Upload', 'Map Fields', 'Preview'].map((label, i) => (
@@ -516,7 +517,7 @@ function ImportWizard({ title, fields, endpoint }) {
         </div>
       </div>
 
-      <div style={{ padding: 24 }}>
+      <div className={`import-wizard-body${step === 3 ? ' import-wizard-body--preview' : ''}`}>
         {step === 1 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
             <label style={{ fontWeight: 500, fontSize: 14 }}>Upload File :</label>
@@ -554,17 +555,22 @@ function ImportWizard({ title, fields, endpoint }) {
         )}
 
         {step === 3 && (
-          <div>
-            <PreviewTable rows={preview} columns={previewColumns} attrCols={attrCols} fieldLabels={fieldLabels} />
-            {importProgress && (
-              <p style={{ fontSize: 13, color: '#5a67d8', marginTop: 12, marginBottom: 0 }}>{importProgress}</p>
-            )}
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16 }}>
-              <button className="btn btn-secondary" onClick={() => setStep(2)}>Back</button>
-              <button className="btn btn-primary" onClick={executeImport} disabled={loading || preview.every(r => r._status === 'error')}>
-                {loading ? (importProgress || 'Importing...') : 'Import'}
-              </button>
-              <button className="btn btn-secondary" onClick={reset}>Cancel</button>
+          <div className="import-preview-step">
+            <div className="import-preview-scroll">
+              <PreviewTable rows={preview} columns={previewColumns} attrCols={attrCols} fieldLabels={fieldLabels} />
+            </div>
+            <div className="import-preview-footer">
+              <PreviewStatusLegend rows={preview} />
+              {importProgress && (
+                <p className="import-preview-progress">{importProgress}</p>
+              )}
+              <div className="import-preview-actions">
+                <button type="button" className="btn btn-secondary" onClick={() => setStep(2)}>Back</button>
+                <button type="button" className="btn btn-primary" onClick={executeImport} disabled={loading || preview.every((r) => r._status === 'error')}>
+                  {loading ? (importProgress || 'Importing...') : 'Import'}
+                </button>
+                <button type="button" className="btn btn-secondary" onClick={reset}>Cancel</button>
+              </div>
             </div>
           </div>
         )}
