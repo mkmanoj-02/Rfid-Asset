@@ -14,6 +14,10 @@ export default function ImageUploadField({
   clearLabel,
   disabled = false,
   hint = 'JPG, PNG or WEBP · max 5MB',
+  /** When true, preview shows the full image at original aspect ratio (no crop). */
+  exactPreview = false,
+  accept = '.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp',
+  validateFn = validateImageFile,
 }) {
   const inputRef = useRef(null);
   const [dragOver, setDragOver] = useState(false);
@@ -23,12 +27,17 @@ export default function ImageUploadField({
   useEffect(() => {
     if (!file) {
       setBlobUrl(null);
+      if (inputRef.current) inputRef.current.value = '';
       return undefined;
     }
     const url = URL.createObjectURL(file);
     setBlobUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [file]);
+
+  const clearFileInput = useCallback(() => {
+    if (inputRef.current) inputRef.current.value = '';
+  }, []);
 
   const applyFile = useCallback(
     (nextFile) => {
@@ -37,7 +46,7 @@ export default function ImageUploadField({
         onFileChange(null);
         return;
       }
-      const msg = validateImageFile(nextFile);
+      const msg = validateFn(nextFile);
       if (msg) {
         setError(msg);
         return;
@@ -100,32 +109,65 @@ export default function ImageUploadField({
           ref={inputRef}
           type="file"
           tabIndex={-1}
-          accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+          accept={accept}
           style={{ display: 'none' }}
           disabled={disabled}
-          onChange={(e) => applyFile(e.target.files?.[0] || null)}
+          onChange={(e) => {
+            const picked = e.target.files?.[0] || null;
+            // Reset value so the same file can be chosen again after Reset/clear
+            e.target.value = '';
+            if (picked) applyFile(picked);
+          }}
         />
 
         <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
           <div
-            style={{
-              width: 120,
-              height: 90,
-              borderRadius: 10,
-              overflow: 'hidden',
-              background: '#e5e7eb',
-              flexShrink: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              border: '1px solid #e2e8f0',
-            }}
+            style={
+              exactPreview
+                ? {
+                    minWidth: 80,
+                    minHeight: 60,
+                    maxWidth: 320,
+                    maxHeight: 140,
+                    borderRadius: 10,
+                    flexShrink: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: '1px solid #e2e8f0',
+                    background: '#fff',
+                    padding: 8,
+                  }
+                : {
+                    width: 120,
+                    height: 90,
+                    borderRadius: 10,
+                    overflow: 'hidden',
+                    background: '#e5e7eb',
+                    flexShrink: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: '1px solid #e2e8f0',
+                  }
+            }
           >
             {displayUrl ? (
               <img
                 src={displayUrl}
                 alt="Preview"
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                style={
+                  exactPreview
+                    ? {
+                        display: 'block',
+                        maxWidth: '100%',
+                        maxHeight: 124,
+                        width: 'auto',
+                        height: 'auto',
+                        objectFit: 'contain',
+                      }
+                    : { width: '100%', height: '100%', objectFit: 'cover' }
+                }
               />
             ) : (
               <span style={{ fontSize: 28, opacity: 0.35 }}>🖼️</span>
@@ -150,7 +192,7 @@ export default function ImageUploadField({
           style={{ marginTop: 10 }}
           onClick={(e) => {
             e.stopPropagation();
-            if (inputRef.current) inputRef.current.value = '';
+            clearFileInput();
             setError('');
             onClear();
           }}

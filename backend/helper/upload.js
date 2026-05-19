@@ -31,6 +31,8 @@ const EXT_TO_MIMES = {
   '.jpeg': ['image/jpeg'],
   '.png': ['image/png'],
   '.webp': ['image/webp'],
+  '.gif': ['image/gif'],
+  '.svg': ['image/svg+xml'],
 };
 
 function allowedExtensionsList() {

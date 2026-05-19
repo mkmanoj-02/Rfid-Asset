@@ -4,7 +4,7 @@ import { useBranding } from '../../BrandingContext';
 import AppBrand from '../../components/AppBrand';
 import ImageUploadField from '../../components/ImageUploadField';
 import { toastApiFailure } from '../../apiErrorHandling';
-import { resolveImageUrl } from '../../utils/imageUrl';
+import { resolveImageUrl, validateBrandingImageFile, BRANDING_IMAGE_EXT } from '../../utils/imageUrl';
 import { useToast } from '../../Toast';
 
 const SIDEBAR_BG = 'linear-gradient(160deg, #0EA5E9 0%, #1296DB 40%, #2563EB 100%)';
@@ -42,6 +42,7 @@ export default function ProfileTab() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [blobUrl, setBlobUrl] = useState(null);
+  const [uploadFieldKey, setUploadFieldKey] = useState(0);
 
   useEffect(() => {
     setAppName(branding.app_name || '');
@@ -76,6 +77,7 @@ export default function ProfileTab() {
     setLogoFile(null);
     setRemoveLogo(false);
     setError('');
+    setUploadFieldKey((k) => k + 1);
   }, [branding]);
 
   const save = async () => {
@@ -133,8 +135,12 @@ export default function ProfileTab() {
           </div>
 
           <ImageUploadField
+            key={uploadFieldKey}
             label="Website logo"
-            hint="Square or wide logo · JPG, PNG or WEBP · max 5MB"
+            hint={`Your file is saved as-is (no conversion) · ${BRANDING_IMAGE_EXT.map((e) => e.replace('.', '').toUpperCase()).join(', ')} · max 5MB`}
+            exactPreview
+            accept=".jpg,.jpeg,.png,.webp,.gif,.svg,image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
+            validateFn={validateBrandingImageFile}
             previewUrl={removeLogo ? null : (previewLogoUrl ? resolveImageUrl(previewLogoUrl) : null)}
             file={logoFile}
             onFileChange={(f) => {

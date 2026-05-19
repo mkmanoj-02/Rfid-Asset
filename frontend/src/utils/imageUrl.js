@@ -8,8 +8,12 @@ export function resolveImageUrl(imageUrl) {
   return `${API_BASE}/${imageUrl}`;
 }
 
-export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-export const ALLOWED_IMAGE_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
+export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml'];
+export const ALLOWED_IMAGE_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg'];
+
+/** Branding logo — same formats, shown at original aspect ratio (no conversion). */
+export const BRANDING_IMAGE_TYPES = ALLOWED_IMAGE_TYPES;
+export const BRANDING_IMAGE_EXT = ALLOWED_IMAGE_EXT;
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 /** Inline SVG placeholder when location/asset has no image */
@@ -32,12 +36,16 @@ export const TABLE_THUMB_PLACEHOLDER =
     </svg>`
   );
 
-export function validateImageFile(file) {
+export function validateImageFile(file, { types = ALLOWED_IMAGE_TYPES, ext = ALLOWED_IMAGE_EXT } = {}) {
   if (!file) return null;
-  const ext = file.name.includes('.') ? file.name.slice(file.name.lastIndexOf('.')).toLowerCase() : '';
-  if (!ALLOWED_IMAGE_TYPES.includes(file.type) && !ALLOWED_IMAGE_EXT.includes(ext)) {
-    return 'Allowed formats: JPG, JPEG, PNG, WEBP';
+  const fileExt = file.name.includes('.') ? file.name.slice(file.name.lastIndexOf('.')).toLowerCase() : '';
+  if (!types.includes(file.type) && !ext.includes(fileExt)) {
+    return `Allowed formats: ${ext.map((e) => e.replace('.', '').toUpperCase()).join(', ')}`;
   }
   if (file.size > MAX_IMAGE_BYTES) return 'Image must be 5MB or smaller';
   return null;
+}
+
+export function validateBrandingImageFile(file) {
+  return validateImageFile(file, { types: BRANDING_IMAGE_TYPES, ext: BRANDING_IMAGE_EXT });
 }
