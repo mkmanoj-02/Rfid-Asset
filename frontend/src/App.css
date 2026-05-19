@@ -225,6 +225,27 @@ tr:hover td { background: #f8fafc; }
   margin-left: auto;
   flex-shrink: 0;
 }
+
+/* Tag Management (Settings) toolbar */
+.tag-mgmt-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.tag-mgmt-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.tag-mgmt-toolbar-meta {
+  font-size: 12px;
+  color: #64748b;
+  white-space: nowrap;
+}
+
 .asset-types-tree-controls {
   display: inline-flex;
   align-items: stretch;

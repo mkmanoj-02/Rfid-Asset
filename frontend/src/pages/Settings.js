@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Search } from 'lucide-react';
 import {
   getTagTypes, createTagType, updateTagType, deleteTagType,
   getTagRecommendations, saveTagRecommendation, deleteTagRecommendation,
@@ -9,10 +10,21 @@ import { toastApiFailure } from '../apiErrorHandling';
 // ── Tag Types Management ───────────────────────────────────────
 function TagTypesTab() {
   const [items, setItems] = useState([]);
+  const [search, setSearch] = useState('');
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ name: '', description: '' });
   const [editing, setEditing] = useState(null);
   const [error, setError] = useState('');
+
+  const searchQuery = search.trim().toLowerCase();
+  const filteredItems = useMemo(() => {
+    if (!searchQuery) return items;
+    return items.filter((item) => {
+      const name = String(item.name ?? '').toLowerCase();
+      const desc = String(item.description ?? '').toLowerCase();
+      return name.includes(searchQuery) || desc.includes(searchQuery);
+    });
+  }, [items, searchQuery]);
 
   const load = () => getTagTypes().then(r => setItems(r.data)).catch((e) => toastApiFailure(e, 'Tag types'));
   useEffect(() => { load(); }, []);
@@ -44,14 +56,29 @@ function TagTypesTab() {
 
   return (
     <div>
-      <div className="page-header" style={{ marginBottom: 16 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 600 }}>Tag Types</h2>
-        <button className="btn btn-primary btn-sm" onClick={openAdd}>+ Add Tag Type</button>
+      <div className="tag-mgmt-toolbar" style={{ marginBottom: 16 }}>
+        <div className="asset-types-toolbar-search">
+          <span className="asset-types-toolbar-search-icon" aria-hidden><Search size={16} /></span>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name or description…"
+            aria-label="Search tag types"
+          />
+        </div>
+        <div className="tag-mgmt-toolbar-actions">
+          <span className="tag-mgmt-toolbar-meta">
+            {searchQuery
+              ? `${filteredItems.length} of ${items.length}`
+              : `${items.length} type${items.length !== 1 ? 's' : ''}`}
+          </span>
+          <button className="btn btn-primary btn-sm" onClick={openAdd}>+ Add Tag Type</button>
+        </div>
       </div>
       <table>
         <thead><tr><th>#</th><th>Name</th><th>Description</th><th>Actions</th></tr></thead>
         <tbody>
-          {items.map((item, i) => (
+          {filteredItems.map((item, i) => (
             <tr key={item.id}>
               <td>{i + 1}</td>
               <td><strong>{item.name}</strong></td>
@@ -62,7 +89,12 @@ function TagTypesTab() {
               </td>
             </tr>
           ))}
-          {items.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: '#aaa', padding: 24 }}>No tag types yet</td></tr>}
+          {items.length === 0 && (
+            <tr><td colSpan={4} style={{ textAlign: 'center', color: '#aaa', padding: 24 }}>No tag types yet</td></tr>
+          )}
+          {items.length > 0 && filteredItems.length === 0 && (
+            <tr><td colSpan={4} style={{ textAlign: 'center', color: '#aaa', padding: 24 }}>No tag types match your search</td></tr>
+          )}
         </tbody>
       </table>
 
@@ -95,10 +127,22 @@ function TagRecommendationsTab() {
   const [recommendations, setRecommendations] = useState([]);
   const [assetTypes, setAssetTypes] = useState([]);
   const [tagTypes, setTagTypes] = useState([]);
+  const [search, setSearch] = useState('');
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({ tag_type_id: '', reason: '' });
   const [addForm, setAddForm] = useState({ asset_type_id: '', tag_type_id: '', reason: '' });
   const [showAdd, setShowAdd] = useState(false);
+
+  const searchQuery = search.trim().toLowerCase();
+  const filteredRecommendations = useMemo(() => {
+    if (!searchQuery) return recommendations;
+    return recommendations.filter((rec) => {
+      const asset = String(rec.asset_type_name ?? '').toLowerCase();
+      const tag = String(rec.tag_type_name ?? '').toLowerCase();
+      const reason = String(rec.reason ?? '').toLowerCase();
+      return asset.includes(searchQuery) || tag.includes(searchQuery) || reason.includes(searchQuery);
+    });
+  }, [recommendations, searchQuery]);
 
   const load = async () => {
     try {
@@ -150,9 +194,24 @@ function TagRecommendationsTab() {
 
   return (
     <div>
-      <div className="page-header" style={{ marginBottom: 16 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 600 }}>Tag Type Recommendations by Asset Type</h2>
-        <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}>+ Add Mapping</button>
+      <div className="tag-mgmt-toolbar" style={{ marginBottom: 16 }}>
+        <div className="asset-types-toolbar-search">
+          <span className="asset-types-toolbar-search-icon" aria-hidden><Search size={16} /></span>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search asset type, tag type, or reason…"
+            aria-label="Search tag recommendations"
+          />
+        </div>
+        <div className="tag-mgmt-toolbar-actions">
+          <span className="tag-mgmt-toolbar-meta">
+            {searchQuery
+              ? `${filteredRecommendations.length} of ${recommendations.length}`
+              : `${recommendations.length} mapping${recommendations.length !== 1 ? 's' : ''}`}
+          </span>
+          <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}>+ Add Mapping</button>
+        </div>
       </div>
 
       <table>
@@ -160,7 +219,7 @@ function TagRecommendationsTab() {
           <tr><th>Asset Type</th><th>Recommended Tag Type</th><th>Reason / Why</th><th>Actions</th></tr>
         </thead>
         <tbody>
-          {recommendations.map(rec => (
+          {filteredRecommendations.map(rec => (
             <tr key={rec.id}>
               <td><strong>{rec.asset_type_name}</strong></td>
               <td>
@@ -204,6 +263,9 @@ function TagRecommendationsTab() {
           ))}
           {recommendations.length === 0 && (
             <tr><td colSpan={4} style={{ textAlign: 'center', color: '#aaa', padding: 24 }}>No recommendations yet</td></tr>
+          )}
+          {recommendations.length > 0 && filteredRecommendations.length === 0 && (
+            <tr><td colSpan={4} style={{ textAlign: 'center', color: '#aaa', padding: 24 }}>No recommendations match your search</td></tr>
           )}
         </tbody>
       </table>
