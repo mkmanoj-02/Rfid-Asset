@@ -7,6 +7,7 @@ import {
   getTagTypes, createTagType, updateTagType, deleteTagType, getTagRecommendationForAssetType,
   getVendors, createVendor, updateVendor, deleteVendor
 } from '../api';
+import api from '../api';
 import { toastApiFailure } from '../apiErrorHandling';
 import { useToast } from '../Toast';
 import { exportExcel, exportPDF, ExportButtons } from '../export';
@@ -455,31 +456,31 @@ function FinancialInfoTab({ assetId, assetName }) {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    import('axios').then(({ default: axios }) => {
-      axios.create({ baseURL: '/api' }).get(`/depreciation/financials/${assetId}`)
-        .then(r => {
-          if (r.data) {
-            setFinancials(r.data);
-            setForm({
-              purchase_cost: r.data.purchase_cost || '',
-              salvage_value: r.data.salvage_value || '',
-              purchase_date: r.data.purchase_date?.split('T')[0] || '',
-            });
-          }
-        }).catch((e) => toastApiFailure(e, 'Financial details'));
-    });
+    api.get(`/depreciation/financials/${assetId}`)
+      .then((r) => {
+        if (r.data) {
+          setFinancials(r.data);
+          setForm({
+            purchase_cost: r.data.purchase_cost || '',
+            salvage_value: r.data.salvage_value || '',
+            purchase_date: r.data.purchase_date?.split('T')[0] || '',
+          });
+        }
+      })
+      .catch((e) => toastApiFailure(e, 'Financial details'));
   }, [assetId]);
 
   const save = async () => {
     setSaving(true);
     try {
-      const { default: axios } = await import('axios');
-      const http = axios.create({ baseURL: '/api' });
-      await http.post('/depreciation/financials', { asset_id: assetId, ...form });
+      const saveRes = await api.post('/depreciation/financials', { asset_id: assetId, ...form });
+      if (saveRes.data?.financials) setFinancials(saveRes.data.financials);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
-      const r = await http.get(`/depreciation/financials/${assetId}`);
-      setFinancials(r.data);
+      if (!saveRes.data?.financials) {
+        const r = await api.get(`/depreciation/financials/${assetId}`);
+        setFinancials(r.data);
+      }
     } catch (e) {
       toastApiFailure(e, 'Financial details');
     } finally {
