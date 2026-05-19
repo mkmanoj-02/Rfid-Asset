@@ -410,7 +410,7 @@ tr:hover td { background: #f8fafc; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 6px;
   padding: 10px 14px;
   min-height: 56px;
   transition: background 0.12s, box-shadow 0.12s;
@@ -443,9 +443,10 @@ tr:hover td { background: #f8fafc; }
 .asset-type-tree-col {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   flex-shrink: 0;
-  min-width: 52px;
+  width: 28px;
+  min-width: 28px;
 }
 .asset-type-expand-btn {
   display: inline-flex;
@@ -480,7 +481,7 @@ tr:hover td { background: #f8fafc; }
 .asset-type-row-lead {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   min-width: 0;
   flex: 1;
 }
