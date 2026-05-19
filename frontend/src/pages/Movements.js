@@ -76,22 +76,22 @@ export default function Movements() {
   };
 
   return (
-    <motionless>
-      <motionless className="page-header">
+    <div>
+      <div className="page-header">
         <h1>Trace History</h1>
-      </motionless>
+      </div>
 
-      <motionless className="tag-mgmt-toolbar" style={{ marginBottom: 16 }}>
-        <motionless className="asset-types-toolbar-search">
+      <div className="tag-mgmt-toolbar" style={{ marginBottom: 16 }}>
+        <div className="asset-types-toolbar-search">
           <span className="asset-types-toolbar-search-icon" aria-hidden><Search size={16} /></span>
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search asset, RFID tag, location, date…"
+            placeholder="Search by asset, RFID tag, from, to, date & time…"
             aria-label="Search trace history"
           />
-        </motionless>
-        <motionless className="tag-mgmt-toolbar-actions">
+        </div>
+        <div className="tag-mgmt-toolbar-actions">
           <span className="tag-mgmt-toolbar-meta">
             {searchQuery
               ? `${filteredMovements.length} of ${movements.length}`
@@ -108,8 +108,8 @@ export default function Movements() {
               <option key={a.id} value={a.id}>{a.name} ({a.rfid_tag})</option>
             ))}
           </select>
-        </motionless>
-      </motionless>
+        </div>
+      </div>
 
       <table>
         <thead>
@@ -152,6 +152,6 @@ export default function Movements() {
           )}
         </tbody>
       </table>
-    </motionless>
+    </div>
   );
 }
