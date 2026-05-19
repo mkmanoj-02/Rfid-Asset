@@ -602,6 +602,7 @@ function ReorganizeLocations() {
   const [selectedLocations, setSelectedLocations] = useState([]);
   const [newParentId, setNewParentId] = useState('');
   const [locPickerOpen, setLocPickerOpen] = useState(false);
+  const [locPickerSnapshot, setLocPickerSnapshot] = useState([]);
   const [parentPickerOpen, setParentPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const { showToast } = useToast();
@@ -650,7 +651,7 @@ function ReorganizeLocations() {
               placeholder="Click ... to select"
               style={{ flex: 1 }}
             />
-            <button className="btn btn-secondary btn-sm picker-btn" onClick={() => setLocPickerOpen(true)}>...</button>
+            <button className="btn btn-secondary btn-sm picker-btn" onClick={() => { setLocPickerSnapshot(selectedLocations); setLocPickerOpen(true); }}>...</button>
           </div>
         </div>
 
@@ -704,6 +705,7 @@ function ReorganizeLocations() {
               {selectedLocations.length} selected
             </div>
             <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => { setSelectedLocations(locPickerSnapshot); setLocPickerOpen(false); }}>Cancel</button>
               <button className="btn btn-secondary" onClick={() => setSelectedLocations([])}>Clear</button>
               <button className="btn btn-primary" onClick={() => setLocPickerOpen(false)}>Done</button>
             </div>
