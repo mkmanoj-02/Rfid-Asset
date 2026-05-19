@@ -3,18 +3,46 @@ const router = express.Router();
 const db = require('../db');
 const audit = require('../audit');
 
-// Get all rules
-router.get('/', async (req, res) => {
-  const [rows] = await db.query(`
-    SELECT r.*, l.name AS location_name, at.name AS asset_type_name,
-      ata.name AS attribute_name
-    FROM rules r
-    LEFT JOIN locations l ON r.location_id = l.id
-    LEFT JOIN asset_types at ON r.asset_type_id = at.id
-    LEFT JOIN asset_type_attributes ata ON r.attribute_id = ata.id
-    ORDER BY r.created_at DESC
-  `);
-  res.json(rows);
+// List rules — paginate only when both page and limit are provided (same as assets)
+router.get('/', async (req, res, next) => {
+  try {
+    const { page, limit } = req.query;
+    const paginate = page !== undefined && limit !== undefined;
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const pageSize = Math.min(500, Math.max(1, parseInt(limit, 10) || 1));
+    const offset = (pageNum - 1) * pageSize;
+
+    const baseFrom = `
+      FROM rules r
+      LEFT JOIN locations l ON r.location_id = l.id
+      LEFT JOIN asset_types at ON r.asset_type_id = at.id
+      LEFT JOIN asset_type_attributes ata ON r.attribute_id = ata.id`;
+
+    const selectQuery = `
+      SELECT r.*, l.name AS location_name, at.name AS asset_type_name,
+        ata.name AS attribute_name
+      ${baseFrom}
+      ORDER BY r.created_at DESC, r.id DESC`;
+
+    if (paginate) {
+      const [[{ total }]] = await db.query(`SELECT COUNT(*) AS total ${baseFrom}`);
+      const [rows] = await db.query(`${selectQuery} LIMIT ? OFFSET ?`, [pageSize, offset]);
+      return res.json({
+        data: rows,
+        pagination: {
+          total,
+          page: pageNum,
+          limit: pageSize,
+          totalPages: Math.ceil(total / pageSize) || 0,
+        },
+      });
+    }
+
+    const [rows] = await db.query(selectQuery);
+    res.json(rows);
+  } catch (err) {
+    next(err);
+  }
 });
 
 // Get single rule
