@@ -641,9 +641,9 @@ function AssetDetail({ asset, types, locations, locationTree, tagTypes, vendors,
   if (editImageFile) {
     editImageOnClear = () => {
       setEditImageFile(null);
-      setRevertToInherited(false);
+      setRevertToInherited(true);
     };
-    editImageClearLabel = 'Remove selected image';
+    editImageClearLabel = 'Use inherited image';
   } else if (assetHasCustomImage && !revertToInherited) {
     editImageOnClear = () => setRevertToInherited(true);
     editImageClearLabel = 'Use inherited image';

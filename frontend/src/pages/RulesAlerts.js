@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import api, { bulkDeleteRules } from '../api';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import api, { bulkDeleteRules, getRules } from '../api';
 import { toastApiFailure } from '../apiErrorHandling';
 import ConfirmModal from '../components/ConfirmModal';
 import { useToast } from '../Toast';
@@ -435,30 +435,12 @@ function AlertsTab() {
   );
 }
 
-function ruleMatchesSearch(rule, query) {
-  if (!query) return true;
-  const action =
-    rule.action_type === 'system_alert' ? 'system' :
-    rule.action_type === 'email_alert' ? 'email' : 'both';
-  const haystack = [
-    rule.name,
-    rule.description,
-    rule.location_name,
-    rule.asset_type_name,
-    FILTER_LABELS[rule.filter_type],
-    action,
-    rule.is_active ? 'active on' : 'inactive off',
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
-  return haystack.includes(query);
-}
-
 // ── Rules Tab ──────────────────────────────────────────────────
 function RulesTab({ locations, assetTypes }) {
   const { showToast } = useToast();
   const [rules, setRules] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [showWizard, setShowWizard] = useState(false);
   const [editRule, setEditRule] = useState(null);
   const [search, setSearch] = useState('');
@@ -467,21 +449,9 @@ function RulesTab({ locations, assetTypes }) {
   const [checkedIds, setCheckedIds] = useState(() => new Set());
   const [confirmDialog, setConfirmDialog] = useState(null);
 
-  const searchQuery = search.trim().toLowerCase();
-  const filteredRules = useMemo(
-    () => rules.filter((r) => ruleMatchesSearch(r, searchQuery)),
-    [rules, searchQuery]
-  );
+  const searchQuery = search.trim();
 
-  const total = filteredRules.length;
-  const totalPages = Math.max(1, Math.ceil(total / pageSize) || 1);
-
-  const pagedRules = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filteredRules.slice(start, start + pageSize);
-  }, [filteredRules, currentPage, pageSize]);
-
-  const pageIds = useMemo(() => pagedRules.map((r) => r.id), [pagedRules]);
+  const pageIds = useMemo(() => rules.map((r) => r.id), [rules]);
   const allPageChecked = pageIds.length > 0 && pageIds.every((id) => checkedIds.has(id));
   const somePageChecked = pageIds.some((id) => checkedIds.has(id));
 
@@ -503,9 +473,29 @@ function RulesTab({ locations, assetTypes }) {
     });
   };
 
-  const load = () => api.get('/rules').then(r => setRules(r.data))
-    .catch((e) => toastApiFailure(e, 'Rules'));
-  useEffect(() => { load(); }, []);
+  const load = useCallback(() => {
+    const params = { page: currentPage, limit: pageSize };
+    if (searchQuery) params.search = searchQuery;
+    return getRules(params)
+      .then((r) => {
+        const body = r.data;
+        if (body?.pagination && Array.isArray(body.data)) {
+          setRules(body.data);
+          setTotal(body.pagination.total ?? 0);
+          setTotalPages(Math.max(1, body.pagination.totalPages ?? 1));
+        } else if (Array.isArray(body)) {
+          setRules(body);
+          setTotal(body.length);
+          setTotalPages(1);
+        }
+      })
+      .catch((e) => toastApiFailure(e, 'Rules'));
+  }, [currentPage, pageSize, searchQuery]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => { load(); }, searchQuery ? 300 : 0);
+    return () => clearTimeout(timer);
+  }, [load, searchQuery]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -611,7 +601,7 @@ function RulesTab({ locations, assetTypes }) {
                   checked={allPageChecked}
                   ref={(el) => { if (el) el.indeterminate = somePageChecked && !allPageChecked; }}
                   onChange={toggleAllPage}
-                  disabled={pagedRules.length === 0}
+                  disabled={rules.length === 0}
                 />
               </th>
               <th style={{ width: 42 }}>#</th>
@@ -619,13 +609,13 @@ function RulesTab({ locations, assetTypes }) {
             </tr>
           </thead>
           <tbody>
-            {rules.length === 0 && (
+            {total === 0 && !searchQuery && (
               <tr><td colSpan={9} style={{ textAlign: 'center', color: '#aaa', padding: 32 }}>No rules yet. Click "+ Create Rule" to get started.</td></tr>
             )}
-            {rules.length > 0 && filteredRules.length === 0 && (
+            {total === 0 && searchQuery && (
               <tr><td colSpan={9} style={{ textAlign: 'center', color: '#aaa', padding: 32 }}>No rules match your search.</td></tr>
             )}
-            {pagedRules.map((r, i) => (
+            {rules.map((r, i) => (
               <tr key={r.id} style={{ background: checkedIds.has(r.id) ? '#f0f4ff' : 'inherit' }}>
                 <td style={{ padding: '10px 12px' }}>
                   <input

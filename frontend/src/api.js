@@ -261,6 +261,7 @@ export const getDashboard = (locationId) =>
 export const previewImport = (type, rows) => api.post(`/import/${type}/preview`, { rows });
 export const executeImport = (type, rows) => api.post(`/import/${type}/execute`, { rows });
 
+export const getRules = (params) => api.get('/rules', { params });
 export const bulkDeleteRules = (ids) => api.delete('/rules/bulk', { data: { ids } });
 
 export const getLocationTypes = () => api.get('/location-types');
