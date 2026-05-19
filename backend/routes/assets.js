@@ -110,7 +110,7 @@ router.get('/', async (req, res, next) => {
   // Pagination only applies when both page and limit are explicitly provided
   const paginate = page !== undefined && limit !== undefined;
   const pageNum  = Math.max(1, parseInt(page) || 1);
-  const pageSize = Math.min(200, Math.max(1, parseInt(limit)));
+  const pageSize = Math.min(500, Math.max(1, parseInt(limit)));
   const offset   = (pageNum - 1) * pageSize;
 
   let allowedTypeIds = null;

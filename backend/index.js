@@ -57,7 +57,8 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-username', 'x-user-id'],
 }));
-app.use(express.json());
+
+app.use(express.json({ limit: '10mb' }));
 
 // Optional JWT: sets req.user when Bearer token is valid (backward-compatible with x-user-id)
 const optionalVerifyToken = require('./middleware/optionalVerifyToken');
@@ -109,7 +110,7 @@ app.use((req, res, next) => {
 
 // ── Global error handler — catches any unhandled error from routes ──
 app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err.message);
+  console.error('Unhandled error:', err);
 
   if (res.headersSent) return next(err);
 
@@ -127,6 +128,12 @@ app.use((err, req, res, next) => {
 
   if (err.code?.startsWith('ER_')) {
     return res.status(400).json({ message: err.sqlMessage || 'Database request failed.' });
+  }
+
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({
+      message: 'Request body too large. Try fewer rows per import or split the file into smaller batches.',
+    });
   }
 
   res.status(err.status || 500).json({ message: err.message || 'An unexpected error occurred. Please try again.' });

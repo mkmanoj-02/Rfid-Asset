@@ -67,6 +67,8 @@ function downloadSample(type) {
   XLSX.writeFile(wb, `sample-${type}.xlsx`);
 }
 
+const IMPORT_BATCH_SIZE = 500;
+
 const STATUS_BG = { insert: '#c6f6d5', update: '#dbeafe', error: '#fff5f5', skipped: '#e2e8f0' };
 const STATUS_COLOR = { insert: '#276749', update: '#1a56db', error: '#9b2c2c', skipped: '#555' };
 
@@ -254,6 +256,7 @@ function ImportWizard({ title, fields, endpoint }) {
   const [loading, setLoading] = useState(false);
   const [fileName, setFileName] = useState('');
   const [smartFixDialog, setSmartFixDialog] = useState(null);
+  const [importProgress, setImportProgress] = useState(null);
   const [tagTypes, setTagTypes] = useState([]);
   const [vendors, setVendors] = useState([]);
 
@@ -352,11 +355,22 @@ function ImportWizard({ title, fields, endpoint }) {
         setTagTypes(tt.data || []);
         setVendors(vv.data || []);
       }
-      const res = await api.post(`/import/${endpoint}/preview`, { rows: mapped });
-      setPreview(res.data);
+      const combined = [];
+      const totalBatches = Math.ceil(mapped.length / IMPORT_BATCH_SIZE) || 1;
+      for (let i = 0; i < mapped.length; i += IMPORT_BATCH_SIZE) {
+        const batchIndex = Math.floor(i / IMPORT_BATCH_SIZE) + 1;
+        if (totalBatches > 1) {
+          setImportProgress(`Preview batch ${batchIndex} of ${totalBatches}…`);
+        }
+        const chunk = mapped.slice(i, i + IMPORT_BATCH_SIZE);
+        const res = await api.post(`/import/${endpoint}/preview`, { rows: chunk });
+        combined.push(...res.data);
+      }
+      setPreview(combined);
       setAttrCols(unmapped || []);
       setStep(3);
     } catch (e) { toastApiFailure(e, 'Import · Preview'); }
+    finally { setImportProgress(null); }
   };
 
   const handlePreviewClick = async () => {
@@ -451,11 +465,28 @@ function ImportWizard({ title, fields, endpoint }) {
 
   const executeImport = async () => {
     setLoading(true);
+    const toImport = preview.filter((r) => r._status !== 'error');
+    const batches = [];
+    for (let i = 0; i < toImport.length; i += IMPORT_BATCH_SIZE) {
+      batches.push(toImport.slice(i, i + IMPORT_BATCH_SIZE));
+    }
+    const merged = { inserted: 0, updated: 0, errors: 0, skipped: 0 };
     try {
-      const res = await api.post(`/import/${endpoint}/execute`, { rows: preview.filter(r => r._status !== 'error') });
-      setResult(res.data);
+      for (let i = 0; i < batches.length; i++) {
+        if (batches.length > 1) {
+          setImportProgress(`Importing batch ${i + 1} of ${batches.length}…`);
+        }
+        const res = await api.post(`/import/${endpoint}/execute`, { rows: batches[i] });
+        const data = res.data || {};
+        merged.inserted += data.inserted || 0;
+        merged.updated += data.updated || 0;
+        merged.errors += data.errors || 0;
+        merged.skipped += data.skipped || 0;
+      }
+      setResult(merged);
       setStep(4);
     } catch (e) { toastApiFailure(e, 'Import · Execute'); }
+    setImportProgress(null);
     setLoading(false);
   };
 
@@ -525,10 +556,13 @@ function ImportWizard({ title, fields, endpoint }) {
         {step === 3 && (
           <div>
             <PreviewTable rows={preview} columns={previewColumns} attrCols={attrCols} fieldLabels={fieldLabels} />
+            {importProgress && (
+              <p style={{ fontSize: 13, color: '#5a67d8', marginTop: 12, marginBottom: 0 }}>{importProgress}</p>
+            )}
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16 }}>
               <button className="btn btn-secondary" onClick={() => setStep(2)}>Back</button>
               <button className="btn btn-primary" onClick={executeImport} disabled={loading || preview.every(r => r._status === 'error')}>
-                {loading ? 'Importing...' : 'Import'}
+                {loading ? (importProgress || 'Importing...') : 'Import'}
               </button>
               <button className="btn btn-secondary" onClick={reset}>Cancel</button>
             </div>
