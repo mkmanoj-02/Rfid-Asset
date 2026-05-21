@@ -79,6 +79,9 @@ app.get('/api/site-branding', siteBrandingRoutes.getBranding);
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// Public locations for Android (no access token)
+app.use('/api/public/locations', require('./routes/publicLocations'));
+
 app.use(verifyToken);
 app.use('/api/locations', require('./routes/locations'));
 app.use('/api/asset-types', require('./routes/assetTypes'));
