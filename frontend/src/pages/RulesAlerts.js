@@ -435,25 +435,31 @@ function RuleWizard({ locations, assetTypes, onClose, onSaved, editRule }) {
 }
 
 // ── Alerts Tab ─────────────────────────────────────────────────
-function AlertsTab() {
+function AlertsTab({ onUnreadChange }) {
   const [alerts, setAlerts] = useState([]);
   const [activeTab, setActiveTab] = useState('asset');
+  const [refreshing, setRefreshing] = useState(false);
   const loadFailRef = React.useRef(0);
 
-  const load = () => api.get('/alerts', { params: { filter_type: activeTab } }).then(r => setAlerts(r.data))
-    .catch((e) => {
-      const now = Date.now();
-      if (now - loadFailRef.current > 12000) {
-        loadFailRef.current = now;
-        toastApiFailure(e, 'Alerts');
-      }
-    });
+  const load = () => {
+    setRefreshing(true);
+    return api.get('/alerts', { params: { filter_type: activeTab } })
+      .then((r) => {
+        setAlerts(r.data);
+        onUnreadChange?.();
+      })
+      .catch((e) => {
+        const now = Date.now();
+        if (now - loadFailRef.current > 12000) {
+          loadFailRef.current = now;
+          toastApiFailure(e, 'Alerts');
+        }
+      })
+      .finally(() => setRefreshing(false));
+  };
 
   useEffect(() => {
     load();
-    // Poll every 3 seconds for real-time alert updates
-    const interval = setInterval(load, 3000);
-    return () => clearInterval(interval);
   }, [activeTab]);
 
   const markAllRead = async () => {
@@ -498,7 +504,9 @@ function AlertsTab() {
         <div style={{ display: 'flex', gap: 8 }}>
           {unread > 0 && <button className="btn btn-secondary btn-sm" onClick={markAllRead}>Mark All Read ({unread})</button>}
           <button className="btn btn-secondary btn-sm" onClick={clearAll}>Clear All</button>
-          <button className="btn btn-secondary btn-sm" onClick={load}>↻ Refresh</button>
+          <button className="btn btn-secondary btn-sm" onClick={load} disabled={refreshing}>
+            {refreshing ? 'Refreshing…' : '↻ Refresh'}
+          </button>
         </div>
       </div>
 
@@ -858,20 +866,20 @@ export default function RulesAlerts() {
   const [unreadCount, setUnreadCount] = useState(0);
   const unreadFailRef = React.useRef(0);
 
-  useEffect(() => {
-    api.get('/locations').then(r => setLocations(r.data)).catch((e) => toastApiFailure(e, 'Locations'));
-    api.get('/asset-types').then(r => setAssetTypes(r.data)).catch((e) => toastApiFailure(e, 'Asset types'));
-    // Poll unread count every 3s
-    const loadCount = () => api.get('/alerts/unread-count').then(r => setUnreadCount(r.data.count)).catch((e) => {
+  const loadUnreadCount = () => api.get('/alerts/unread-count')
+    .then((r) => setUnreadCount(r.data.count))
+    .catch((e) => {
       const now = Date.now();
       if (now - unreadFailRef.current > 12000) {
         unreadFailRef.current = now;
         toastApiFailure(e, 'Unread alerts');
       }
     });
-    loadCount();
-    const interval = setInterval(loadCount, 3000);
-    return () => clearInterval(interval);
+
+  useEffect(() => {
+    api.get('/locations').then(r => setLocations(r.data)).catch((e) => toastApiFailure(e, 'Locations'));
+    api.get('/asset-types').then(r => setAssetTypes(r.data)).catch((e) => toastApiFailure(e, 'Asset types'));
+    loadUnreadCount();
   }, []);
 
   return (
@@ -885,7 +893,7 @@ export default function RulesAlerts() {
         <button className={`tab-btn ${tab === 'rules' ? 'active' : ''}`} onClick={() => setTab('rules')}>Rules</button>
       </div>
 
-      {tab === 'alerts' && <AlertsTab />}
+      {tab === 'alerts' && <AlertsTab onUnreadChange={loadUnreadCount} />}
       {tab === 'rules' && <RulesTab locations={locations} assetTypes={assetTypes} />}
     </div>
   );
