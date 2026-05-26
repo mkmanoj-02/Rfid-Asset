@@ -51,6 +51,17 @@ body { font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; background: #F1F
 .btn-secondary { background: #e2e8f0; color: #2d3748; }
 .btn-secondary:hover { background: #cbd5e0; }
 .btn-sm { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
+.btn:disabled,
+.btn-primary:disabled,
+.btn-secondary:disabled,
+.btn-danger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.btn-primary:disabled:hover { background: #1565c0; }
+.btn-secondary:disabled:hover { background: #e2e8f0; }
+.btn-danger:disabled:hover { background: #e53e3e; }
 
 /* ── Stat Cards (dashboard KPIs) ───────────────────────────── */
 .stat-cards {
@@ -1546,6 +1557,13 @@ tr:hover td { background: #f8fafc; }
   margin: 0;
   font-size: 13px;
   color: #5a67d8;
+}
+.import-preview-hint {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: 13px;
+  color: #9b2c2c;
+  font-weight: 500;
 }
 .import-preview-actions {
   margin-left: auto;

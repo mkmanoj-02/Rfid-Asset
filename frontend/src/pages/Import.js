@@ -14,6 +14,19 @@ function appendImportPreviewError(row, message) {
 }
 
 /** Duplicates across preview batches (backend only checks within each batch). */
+/** Row cannot be imported (validation / duplicate errors). */
+function isImportPreviewErrorRow(row) {
+  if (!row) return true;
+  if (row._status === 'error') return true;
+  return Array.isArray(row._errors) && row._errors.length > 0;
+}
+
+/** Row is eligible for execute (insert or update, no errors). */
+function isImportPreviewImportableRow(row) {
+  if (!row || isImportPreviewErrorRow(row)) return false;
+  return row._status === 'insert' || row._status === 'update';
+}
+
 function markImportFileDuplicates(rows) {
   const rfidSeen = new Map();
   const serialSeen = new Map();
@@ -237,7 +250,13 @@ function FieldMapper({ fields, columns, mapping, attrMapping, attrTypes, onMappi
 
 function PreviewStatusLegend({ rows }) {
   const counts = { insert: 0, update: 0, error: 0, skipped: 0 };
-  rows.forEach((r) => { if (counts[r._status] !== undefined) counts[r._status]++; });
+  rows.forEach((r) => {
+    if (isImportPreviewErrorRow(r)) {
+      counts.error++;
+      return;
+    }
+    if (counts[r._status] !== undefined) counts[r._status]++;
+  });
 
   return (
     <div className="import-preview-legend">
@@ -504,9 +523,16 @@ function ImportWizard({ title, fields, endpoint }) {
     setLoading(false);
   };
 
+  const importableCount = preview.filter(isImportPreviewImportableRow).length;
+  const canImport = importableCount > 0;
+
   const executeImport = async () => {
+    const toImport = preview.filter(isImportPreviewImportableRow);
+    if (!toImport.length) {
+      showToast('Cannot import: every row has errors. Fix the spreadsheet and run Preview again.', 'error');
+      return;
+    }
     setLoading(true);
-    const toImport = preview.filter((r) => r._status !== 'error');
     const batches = [];
     for (let i = 0; i < toImport.length; i += IMPORT_BATCH_SIZE) {
       batches.push(toImport.slice(i, i + IMPORT_BATCH_SIZE));
@@ -601,12 +627,23 @@ function ImportWizard({ title, fields, endpoint }) {
             </div>
             <div className="import-preview-footer">
               <PreviewStatusLegend rows={preview} />
+              {!canImport && preview.length > 0 && (
+                <p className="import-preview-hint" role="status">
+                  All rows have errors — correct the file and run Preview again before importing.
+                </p>
+              )}
               {importProgress && (
                 <p className="import-preview-progress">{importProgress}</p>
               )}
               <div className="import-preview-actions">
                 <button type="button" className="btn btn-secondary" onClick={() => setStep(2)}>Back</button>
-                <button type="button" className="btn btn-primary" onClick={executeImport} disabled={loading || preview.every((r) => r._status === 'error')}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={executeImport}
+                  disabled={loading || !canImport}
+                  title={!canImport && preview.length > 0 ? 'No valid rows to import' : undefined}
+                >
                   {loading ? (importProgress || 'Importing...') : 'Import'}
                 </button>
                 <button type="button" className="btn btn-secondary" onClick={reset}>Cancel</button>
