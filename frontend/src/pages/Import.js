@@ -4,6 +4,41 @@ import api, { getTagTypes, getVendors } from '../api';
 import { toastApiFailure } from '../apiErrorHandling';
 import { useToast } from '../Toast';
 
+const RFID_DUP_FILE_MSG = 'Duplicate RFID tag in import file';
+const SERIAL_DUP_FILE_MSG = 'Duplicate asset serial in import file';
+
+function appendImportPreviewError(row, message) {
+  if (!row._errors) row._errors = [];
+  if (!row._errors.includes(message)) row._errors.push(message);
+  row._status = 'error';
+}
+
+/** Duplicates across preview batches (backend only checks within each batch). */
+function markImportFileDuplicates(rows) {
+  const rfidSeen = new Map();
+  const serialSeen = new Map();
+  rows.forEach((row, index) => {
+    const rfid = row.rfid_tag != null ? String(row.rfid_tag).trim() : '';
+    if (rfid.length === 24) {
+      if (rfidSeen.has(rfid)) {
+        appendImportPreviewError(row, RFID_DUP_FILE_MSG);
+        appendImportPreviewError(rows[rfidSeen.get(rfid)], RFID_DUP_FILE_MSG);
+      } else {
+        rfidSeen.set(rfid, index);
+      }
+    }
+    const serial = row.asset_serial != null ? String(row.asset_serial).trim() : '';
+    if (serial) {
+      if (serialSeen.has(serial)) {
+        appendImportPreviewError(row, SERIAL_DUP_FILE_MSG);
+        appendImportPreviewError(rows[serialSeen.get(serial)], SERIAL_DUP_FILE_MSG);
+      } else {
+        serialSeen.set(serial, index);
+      }
+    }
+  });
+}
+
 const SAMPLE_CONFIG = {
   assets: {
     headers: [
@@ -338,7 +373,11 @@ function ImportWizard({ title, fields, endpoint }) {
     const unmapped = columns.filter(c => !mappedCols.includes(c) && (attrMapping[c] || 'attribute') === 'attribute');
     const mapped = rawRows.map(row => {
       const obj = {};
-      fields.forEach(f => { if (mapping[f.key]) obj[f.key] = row[mapping[f.key]] || ''; });
+      fields.forEach(f => {
+        if (!mapping[f.key]) return;
+        const raw = row[mapping[f.key]];
+        obj[f.key] = raw == null || raw === '' ? '' : String(raw).trim();
+      });
       if (unmapped.length) {
         obj.attributes = {};
         obj.attrTypes = {};
@@ -367,6 +406,7 @@ function ImportWizard({ title, fields, endpoint }) {
         const res = await api.post(`/import/${endpoint}/preview`, { rows: chunk });
         combined.push(...res.data);
       }
+      if (endpoint === 'assets') markImportFileDuplicates(combined);
       setPreview(combined);
       setAttrCols(unmapped || []);
       setStep(3);

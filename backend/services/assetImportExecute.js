@@ -4,6 +4,7 @@ const {
 } = require('../lib/importHelpers');
 const {
   RFID_TAG_MOVEMENT_NOTE,
+  normalizeRfidTag,
   isValidRfidTag,
   shouldLogRfidTagMovement,
 } = require('../lib/rfidMovements');
@@ -180,8 +181,7 @@ async function executeAssetChunk(conn, rows, attrState) {
       errors++;
       continue;
     }
-    const rfidTag = row.rfid_tag != null ? row.rfid_tag.toString().trim() : '';
-    if (rfidTag && rfidTag.length !== 24) {
+    if (normalizeRfidTag(row.rfid_tag) && !isValidRfidTag(row.rfid_tag)) {
       errors++;
       continue;
     }

@@ -1,6 +1,11 @@
 /** Shared helpers for import preview / execute performance. */
 
+const { normalizeRfidTag, isValidRfidTag } = require('./rfidMovements');
+
 const CHUNK_SIZE = 500;
+
+const RFID_DUP_FILE_MSG = 'Duplicate RFID tag in import file';
+const SERIAL_DUP_FILE_MSG = 'Duplicate asset serial in import file';
 
 function chunkArray(arr, size = CHUNK_SIZE) {
   const out = [];
@@ -30,6 +35,49 @@ function buildSerialMap(assets) {
     if (a?.asset_serial) map.set(a.asset_serial, a);
   });
   return map;
+}
+
+function buildRfidMap(assets) {
+  const map = new Map();
+  (assets || []).forEach((a) => {
+    const tag = normalizeRfidTag(a?.rfid_tag);
+    if (tag) map.set(tag, a);
+  });
+  return map;
+}
+
+function appendImportRowError(row, message) {
+  if (!row._errors) row._errors = [];
+  if (!row._errors.includes(message)) row._errors.push(message);
+  row._status = 'error';
+}
+
+/** Flag duplicate RFID / asset serial within one preview or execute batch. */
+function markImportRowDuplicates(rows) {
+  const rfidSeen = new Map();
+  const serialSeen = new Map();
+
+  rows.forEach((row, index) => {
+    const rfid = normalizeRfidTag(row.rfid_tag);
+    if (isValidRfidTag(rfid)) {
+      if (rfidSeen.has(rfid)) {
+        appendImportRowError(row, RFID_DUP_FILE_MSG);
+        appendImportRowError(rows[rfidSeen.get(rfid)], RFID_DUP_FILE_MSG);
+      } else {
+        rfidSeen.set(rfid, index);
+      }
+    }
+
+    const serial = row.asset_serial != null ? String(row.asset_serial).trim() : '';
+    if (serial) {
+      if (serialSeen.has(serial)) {
+        appendImportRowError(row, SERIAL_DUP_FILE_MSG);
+        appendImportRowError(rows[serialSeen.get(serial)], SERIAL_DUP_FILE_MSG);
+      } else {
+        serialSeen.set(serial, index);
+      }
+    }
+  });
 }
 
 function findInNameMap(name, nameMap) {
@@ -131,6 +179,8 @@ module.exports = {
   buildNameMap,
   buildIdMap,
   buildSerialMap,
+  buildRfidMap,
+  markImportRowDuplicates,
   findInNameMap,
   resolveMasterIdFromMaps,
   slimAssetPreviewRow,

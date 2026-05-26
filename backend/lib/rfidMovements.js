@@ -10,6 +10,18 @@ function isValidRfidTag(value) {
   return normalizeRfidTag(value).length === 24;
 }
 
+const RFID_TAG_LENGTH_ERROR = 'RFID tag must be exactly 24 characters';
+
+/** If RFID is present, it must be exactly 24 characters (same rule as assets create/update). */
+function validateOptionalRfidTag(value, errors) {
+  const tag = normalizeRfidTag(value);
+  if (tag && !isValidRfidTag(tag)) {
+    errors.push(RFID_TAG_LENGTH_ERROR);
+    return false;
+  }
+  return true;
+}
+
 /** True when the new tag is valid and different from the previous value. */
 function shouldLogRfidTagMovement(previousTag, nextTag) {
   const next = normalizeRfidTag(nextTag);
@@ -27,8 +39,10 @@ async function insertRfidTagMovement(executor, assetId, locationId) {
 
 module.exports = {
   RFID_TAG_MOVEMENT_NOTE,
+  RFID_TAG_LENGTH_ERROR,
   normalizeRfidTag,
   isValidRfidTag,
+  validateOptionalRfidTag,
   shouldLogRfidTagMovement,
   insertRfidTagMovement,
 };
