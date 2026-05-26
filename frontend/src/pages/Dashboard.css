@@ -6,11 +6,23 @@
   --dash-text: #0f172a;
 }
 
-.dashboard-page .page-header {
+.dashboard-page .page-header.dashboard-page-header {
   margin-bottom: 20px;
-  align-items: flex-start;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dashboard-page-header__text {
+  display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
+}
+
+.dashboard-all-locations-btn {
+  flex-shrink: 0;
 }
 
 .dashboard-page .page-header h1 {

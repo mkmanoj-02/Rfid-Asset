@@ -184,17 +184,6 @@ export default function Dashboard() {
     setPopupLocation(null);
   };
 
-  const chartScopeAction = selectedLocation ? (
-    <button
-      type="button"
-      className="btn btn-secondary btn-sm"
-      style={{ fontSize: 11, flexShrink: 0, marginTop: 2 }}
-      onClick={clearLocationScope}
-    >
-      All locations
-    </button>
-  ) : null;
-
   // Collapsible tree node for dashboard
   function DashLocNode({ loc, depth = 0 }) {
     const [expanded, setExpanded] = useState(true);
@@ -272,12 +261,23 @@ export default function Dashboard() {
 
   return (
     <div className="dashboard-page">
-      <div className="page-header">
-        <h1>Dashboard</h1>
+      <div className="page-header dashboard-page-header">
+        <div className="dashboard-page-header__text">
+          <h1>Dashboard</h1>
+          {selectedLocation && (
+            <p className="dashboard-scope">
+              Showing metrics for <strong>{scopeLabel}</strong>
+            </p>
+          )}
+        </div>
         {selectedLocation && (
-          <p className="dashboard-scope">
-            Showing metrics for <strong>{scopeLabel}</strong>
-          </p>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm dashboard-all-locations-btn"
+            onClick={clearLocationScope}
+          >
+            All locations
+          </button>
         )}
       </div>
 
@@ -460,7 +460,6 @@ export default function Dashboard() {
           <DashboardChartCard
             title="Asset Type Distribution"
             subtitle={scopeLabel}
-            action={chartScopeAction}
             bodyClassName="dash-chart-card__body--plot"
           >
             {dashboardLoading && !data ? (
@@ -475,7 +474,6 @@ export default function Dashboard() {
           <DashboardChartCard
             title="Location Based Distribution"
             subtitle={scopeLabel}
-            action={chartScopeAction}
             bodyClassName="dash-chart-card__body--plot"
           >
             {dashboardLoading ? (
@@ -494,7 +492,6 @@ export default function Dashboard() {
         <DashboardChartCard
           title="Monthly Asset Distribution"
           subtitle={`Assets created per month (current year) · ${scopeLabel}`}
-          action={chartScopeAction}
           bodyClassName="dash-chart-card__body--plot"
         >
           {dashboardLoading ? (
