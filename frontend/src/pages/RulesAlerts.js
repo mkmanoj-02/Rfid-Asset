@@ -185,8 +185,11 @@ function RuleWizard({ locations, assetTypes, onClose, onSaved, editRule }) {
     }
     const payload = { ...form, filter_type: filterType };
     try {
-      if (editRule) await api.put(`/rules/${editRule.id}`, payload);
-      else await api.post('/rules', payload);
+      if (editRule) {
+        await api.put(`/rules/${editRule.id}`, { ...payload, is_active: editRule.is_active });
+      } else {
+        await api.post('/rules', payload);
+      }
       showToast(editRule ? 'Rule updated successfully' : 'Rule created successfully', 'success');
       onSaved();
       onClose();
