@@ -103,6 +103,7 @@ function conditionFieldDefaults(filterType) {
 
 // ── Step Wizard for Rule Creation ──────────────────────────────
 function RuleWizard({ locations, assetTypes, onClose, onSaved, editRule }) {
+  const { showToast } = useToast();
   const [step, setStep] = useState(1);
   const [filterType, setFilterType] = useState(editRule?.filter_type || '');
   const [form, setForm] = useState(() => buildRuleFormFromEdit(editRule));
@@ -179,13 +180,14 @@ function RuleWizard({ locations, assetTypes, onClose, onSaved, editRule }) {
 
   const save = async () => {
     if (!form.name.trim()) {
-      toastApiFailure('Rule name is required', 'Rules');
+      showToast('Rule name is required', 'warning');
       return;
     }
     const payload = { ...form, filter_type: filterType };
     try {
       if (editRule) await api.put(`/rules/${editRule.id}`, payload);
       else await api.post('/rules', payload);
+      showToast(editRule ? 'Rule updated successfully' : 'Rule created successfully', 'success');
       onSaved();
       onClose();
     } catch (e) {
@@ -656,6 +658,7 @@ function RulesTab({ locations, assetTypes }) {
   const toggleActive = async (rule) => {
     try {
       await api.put(`/rules/${rule.id}`, { ...rule, is_active: !rule.is_active });
+      showToast(rule.is_active ? 'Rule deactivated' : 'Rule activated', 'success');
       load();
     } catch (e) {
       toastApiFailure(e, 'Rules');

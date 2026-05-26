@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import api from '../api';
 import { toastApiFailure } from '../apiErrorHandling';
+import { useToast } from '../Toast';
 import ConfirmModal from '../components/ConfirmModal';
 
 const PROFILE_LABELS = {
@@ -414,6 +415,7 @@ function AssetPrivilegePicker({ current, onClose, onSave }) {
 
 // ── User Form ──────────────────────────────────────────────────
 function UserForm({ user, locations, assetTypes, onClose, onSaved }) {
+  const { showToast } = useToast();
   const isEdit = !!user;
   const [form, setForm] = useState({
     username: user?.username || '',
@@ -453,6 +455,7 @@ function UserForm({ user, locations, assetTypes, onClose, onSaved }) {
     try {
       if (isEdit) await api.put(`/users/${user.id}`, payload);
       else await api.post('/users', payload);
+      showToast(isEdit ? 'User updated successfully' : 'User created successfully', 'success');
       onSaved();
       onClose();
     } catch (e) {

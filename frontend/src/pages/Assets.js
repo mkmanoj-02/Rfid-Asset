@@ -248,6 +248,7 @@ function AddAssetModal({ types, locations, locationTree, tagTypes, vendors, onCl
       const values = Object.entries(attrValues).map(([attribute_id, value]) => ({ attribute_id, value }));
       await saveAssetAttributes(assetId, values);
     }
+    showToast('Asset created successfully', 'success');
     onSaved();
     onClose();
     } catch (e) {
@@ -1121,6 +1122,7 @@ function InventoryStatusCell({ status }) {
 
 // ── Bulk Change Location Modal ─────────────────────────────────
 function BulkChangeLocationModal({ selectedAssets, locations, locationTree, onClose, onSaved }) {
+  const { showToast } = useToast();
   const [newLocationId, setNewLocationId] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -1139,6 +1141,7 @@ function BulkChangeLocationModal({ selectedAssets, locations, locationTree, onCl
       }
     }
     if (firstErr) toastApiFailure(firstErr, 'Bulk change location');
+    else showToast(`Location updated for ${selectedAssets.length} asset${selectedAssets.length > 1 ? 's' : ''}`, 'success');
     setLoading(false);
     onSaved();
     onClose();
@@ -1177,6 +1180,7 @@ function BulkChangeLocationModal({ selectedAssets, locations, locationTree, onCl
   );
 }
 function UpdateAttributeModal({ selectedAssets, onClose, onSaved }) {
+  const { showToast } = useToast();
   const [allAttrs, setAllAttrs] = useState([]);
   const [selAttrId, setSelAttrId] = useState('');
   const [attrType, setAttrType] = useState('');
@@ -1230,6 +1234,7 @@ function UpdateAttributeModal({ selectedAssets, onClose, onSaved }) {
       }
     }
     if (firstErr) toastApiFailure(firstErr, 'Bulk update attributes');
+    else showToast(`Attribute updated for ${selectedAssets.length} asset${selectedAssets.length > 1 ? 's' : ''}`, 'success');
     setLoading(false);
     onSaved();
     onClose();
@@ -2208,6 +2213,7 @@ export default function Assets() {
 
 // ── Tag Types Master Tab ────────────────────────────────────────
 function TagTypes({ tagTypes, onReload }) {
+  const { showToast } = useToast();
   const [selected, setSelected] = useState(null);
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ name: '', description: '' });
@@ -2219,8 +2225,13 @@ function TagTypes({ tagTypes, onReload }) {
 
   const save = async () => {
     try {
-      if (editing) await updateTagType(editing, form);
-      else await createTagType(form);
+      if (editing) {
+        await updateTagType(editing, form);
+        showToast('Tag type updated', 'success');
+      } else {
+        await createTagType(form);
+        showToast('Tag type added', 'success');
+      }
     } catch (e) {
       toastApiFailure(e, 'Tag types');
       return;
@@ -2240,6 +2251,7 @@ function TagTypes({ tagTypes, onReload }) {
         try {
           await deleteTagType(id);
           if (selected?.id === id) setSelected(null);
+          showToast('Tag type deleted', 'success');
           await onReload();
         } catch (e) {
           toastApiFailure(e, 'Tag types');

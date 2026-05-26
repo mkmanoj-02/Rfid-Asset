@@ -84,7 +84,7 @@ export function ToastProvider({ children }) {
     <ToastContext.Provider value={{ showToast, clearToasts }}>
       {children}
       <div style={{
-        position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
+        position: 'fixed', top: 24, right: 24, zIndex: 9999,
         display: 'flex', flexDirection: 'column', gap: 10, pointerEvents: 'none',
       }}>
         {toasts.map((t) => {
@@ -95,7 +95,7 @@ export function ToastProvider({ children }) {
         })}
         <style>{`
           @keyframes toast-in {
-            from { opacity: 0; transform: translateY(12px); }
+            from { opacity: 0; transform: translateY(-12px); }
             to   { opacity: 1; transform: translateY(0); }
           }
         `}</style>

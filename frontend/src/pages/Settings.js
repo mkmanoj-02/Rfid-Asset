@@ -6,9 +6,11 @@ import {
   getAssetTypes
 } from '../api';
 import { toastApiFailure } from '../apiErrorHandling';
+import { useToast } from '../Toast';
 
 // ── Tag Types Management ───────────────────────────────────────
 function TagTypesTab() {
+  const { showToast } = useToast();
   const [items, setItems] = useState([]);
   const [search, setSearch] = useState('');
   const [modal, setModal] = useState(false);
@@ -35,8 +37,13 @@ function TagTypesTab() {
   const save = async () => {
     if (!form.name.trim()) { setError('Name is required'); return; }
     try {
-      if (editing) await updateTagType(editing, form);
-      else await createTagType(form);
+      if (editing) {
+        await updateTagType(editing, form);
+        showToast('Tag type updated', 'success');
+      } else {
+        await createTagType(form);
+        showToast('Tag type added', 'success');
+      }
       setModal(false); load();
     } catch (e) {
       toastApiFailure(e, 'Tag types');
@@ -48,6 +55,7 @@ function TagTypesTab() {
     if (!window.confirm('Delete this tag type?')) return;
     try {
       await deleteTagType(id);
+      showToast('Tag type deleted', 'success');
       load();
     } catch (e) {
       toastApiFailure(e, 'Tag types');
@@ -124,6 +132,7 @@ function TagTypesTab() {
 
 // ── Tag Recommendations ────────────────────────────────────────
 function TagRecommendationsTab() {
+  const { showToast } = useToast();
   const [recommendations, setRecommendations] = useState([]);
   const [assetTypes, setAssetTypes] = useState([]);
   const [tagTypes, setTagTypes] = useState([]);
@@ -160,6 +169,7 @@ function TagRecommendationsTab() {
     try {
       await saveTagRecommendation({ asset_type_id, ...editForm });
       setEditingId(null);
+      showToast('Recommendation updated', 'success');
       load();
     } catch (e) {
       toastApiFailure(e, 'Tag recommendation');
@@ -172,6 +182,7 @@ function TagRecommendationsTab() {
       await saveTagRecommendation(addForm);
       setShowAdd(false);
       setAddForm({ asset_type_id: '', tag_type_id: '', reason: '' });
+      showToast('Recommendation added', 'success');
       load();
     } catch (e) {
       toastApiFailure(e, 'Tag recommendation');
@@ -182,6 +193,7 @@ function TagRecommendationsTab() {
     if (!window.confirm('Remove this recommendation?')) return;
     try {
       await deleteTagRecommendation(asset_type_id);
+      showToast('Recommendation removed', 'success');
       load();
     } catch (e) {
       toastApiFailure(e, 'Tag recommendation');

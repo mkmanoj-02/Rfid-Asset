@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '../api';
 import { toastApiFailure } from '../apiErrorHandling';
+import { useToast } from '../Toast';
 
 const METHODS = ['SLM', 'WDV', 'Declining Balance'];
 const METHOD_DESC = {
@@ -13,6 +14,7 @@ const STATUS_COLORS = { success: '#10b981', failed: '#ef4444', partial: '#f59e0b
 
 // ── Depreciation Rules Tab ─────────────────────────────────────
 function RulesTab({ assetTypes }) {
+  const { showToast } = useToast();
   const [rules, setRules] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editRule, setEditRule] = useState(null);
@@ -32,6 +34,7 @@ function RulesTab({ assetTypes }) {
     const payload = { ...form, asset_type_name: at?.name };
     if (editRule) await api.put(`/depreciation/rules/${editRule.id}`, { ...payload, is_active: editRule.is_active });
     else await api.post('/depreciation/rules', payload);
+    showToast(editRule ? 'Depreciation rule updated' : 'Depreciation rule created', 'success');
     setShowForm(false); load();
     } catch (e) {
       toastApiFailure(e, 'Depreciation rule');
@@ -41,6 +44,7 @@ function RulesTab({ assetTypes }) {
   const toggleActive = async (rule) => {
     try {
       await api.put(`/depreciation/rules/${rule.id}`, { ...rule, is_active: !rule.is_active });
+      showToast(rule.is_active ? 'Rule deactivated' : 'Rule activated', 'success');
       load();
     } catch (e) {
       toastApiFailure(e, 'Depreciation rule');
@@ -51,6 +55,7 @@ function RulesTab({ assetTypes }) {
     if (!window.confirm('Delete this rule?')) return;
     try {
       await api.delete(`/depreciation/rules/${id}`);
+      showToast('Depreciation rule deleted', 'success');
       load();
     } catch (e) {
       toastApiFailure(e, 'Depreciation rule');
