@@ -114,7 +114,7 @@ export default function Movements() {
       <table>
         <thead>
           <tr>
-            <th>#</th>
+            <th>S.No</th>
             <th>Asset</th>
             <th>RFID Tag</th>
             <th>From</th>

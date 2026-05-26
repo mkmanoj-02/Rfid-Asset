@@ -604,7 +604,7 @@ function RulesTab({ locations, assetTypes }) {
                   disabled={rules.length === 0}
                 />
               </th>
-              <th style={{ width: 42 }}>#</th>
+              <th style={{ width: 48 }}>S.No</th>
               <th>Rule Name</th><th>Type</th><th>Location</th><th>Asset Type</th><th>Action</th><th>Active</th><th>Actions</th>
             </tr>
           </thead>

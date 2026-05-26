@@ -76,7 +76,7 @@ function TagTypesTab() {
         </div>
       </div>
       <table>
-        <thead><tr><th>#</th><th>Name</th><th>Description</th><th>Actions</th></tr></thead>
+        <thead><tr><th>S.No</th><th>Name</th><th>Description</th><th>Actions</th></tr></thead>
         <tbody>
           {filteredItems.map((item, i) => (
             <tr key={item.id}>
@@ -216,11 +216,12 @@ function TagRecommendationsTab() {
 
       <table>
         <thead>
-          <tr><th>Asset Type</th><th>Recommended Tag Type</th><th>Reason / Why</th><th>Actions</th></tr>
+          <tr><th>S.No</th><th>Asset Type</th><th>Recommended Tag Type</th><th>Reason / Why</th><th>Actions</th></tr>
         </thead>
         <tbody>
-          {filteredRecommendations.map(rec => (
+          {filteredRecommendations.map((rec, i) => (
             <tr key={rec.id}>
+              <td>{i + 1}</td>
               <td><strong>{rec.asset_type_name}</strong></td>
               <td>
                 {editingId === rec.asset_type_id ? (
@@ -262,10 +263,10 @@ function TagRecommendationsTab() {
             </tr>
           ))}
           {recommendations.length === 0 && (
-            <tr><td colSpan={4} style={{ textAlign: 'center', color: '#aaa', padding: 24 }}>No recommendations yet</td></tr>
+            <tr><td colSpan={5} style={{ textAlign: 'center', color: '#aaa', padding: 24 }}>No recommendations yet</td></tr>
           )}
           {recommendations.length > 0 && filteredRecommendations.length === 0 && (
-            <tr><td colSpan={4} style={{ textAlign: 'center', color: '#aaa', padding: 24 }}>No recommendations match your search</td></tr>
+            <tr><td colSpan={5} style={{ textAlign: 'center', color: '#aaa', padding: 24 }}>No recommendations match your search</td></tr>
           )}
         </tbody>
       </table>

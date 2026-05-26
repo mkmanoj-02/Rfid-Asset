@@ -1833,7 +1833,7 @@ export default function Assets() {
   }, [tableAttrColumns]);
 
   const exportBaseColumns = [
-    { header: '#', key: '_idx' },
+    { header: 'S.No', key: '_idx' },
     { header: 'Asset Serial', key: 'asset_serial' },
     { header: 'Asset Name', key: 'name' },
     { header: 'RFID Tag', key: 'rfid_tag' },
@@ -1846,7 +1846,7 @@ export default function Assets() {
   const exportTailColumns = [{ header: 'Inv / Missing', key: '_invLabel' }];
   const exportExcelColumns = [...exportBaseColumns, ...exportAttrColumns, ...exportTailColumns];
   const exportPDFColumns = [
-    { header: '#', key: '_idx' },
+    { header: 'S.No', key: '_idx' },
     { header: 'Asset Serial', key: 'asset_serial' },
     { header: 'Asset Name', key: 'name' },
     { header: 'RFID', key: 'rfid_tag' },
@@ -2029,7 +2029,7 @@ export default function Assets() {
                     onChange={toggleAll}
                   />
                 </th>
-                <th style={{ width: 42, padding: '10px 8px' }}>#</th>
+                <th style={{ width: 48, padding: '10px 8px' }}>S.No</th>
                 <SortTh col="asset_serial" label="Asset Serial" />
                 <SortTh col="name" label="Asset Name" />
                 <th>RFID</th>
