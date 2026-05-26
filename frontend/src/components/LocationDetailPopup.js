@@ -42,7 +42,11 @@ function LocationThumb({ imageUrl }) {
 }
 
 export default function LocationDetailPopup({ locationName, detail, loading, onClose }) {
-  const subLocs = detail?.subLocs ?? detail?.sub_locations ?? [];
+  const subLocsRaw = detail?.subLocs ?? detail?.sub_locations ?? [];
+  const locationId = detail?.id ?? detail?.loc?.id;
+  const subLocs = subLocsRaw.filter(
+    (s) => s.id !== locationId && s.name !== locationName
+  );
   const byType = detail?.byType ?? detail?.assets_by_type ?? [];
   const recentTx = detail?.recentTx ?? detail?.recent_transactions ?? [];
   const recentAlerts = detail?.recentAlerts ?? detail?.recent_alerts ?? [];
@@ -78,16 +82,12 @@ export default function LocationDetailPopup({ locationName, detail, loading, onC
               <div style={{ padding: 14, borderRight: '1px solid #e2e8f0' }}>
                 <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10, textAlign: 'center' }}>Inventory by Sub Location</div>
                 {subLocs.length === 0 && <div style={{ fontSize: 13, color: '#aaa', textAlign: 'center' }}>No sub-locations</div>}
-                {subLocs.map((s, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '4px 0', borderBottom: '1px solid #f7f8fc' }}>
+                {subLocs.map((s) => (
+                  <div key={s.id ?? s.name} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '4px 0', borderBottom: '1px solid #f7f8fc' }}>
                     <span>{s.name}</span>
                     <strong style={{ color: '#5a67d8' }}>{s.count}</strong>
                   </div>
                 ))}
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
-                  <span>{locationName}</span>
-                  <strong style={{ color: '#5a67d8' }}>{total}</strong>
-                </div>
               </div>
               <div style={{ padding: 14 }}>
                 <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10, textAlign: 'center' }}>Inventory by Asset Types</div>
