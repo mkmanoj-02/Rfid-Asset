@@ -189,10 +189,49 @@ function SmartFixDialog({
   );
 }
 
+/** Ensure each CSV column is assigned to at most one system field. */
+function normalizeSystemFieldMapping(mapping, fields, columns) {
+  const columnSet = new Set(columns);
+  const usedColumns = new Set();
+  const next = {};
+
+  fields.forEach((f) => {
+    const col = mapping[f.key];
+    if (!col || !columnSet.has(col) || usedColumns.has(col)) {
+      next[f.key] = '';
+      return;
+    }
+    usedColumns.add(col);
+    next[f.key] = col;
+  });
+
+  return next;
+}
+
+function applySystemFieldMapping(mapping, fields, fieldKey, csvColumn) {
+  const next = { ...mapping, [fieldKey]: csvColumn || '' };
+  if (csvColumn) {
+    fields.forEach((f) => {
+      if (f.key !== fieldKey && next[f.key] === csvColumn) {
+        next[f.key] = '';
+      }
+    });
+  }
+  return next;
+}
+
+function csvColumnOptionsForField(fieldKey, columns, mapping, fields) {
+  return columns.filter((c) => !fields.some((f) => f.key !== fieldKey && mapping[f.key] === c));
+}
+
 // ── Field Mapper ───────────────────────────────────────────────
 function FieldMapper({ fields, columns, mapping, attrMapping, attrTypes, onMappingChange, onAttrMappingChange, onAttrTypeChange }) {
   const mappedCols = Object.values(mapping).filter(Boolean);
   const unmappedCols = columns.filter(c => !mappedCols.includes(c));
+
+  const handleSystemMapping = (fieldKey, csvColumn) => {
+    onMappingChange(applySystemFieldMapping(mapping, fields, fieldKey, csvColumn));
+  };
 
   return (
     <div style={{ background: '#fff', borderRadius: 8, padding: 20, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginBottom: 20 }}>
@@ -208,11 +247,13 @@ function FieldMapper({ fields, columns, mapping, attrMapping, attrTypes, onMappi
             </label>
             <select
               value={mapping[f.key] || ''}
-              onChange={e => onMappingChange({ ...mapping, [f.key]: e.target.value })}
+              onChange={e => handleSystemMapping(f.key, e.target.value)}
               style={{ padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13 }}
             >
               <option value="">-Select-</option>
-              {columns.map(c => <option key={c} value={c}>{c}</option>)}
+              {csvColumnOptionsForField(f.key, columns, mapping, fields).map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
             </select>
             <div />
           </React.Fragment>
@@ -339,13 +380,14 @@ function ImportWizard({ title, fields, endpoint }) {
           if (match) auto[f.key] = match;
         }
       });
+      const normalizedAuto = normalizeSystemFieldMapping(auto, fields, headers);
       const savedAttrTypes = {};
       const savedAttrMapping = {};
       headers.forEach(h => {
         if (saved.attrTypes?.[h]) savedAttrTypes[h] = saved.attrTypes[h];
         if (saved.attrMapping?.[h]) savedAttrMapping[h] = saved.attrMapping[h];
       });
-      return { auto, savedAttrTypes, savedAttrMapping };
+      return { auto: normalizedAuto, savedAttrTypes, savedAttrMapping };
     } catch { return { auto: {}, savedAttrTypes: {}, savedAttrMapping: {} }; }
   };
 
