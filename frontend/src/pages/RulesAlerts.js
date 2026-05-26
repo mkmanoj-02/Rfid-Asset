@@ -18,31 +18,133 @@ function FilterBadge({ type }) {
   );
 }
 
+const DEFAULT_RULE_FORM = {
+  location_id: '',
+  include_sub_locations: false,
+  asset_type_id: '',
+  asset_action: '',
+  duration_value: '',
+  duration_unit: 'hours',
+  duration_condition: 'more_than',
+  inventory_condition: 'greater_than',
+  inventory_value: '',
+  attribute_id: '',
+  attribute_condition: 'is',
+  attribute_value: '',
+  maintenance_alert_value: '',
+  maintenance_alert_unit: 'days',
+  maintenance_condition: 'before',
+  action_type: 'system_alert',
+  action_email: '',
+  name: '',
+  description: '',
+};
+
+function buildRuleFormFromEdit(editRule) {
+  if (!editRule) return { ...DEFAULT_RULE_FORM };
+  return {
+    ...DEFAULT_RULE_FORM,
+    location_id: editRule.location_id || '',
+    include_sub_locations: !!editRule.include_sub_locations,
+    asset_type_id: editRule.asset_type_id || '',
+    asset_action: editRule.asset_action || '',
+    duration_value: editRule.duration_value ?? '',
+    duration_unit: editRule.duration_unit || 'hours',
+    duration_condition: editRule.duration_condition || 'more_than',
+    inventory_condition: editRule.inventory_condition || 'greater_than',
+    inventory_value: editRule.inventory_value ?? '',
+    attribute_id: editRule.attribute_id || '',
+    attribute_condition: editRule.attribute_condition || 'is',
+    attribute_value: editRule.attribute_value ?? '',
+    maintenance_alert_value: editRule.maintenance_alert_value ?? '',
+    maintenance_alert_unit: editRule.maintenance_alert_unit || 'days',
+    maintenance_condition: editRule.maintenance_condition || 'before',
+    action_type: editRule.action_type || 'system_alert',
+    action_email: editRule.action_email || '',
+    name: editRule.name || '',
+    description: editRule.description || '',
+  };
+}
+
+/** Step 4 fields — cleared when leaving Action & Save via Back. */
+const ACTION_SAVE_FIELD_DEFAULTS = {
+  action_type: DEFAULT_RULE_FORM.action_type,
+  action_email: DEFAULT_RULE_FORM.action_email,
+  name: DEFAULT_RULE_FORM.name,
+  description: DEFAULT_RULE_FORM.description,
+};
+
+/** Step 3 fields per filter — cleared when leaving Condition via Back. */
+function conditionFieldDefaults(filterType) {
+  if (filterType === 'asset') {
+    return {
+      asset_action: DEFAULT_RULE_FORM.asset_action,
+      duration_value: DEFAULT_RULE_FORM.duration_value,
+      duration_unit: DEFAULT_RULE_FORM.duration_unit,
+      duration_condition: DEFAULT_RULE_FORM.duration_condition,
+    };
+  }
+  if (filterType === 'inventory') {
+    return {
+      inventory_condition: DEFAULT_RULE_FORM.inventory_condition,
+      inventory_value: DEFAULT_RULE_FORM.inventory_value,
+    };
+  }
+  if (filterType === 'maintenance') {
+    return {
+      attribute_id: DEFAULT_RULE_FORM.attribute_id,
+      maintenance_alert_value: DEFAULT_RULE_FORM.maintenance_alert_value,
+      maintenance_alert_unit: DEFAULT_RULE_FORM.maintenance_alert_unit,
+      maintenance_condition: DEFAULT_RULE_FORM.maintenance_condition,
+    };
+  }
+  return {};
+}
+
 // ── Step Wizard for Rule Creation ──────────────────────────────
 function RuleWizard({ locations, assetTypes, onClose, onSaved, editRule }) {
   const [step, setStep] = useState(1);
   const [filterType, setFilterType] = useState(editRule?.filter_type || '');
-  const [form, setForm] = useState({
-    location_id: editRule?.location_id || '',
-    include_sub_locations: editRule?.include_sub_locations || false,
-    asset_type_id: editRule?.asset_type_id || '',
-    asset_action: editRule?.asset_action || '',
-    duration_value: editRule?.duration_value || '',
-    duration_unit: editRule?.duration_unit || 'hours',
-    duration_condition: editRule?.duration_condition || 'more_than',
-    inventory_condition: editRule?.inventory_condition || 'greater_than',
-    inventory_value: editRule?.inventory_value || '',
-    attribute_id: editRule?.attribute_id || '',
-    attribute_condition: editRule?.attribute_condition || 'is',
-    attribute_value: editRule?.attribute_value || '',
-    maintenance_alert_value: editRule?.maintenance_alert_value || '',
-    maintenance_alert_unit: editRule?.maintenance_alert_unit || 'days',
-    maintenance_condition: editRule?.maintenance_condition || 'before',
-    action_type: editRule?.action_type || 'system_alert',
-    action_email: editRule?.action_email || '',
-    name: editRule?.name || '',
-    description: editRule?.description || '',
-  });
+  const [form, setForm] = useState(() => buildRuleFormFromEdit(editRule));
+
+  const resetWizardForm = () => setForm({ ...DEFAULT_RULE_FORM });
+
+  const clearFromConditionStep = () => {
+    setForm((prev) => ({
+      ...prev,
+      ...conditionFieldDefaults(filterType),
+      ...ACTION_SAVE_FIELD_DEFAULTS,
+    }));
+  };
+
+  const clearFromActionStep = () => {
+    setForm((prev) => ({ ...prev, ...ACTION_SAVE_FIELD_DEFAULTS }));
+  };
+
+  /** Filter step: full reset (also when re-selecting the same filter). */
+  const handleFilterTypeSelect = (key) => {
+    setFilterType(key);
+    resetWizardForm();
+    setStep(1);
+  };
+
+  /** Back → Filter: clear all steps (location, condition, action). */
+  const goBackToFilterStep = () => {
+    resetWizardForm();
+    setStep(1);
+  };
+
+  /** Back → Location & Type: keep location/type; clear condition + action. */
+  const goBackToLocationStep = () => {
+    clearFromConditionStep();
+    setStep(2);
+  };
+
+  /** Back → Condition: keep location/type + condition; clear action + save. */
+  const goBackToConditionStep = () => {
+    clearFromActionStep();
+    setStep(3);
+  };
   const [allAttrs, setAllAttrs] = useState([]);
   const [allDateAttrs, setAllDateAttrs] = useState([]);
 
@@ -119,7 +221,7 @@ function RuleWizard({ locations, assetTypes, onClose, onSaved, editRule }) {
                 { key: 'inventory', label: 'Inventory Filter', desc: 'Alert based on asset count at a location' },
                 { key: 'maintenance', label: 'Maintenance Filter', desc: 'Alert based on date attributes (warranty, maintenance)' },
               ].map(f => (
-                <div key={f.key} onClick={() => setFilterType(f.key)}
+                <div key={f.key} onClick={() => handleFilterTypeSelect(f.key)}
                   style={{ padding: 16, border: `2px solid ${filterType === f.key ? '#7c8cf8' : '#e2e8f0'}`, borderRadius: 8, cursor: 'pointer', background: filterType === f.key ? '#f0f2ff' : '#fff' }}>
                   <div style={{ fontWeight: 600, fontSize: 14, color: FILTER_COLORS[f.key], marginBottom: 4 }}>{f.label}</div>
                   <div style={{ fontSize: 12, color: '#888' }}>{f.desc}</div>
@@ -168,7 +270,7 @@ function RuleWizard({ locations, assetTypes, onClose, onSaved, editRule }) {
               </div>
             </div>
             <div className="modal-actions">
-              <button className="btn btn-secondary" onClick={() => setStep(1)}>← Back</button>
+              <button className="btn btn-secondary" onClick={goBackToFilterStep}>← Back</button>
               <button className="btn btn-primary" onClick={() => setStep(3)}>Next →</button>
             </div>
           </div>
@@ -277,7 +379,7 @@ function RuleWizard({ locations, assetTypes, onClose, onSaved, editRule }) {
               )}
             </div>
             <div className="modal-actions">
-              <button className="btn btn-secondary" onClick={() => setStep(2)}>← Back</button>
+              <button className="btn btn-secondary" onClick={goBackToLocationStep}>← Back</button>
               <button className="btn btn-primary" onClick={() => setStep(4)}>Next →</button>
             </div>
           </div>
@@ -319,7 +421,7 @@ function RuleWizard({ locations, assetTypes, onClose, onSaved, editRule }) {
               </div>
             </div>
             <div className="modal-actions">
-              <button className="btn btn-secondary" onClick={() => setStep(3)}>← Back</button>
+              <button className="btn btn-secondary" onClick={goBackToConditionStep}>← Back</button>
               <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
               <button className="btn btn-primary" onClick={save}>Save Rule</button>
             </div>
