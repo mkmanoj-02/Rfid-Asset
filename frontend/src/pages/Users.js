@@ -441,6 +441,11 @@ function UserForm({ user, locations, assetTypes, onClose, onSaved }) {
   const validate = () => {
     const e = {};
     if (!form.username.trim()) e.username = 'Required';
+    const emailTrim = form.email.trim();
+    if (!emailTrim) e.email = 'Required';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) {
+      e.email = 'Enter a valid email address';
+    }
     if (!isEdit && !form.password) e.password = 'Required';
     if (form.password && form.password !== form.confirm_password) e.confirm_password = 'Passwords do not match';
     setErrors(e);
@@ -449,7 +454,7 @@ function UserForm({ user, locations, assetTypes, onClose, onSaved }) {
 
   const save = async () => {
     if (!validate()) return;
-    const payload = { ...form };
+    const payload = { ...form, email: form.email.trim() };
     delete payload.confirm_password;
     if (!payload.password) delete payload.password;
     try {
@@ -515,17 +520,18 @@ function UserForm({ user, locations, assetTypes, onClose, onSaved }) {
 
           {/* Email */}
           <div className="form-row">
-            <label>Email</label>
+            <label>Email <span className="required">*</span></label>
             <div className="field-wrap">
               <input
-                type="text"
+                type="email"
                 inputMode="email"
                 name="rfid-user-email"
                 autoComplete="off"
                 value={form.email}
                 onChange={e => setForm({ ...form, email: e.target.value })}
-                placeholder="Enter email (optional)"
+                placeholder="Enter email"
               />
+              {errors.email && <span className="field-error">{errors.email}</span>}
             </div>
           </div>
 

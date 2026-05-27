@@ -1862,28 +1862,42 @@ export default function Assets() {
     ...exportAttrColumns,
     { header: 'Inventory / Missing', key: '_invLabel' },
   ];
-  const fetchAllForExport = () =>
-    getAssets({
+  /** Backend caps each page at 500 — fetch every page for full export. */
+  const EXPORT_PAGE_SIZE = 500;
+
+  const fetchAllForExport = useCallback(async () => {
+    const baseParams = {
       search: search || '',
       location_id: filterLocation || '',
       asset_type_id: filterType || '',
       ...(filterInventoryStatus ? { asset_inventory_status: filterInventoryStatus } : {}),
-      page: 1,
-      limit: total || 99999,
       sort: sortKey,
       sort_dir: sortDir,
-    })
-      .then((r) => {
+      limit: EXPORT_PAGE_SIZE,
+    };
+    const all = [];
+    try {
+      let page = 1;
+      let totalPages = 1;
+      do {
+        const r = await getAssets({ ...baseParams, page });
         const data = r.data;
-        if (data && data.pagination && Array.isArray(data.data)) return data.data;
-        if (Array.isArray(data)) return data;
-        if (data && Array.isArray(data.assets)) return data.assets;
-        return [];
-      })
-      .catch((e) => {
-        toastApiFailure(e, 'Export');
-        return [];
-      });
+        if (data?.pagination && Array.isArray(data.data)) {
+          all.push(...data.data);
+          totalPages = Math.max(1, data.pagination.totalPages ?? 1);
+        } else if (Array.isArray(data)) {
+          return data;
+        } else if (data && Array.isArray(data.assets)) {
+          return data.assets;
+        }
+        page += 1;
+      } while (page <= totalPages);
+      return all;
+    } catch (e) {
+      toastApiFailure(e, 'Export');
+      return [];
+    }
+  }, [search, filterLocation, filterType, filterInventoryStatus, sortKey, sortDir]);
 
   if (selected) {
     return (
@@ -1912,11 +1926,15 @@ export default function Assets() {
           <ExportButtons
             onExcel={async () => {
               const all = await fetchAllForExport();
+              if (!all.length) return;
               exportExcel(exportExcelColumns, buildExportRowExtras(all), 'assets');
+              showToast(`Exported ${all.length} asset${all.length !== 1 ? 's' : ''} to Excel`, 'success');
             }}
             onPDF={async () => {
               const all = await fetchAllForExport();
+              if (!all.length) return;
               exportPDF(exportPDFColumns, buildExportRowExtras(all), 'Asset List', 'assets');
+              showToast(`Exported ${all.length} asset${all.length !== 1 ? 's' : ''} to PDF`, 'success');
             }}
           />
           <span style={{ fontSize: 13, color: '#555' }}>Sorted By</span>
