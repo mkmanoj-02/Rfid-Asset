@@ -7,6 +7,16 @@ function cellValue(row, key) {
   return v === null || v === undefined || v === '' ? '—' : v;
 }
 
+/** jsPDF Helvetica only supports WinAnsi — normalize Unicode before drawing text. */
+function pdfSafeText(value) {
+  return String(value ?? '')
+    .replace(/\u2192/g, ' to ')   // →
+    .replace(/\u2014/g, '-')      // —
+    .replace(/\u2013/g, '-')      // –
+    .replace(/\u00b7/g, ' - ')    // ·
+    .replace(/\u2026/g, '...');   // …
+}
+
 function columnWidths(columns, rows) {
   return columns.map((c) => {
     let maxLen = c.header.length;
@@ -125,11 +135,15 @@ const PDF_TABLE_OPTS = {
 };
 
 function pdfColumnHeaders(columns) {
-  return (columns || []).map((c) => (c?.header != null ? String(c.header) : String(c?.key ?? '')));
+  return (columns || []).map((c) =>
+    pdfSafeText(c?.header != null ? String(c.header) : String(c?.key ?? ''))
+  );
 }
 
 function pdfTableBody(columns, rows) {
-  return rows.map((row) => columns.map((c) => String(cellValue(row, c.key))));
+  return rows.map((row) =>
+    columns.map((c) => pdfSafeText(String(cellValue(row, c.key))))
+  );
 }
 
 function drawPdfHeader(doc, title) {
@@ -141,7 +155,7 @@ function drawPdfHeader(doc, title) {
   doc.text('RFID Asset Management System', 14, 10);
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
-  doc.text(title, 14, 17);
+  doc.text(pdfSafeText(title), 14, 17);
   const now = new Date().toLocaleString('en-GB', {
     day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
@@ -157,7 +171,7 @@ function drawPdfFooters(doc) {
     doc.setFontSize(7);
     doc.setTextColor(148, 163, 184);
     doc.text(
-      `Page ${i} of ${pageCount}  ·  RFID Asset Management System`,
+      pdfSafeText(`Page ${i} of ${pageCount}  ·  RFID Asset Management System`),
       297 / 2, 205, { align: 'center' }
     );
   }
@@ -196,7 +210,7 @@ export function exportPDFSections(sections, title = 'Report', filename = 'export
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
     doc.setTextColor(15, 23, 42);
-    doc.text(`${section.title}${countLabel}`, 14, startY);
+    doc.text(pdfSafeText(`${section.title}${countLabel}`), 14, startY);
     startY += 5;
 
     autoTable(doc, {
