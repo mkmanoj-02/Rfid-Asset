@@ -56,6 +56,25 @@ function getAncestorIds(items, id) {
   return ancestors;
 }
 
+function getDescendantIds(items, id) {
+  const childrenByParent = {};
+  for (const i of items) {
+    const p = i.parent_id ?? null;
+    if (!childrenByParent[p]) childrenByParent[p] = [];
+    childrenByParent[p].push(Number(i.id));
+  }
+  const descendants = [];
+  const stack = [Number(id)];
+  while (stack.length) {
+    const n = stack.pop();
+    for (const childId of childrenByParent[n] || []) {
+      descendants.push(childId);
+      stack.push(childId);
+    }
+  }
+  return descendants;
+}
+
 function addPrivSelectionWithAncestors(items, sel, id) {
   const toAdd = [Number(id), ...getAncestorIds(items, id)];
   const next = [...sel];
@@ -63,6 +82,21 @@ function addPrivSelectionWithAncestors(items, sel, id) {
     if (!next.some((v) => Number(v) === x)) next.push(x);
   });
   return next;
+}
+
+/** Select node, its ancestors, and all descendants (for location tree cascade). */
+function addPrivSelectionWithTree(items, sel, id) {
+  const toAdd = [Number(id), ...getAncestorIds(items, id), ...getDescendantIds(items, id)];
+  const next = [...sel];
+  toAdd.forEach((x) => {
+    if (!next.some((v) => Number(v) === x)) next.push(x);
+  });
+  return next;
+}
+
+function removePrivSelectionSubtree(items, sel, id) {
+  const remove = new Set([Number(id), ...getDescendantIds(items, id)]);
+  return sel.filter((x) => !remove.has(Number(x)));
 }
 
 function allPrivItemIds(items) {
@@ -91,11 +125,10 @@ function PrivilegeTreePicker({
   onSave,
   title,
   hint,
-  allLabel,
-  radioName,
   saveLabelSingular,
   emptyLabel,
   renderNodeExtra,
+  cascadeDescendants = false,
 }) {
   const [sel, setSel] = useState(() => normalizePrivSelection(selected));
   const [expanded, setExpanded] = useState({});
@@ -117,15 +150,25 @@ function PrivilegeTreePicker({
   const selectAll = () => setSel(allPrivItemIds(items));
   const unselectAll = () => setSel(null);
 
+  const addSelection = (base, nid) =>
+    cascadeDescendants
+      ? addPrivSelectionWithTree(items, base, nid)
+      : addPrivSelectionWithAncestors(items, base, nid);
+
+  const removeSelection = (base, nid) =>
+    cascadeDescendants
+      ? removePrivSelectionSubtree(items, base, nid)
+      : base.filter((x) => Number(x) !== nid);
+
   const toggle = (id) => {
     const nid = Number(id);
     if (allowAll) {
-      setSel(addPrivSelectionWithAncestors(items, [], nid));
+      setSel(addSelection([], nid));
       return;
     }
     const next = privSelectionIncludes(sel, nid)
-      ? sel.filter((x) => Number(x) !== nid)
-      : addPrivSelectionWithAncestors(items, sel, nid);
+      ? removeSelection(sel, nid)
+      : addSelection(sel, nid);
     setSel(next.length ? next : null);
   };
 
@@ -211,23 +254,7 @@ function PrivilegeTreePicker({
           </button>
         </div>
 
-        <label
-          style={{
-            padding: '9px 12px', cursor: 'pointer', fontSize: 13,
-            background: allowAll ? '#eff6ff' : '#fafbfc',
-            fontWeight: allowAll ? 600 : 400,
-            color: allowAll ? '#2563EB' : '#374151',
-            borderBottom: '2px solid #e2e8f0',
-            borderRadius: '6px 6px 0 0',
-            display: 'flex', alignItems: 'center', gap: 8,
-            margin: 0,
-          }}
-        >
-          <input type="radio" name={radioName} checked={allowAll} onChange={() => setSel(null)} style={{ accentColor: '#2563EB' }} />
-          {allLabel}
-        </label>
-
-        <div style={{ maxHeight: 360, overflowY: 'auto', border: '1px solid #e2e8f0', borderTop: 'none', borderRadius: '0 0 6px 6px', marginBottom: 16 }}>
+        <div style={{ maxHeight: 360, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 6, marginBottom: 16 }}>
           {items.length === 0
             ? <div style={{ padding: 16, color: '#aaa', fontSize: 13, textAlign: 'center' }}>{emptyLabel}</div>
             : tree.map((node) => renderNode(node))
@@ -251,10 +278,9 @@ function LocationTreePicker(props) {
       {...props}
       items={props.locations}
       title="Location Privileges"
-      hint="Select locations. Sub-locations are automatically included at runtime."
-      allLabel="— Any Location (All) —"
-      radioName="location-priv-allow-all"
+      hint="Select a parent location to include all sub-locations automatically. You can still uncheck individual sub-locations if needed."
       saveLabelSingular="Location"
+      cascadeDescendants
       emptyLabel="No locations found"
       renderNodeExtra={(node) => (
         node.location_type_name ? (
@@ -274,8 +300,6 @@ function AssetTypeTreePicker(props) {
       items={props.assetTypes}
       title="Asset Type Privileges"
       hint="Select asset types. Child types under a selected parent are included automatically."
-      allLabel="— Any Asset Type (All) —"
-      radioName="asset-type-priv-allow-all"
       saveLabelSingular="Type"
       emptyLabel="No asset types found"
       renderNodeExtra={(node, depth) => (
