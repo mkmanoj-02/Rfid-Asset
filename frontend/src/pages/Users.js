@@ -431,16 +431,15 @@ function AssetPrivilegePicker({ current, onClose, onSave, assetTypes = [] }) {
 
   return (
     <div className="modal-overlay" style={{ zIndex: 400 }}>
-      <div className="modal" style={{ width: 500 }}>
+      <div className="modal asset-priv-modal">
         <h2 style={{ fontSize: 15, marginBottom: 4 }}>Attribute based Asset Privilege</h2>
         <p style={{ fontSize: 12, color: '#888', marginBottom: 16 }}>Select an attribute and enter a value. Only assets matching ALL entries will be visible.</p>
 
-        {/* Attribute selector + value + Add */}
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16 }}>
+        <div className="asset-priv-add-row">
           <select
             value={selAttr}
             onChange={e => { setSelAttr(e.target.value); setSelVal(''); }}
-            style={{ flex: 1, padding: '7px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13 }}
+            aria-label="Select attribute"
           >
             <option value="">- Select attribute -</option>
             {allAttrs.map(a => (
@@ -456,7 +455,7 @@ function AssetPrivilegePicker({ current, onClose, onSave, assetTypes = [] }) {
                 value={selVal}
                 onChange={e => setSelVal(e.target.value)}
                 disabled={listOptionsLoading}
-                style={{ flex: 1, padding: '7px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13 }}
+                aria-label="Attribute value"
               >
                 <option value="">{listOptionsLoading ? 'Loading values…' : '- Select value -'}</option>
                 {(selectedAttr.list_options || []).map(o => <option key={o.id} value={o.option_value}>{o.option_value}</option>)}
@@ -467,12 +466,17 @@ function AssetPrivilegePicker({ current, onClose, onSave, assetTypes = [] }) {
                 onChange={e => setSelVal(e.target.value)}
                 placeholder="Enter value"
                 type={selectedAttr.attr_type === 'double' ? 'number' : selectedAttr.attr_type === 'date' ? 'date' : 'text'}
-                style={{ flex: 1, padding: '7px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13 }}
+                aria-label="Attribute value"
               />
             )
           )}
 
-          <button className="btn btn-secondary btn-sm" onClick={addEntry} disabled={!selAttr || !selVal}>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm asset-priv-add-btn"
+            onClick={addEntry}
+            disabled={!selAttr || !selVal}
+          >
             Add Attribute
           </button>
         </div>
