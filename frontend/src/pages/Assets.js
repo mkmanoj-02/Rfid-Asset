@@ -1796,15 +1796,15 @@ export default function Assets() {
     return <span style={{ color: '#7c8cf8', marginLeft: 4 }}>{sortDir === 'asc' ? '↑' : '↓'}</span>;
   };
 
-  const SortTh = ({ col, label, align = 'left' }) => (
+  const SortTh = ({ col, label, align = 'left', className = '' }) => (
     <th
+      className={className}
       onClick={() => handleSort(col)}
       style={{
         cursor: 'pointer',
         userSelect: 'none',
         whiteSpace: 'nowrap',
         textAlign: align === 'center' ? 'center' : undefined,
-        ...(align === 'center' ? { minWidth: 108 } : {}),
       }}
     >
       {label}<SortIcon col={col} />
@@ -2040,11 +2040,14 @@ export default function Assets() {
 
       <div className="assets-page-table-wrap">
       <div className="assets-page-table-card">
-        <div className="assets-table-scroll">
-          <table className="assets-data-table" style={{ minWidth: tableMinWidth }}>
+        <div
+          className="assets-table-scroll"
+          style={{ '--assets-table-floor': `${tableMinWidth}px` }}
+        >
+          <table className="assets-data-table">
             <thead>
               <tr>
-                <th style={{ width: 36, padding: '10px 12px' }}>
+                <th className="assets-col-check" style={{ padding: '10px 12px' }}>
                   <input
                     type="checkbox"
                     ref={el => { if (el) el.indeterminate = somePageChecked && !allPageChecked; }}
@@ -2052,22 +2055,22 @@ export default function Assets() {
                     onChange={toggleAll}
                   />
                 </th>
-                <th style={{ width: 48, padding: '10px 8px' }}>S.No</th>
-                <SortTh col="asset_serial" label="Asset Serial" />
-                <SortTh col="name" label="Asset Name" />
-                <th>RFID</th>
-                <th>Tag Type</th>
-                <SortTh col="asset_type_name" label="Asset Type" />
-                <SortTh col="location_name" label="Location" />
-                <SortTh col="lastseen" label="Last Seen Time" />
+                <th className="assets-col-num" style={{ padding: '10px 8px' }}>S.No</th>
+                <SortTh col="asset_serial" label="Asset Serial" className="assets-col-flex" />
+                <SortTh col="name" label="Asset Name" className="assets-col-flex" />
+                <th className="assets-col-flex">RFID</th>
+                <th className="assets-col-flex">Tag Type</th>
+                <SortTh col="asset_type_name" label="Asset Type" className="assets-col-flex" />
+                <SortTh col="location_name" label="Location" className="assets-col-flex" />
+                <SortTh col="lastseen" label="Last Seen Time" className="assets-col-flex" />
                 {tableAttrColumns.map(col => (
-                  <th key={col.name} className="assets-attr-th" title={col.attr_type ? `${col.name} (${col.attr_type})` : col.name}>
+                  <th key={col.name} className="assets-attr-th assets-col-flex" title={col.attr_type ? `${col.name} (${col.attr_type})` : col.name}>
                     {col.name}
                   </th>
                 ))}
-                <SortTh col="asset_inventory_status" label="Inv / Missing" align="center" />
-                <th style={{ width: 52, padding: '10px 8px', textAlign: 'center' }}>Image</th>
-                <th style={{ width: 130, textAlign: 'center' }}>Actions</th>
+                <SortTh col="asset_inventory_status" label="Inv / Missing" align="center" className="assets-col-inv" />
+                <th className="assets-col-image" style={{ padding: '10px 8px', textAlign: 'center' }}>Image</th>
+                <th className="assets-col-actions" style={{ textAlign: 'center' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -2084,34 +2087,34 @@ export default function Assets() {
                 const lastSeenDisp = formatAssetLastSeenDisplay(lastSeenRaw);
                 return (
                 <tr key={item.id} style={{ background: checkedIds.has(item.id) ? '#f0f4ff' : 'inherit' }}>
-                  <td style={{ padding: '10px 12px' }}><input type="checkbox" checked={checkedIds.has(item.id)} onChange={() => toggleCheck(item.id)} /></td>
-                  <td style={{ padding: '10px 8px', color: '#9ca3af', fontSize: 12 }}>{(currentPage - 1) * pageSize + i + 1}</td>
-                  <td style={{ maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.asset_serial || ''}>{item.asset_serial || '—'}</td>
-                  <td style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.name}>
+                  <td className="assets-col-check" style={{ padding: '10px 12px' }}><input type="checkbox" checked={checkedIds.has(item.id)} onChange={() => toggleCheck(item.id)} /></td>
+                  <td className="assets-col-num" style={{ padding: '10px 8px', color: '#9ca3af', fontSize: 12 }}>{(currentPage - 1) * pageSize + i + 1}</td>
+                  <td className="assets-col-flex" title={item.asset_serial || ''}>{item.asset_serial || '—'}</td>
+                  <td className="assets-col-flex" title={item.name}>
                     <span style={{ cursor: 'pointer', color: '#1565c0', fontWeight: 600 }} onClick={() => setSelected(item)}>{item.name}</span>
                   </td>
-                  <td style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.rfid_tag || ''}>
+                  <td className="assets-col-flex" title={item.rfid_tag || ''}>
                     <code style={{ fontSize: 12, background: '#f1f5f9', padding: '2px 6px', borderRadius: 4 }}>{item.rfid_tag || '—'}</code>
                   </td>
-                  <td style={{ whiteSpace: 'nowrap' }}>{item.tag_type_name || '—'}</td>
-                  <td style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.asset_type_name || ''}>{item.asset_type_name || '—'}</td>
-                  <td style={{ maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.location_name || ''}>{item.location_name || '—'}</td>
-                  <td style={{ maxWidth: 152, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12, color: '#475569' }} title={lastSeenDisp === '—' ? undefined : String(lastSeenRaw ?? '')}>
+                  <td className="assets-col-flex">{item.tag_type_name || '—'}</td>
+                  <td className="assets-col-flex" title={item.asset_type_name || ''}>{item.asset_type_name || '—'}</td>
+                  <td className="assets-col-flex" title={item.location_name || ''}>{item.location_name || '—'}</td>
+                  <td className="assets-col-flex" style={{ fontSize: 12, color: '#475569' }} title={lastSeenDisp === '—' ? undefined : String(lastSeenRaw ?? '')}>
                     {lastSeenDisp}
                   </td>
                   {tableAttrColumns.map(col => {
                     const cell = getAssetAttrValueDisplay(item, col.name);
                     return (
-                      <td key={col.name} className="assets-attr-td" title={cell === '—' ? undefined : cell}>{cell}</td>
+                      <td key={col.name} className="assets-attr-td assets-col-flex" title={cell === '—' ? undefined : cell}>{cell}</td>
                     );
                   })}
-                  <td style={{ textAlign: 'center', verticalAlign: 'middle' }} title={inventoryStatusLabel(item.asset_inventory_status)}>
+                  <td className="assets-col-inv" style={{ textAlign: 'center', verticalAlign: 'middle' }} title={inventoryStatusLabel(item.asset_inventory_status)}>
                     <InventoryStatusCell status={item.asset_inventory_status} />
                   </td>
-                  <td style={{ padding: '10px 8px', textAlign: 'center', verticalAlign: 'middle' }}>
+                  <td className="assets-col-image" style={{ padding: '10px 8px', textAlign: 'center', verticalAlign: 'middle' }}>
                     <AssetTableThumb imageUrl={item.image_url} name={item.name} />
                   </td>
-                  <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                  <td className="assets-col-actions" style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                     <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
                       <button className="btn btn-secondary btn-sm" onClick={() => setSelected(item)}>View</button>
                       {canDelete && <button className="btn btn-danger btn-sm" onClick={() => remove(item.id)}>Delete</button>}

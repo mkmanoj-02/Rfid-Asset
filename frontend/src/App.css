@@ -870,6 +870,8 @@ tr:hover td { background: #f8fafc; }
 .assets-page {
   flex: 1;
   min-height: 0;
+  min-width: 0;
+  width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -901,12 +903,16 @@ tr:hover td { background: #f8fafc; }
 .assets-page-table-wrap {
   flex: 1;
   min-height: 0;
+  min-width: 0;
+  width: 100%;
   display: flex;
   flex-direction: column;
 }
 .assets-page-table-card {
   flex: 1;
   min-height: 0;
+  min-width: 0;
+  width: 100%;
   display: flex;
   flex-direction: column;
   background: #fff;
@@ -942,7 +948,10 @@ tr:hover td { background: #f8fafc; }
   background: transparent;
 }
 .assets-data-table {
-  width: max-content;
+  /* Fill the card on wide viewports; grow past 100% when columns need horizontal scroll */
+  width: 100%;
+  width: max(100%, max-content);
+  min-width: var(--assets-table-floor, 1120px);
   border-collapse: separate;
   border-spacing: 0;
   background: #fff;
@@ -979,6 +988,13 @@ tr:hover td { background: #f8fafc; }
 .assets-data-table thead tr {
   box-shadow: 0 2px 4px rgba(15, 23, 42, 0.06);
 }
+/* Fixed-width columns; remaining width goes to flexible data columns */
+.assets-data-table .assets-col-check { width: 36px; }
+.assets-data-table .assets-col-num { width: 48px; }
+.assets-data-table .assets-col-image { width: 52px; }
+.assets-data-table .assets-col-actions { width: 130px; }
+.assets-data-table .assets-col-inv { width: 108px; }
+.assets-data-table .assets-col-flex { width: auto; min-width: 88px; }
 .assets-bulk-bar {
   flex-shrink: 0;
   display: flex;
@@ -1250,7 +1266,7 @@ tr:hover td { background: #f8fafc; }
   text-overflow: ellipsis;
   vertical-align: middle;
 }
-.assets-attr-td { font-size: 13px; color: #334155; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.assets-attr-td { font-size: 13px; color: #334155; }
 
 /* ── Scrollable modal overlay (form modals) ──────────────────── */
 .modal-overlay--scroll {
