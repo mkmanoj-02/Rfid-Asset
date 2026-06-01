@@ -522,26 +522,86 @@ function AssetPrivilegePicker({ current, onClose, onSave, assetTypes = [] }) {
 function UserForm({ user, locations, assetTypes, onClose, onSaved }) {
   const { showToast } = useToast();
   const isEdit = !!user;
+  const initialProfileType = user?.profile_type || 'admin';
+  const initialReadOnly = initialProfileType === 'normal';
+  /** New users default to Administrator with modify/delete enabled on all privilege scopes. */
+  const defaultPrivilegeActions = !user && !initialReadOnly;
   const [form, setForm] = useState({
     username: user?.username || '',
     email: user?.email || '',
-    profile_type: user?.profile_type || 'admin',
+    profile_type: initialProfileType,
     password: '',
     confirm_password: '',
     location_privileges: parsePriv(user?.location_privileges),
-    location_can_modify: user?.location_can_modify !== 0,
-    location_can_delete: user?.location_can_delete !== 0,
+    location_can_modify: defaultPrivilegeActions || (!initialReadOnly && user?.location_can_modify !== 0),
+    location_can_delete: defaultPrivilegeActions || (!initialReadOnly && user?.location_can_delete !== 0),
     asset_type_privileges: parsePriv(user?.asset_type_privileges),
-    asset_type_can_modify: user?.asset_type_can_modify !== 0,
-    asset_type_can_delete: user?.asset_type_can_delete !== 0,
+    asset_type_can_modify: defaultPrivilegeActions || (!initialReadOnly && user?.asset_type_can_modify !== 0),
+    asset_type_can_delete: defaultPrivilegeActions || (!initialReadOnly && user?.asset_type_can_delete !== 0),
     asset_privileges: user?.asset_privileges ? (typeof user.asset_privileges === 'string' ? JSON.parse(user.asset_privileges) : user.asset_privileges) : null,
-    asset_can_modify: user?.asset_can_modify !== 0,
-    asset_can_delete: user?.asset_can_delete !== 0,
+    asset_can_modify: defaultPrivilegeActions || (!initialReadOnly && user?.asset_can_modify !== 0),
+    asset_can_delete: defaultPrivilegeActions || (!initialReadOnly && user?.asset_can_delete !== 0),
   });
   const [errors, setErrors] = useState({});
   const [showLocPicker, setShowLocPicker] = useState(false);
   const [showAssetTypePicker, setShowAssetTypePicker] = useState(false);
   const [assetPrivPicker, setAssetPrivPicker] = useState(false);
+
+  const isReadOnlyProfile = form.profile_type === 'normal';
+
+  const fullPrivilegeActions = {
+    location_can_modify: true,
+    location_can_delete: true,
+    asset_type_can_modify: true,
+    asset_type_can_delete: true,
+    asset_can_modify: true,
+    asset_can_delete: true,
+  };
+
+  const handleProfileTypeChange = (profileType) => {
+    if (profileType === 'normal') {
+      setForm((f) => ({
+        ...f,
+        profile_type: profileType,
+        location_can_modify: false,
+        location_can_delete: false,
+        asset_type_can_modify: false,
+        asset_type_can_delete: false,
+        asset_can_modify: false,
+        asset_can_delete: false,
+      }));
+      return;
+    }
+    setForm((f) => ({
+      ...f,
+      profile_type: profileType,
+      ...(f.profile_type === 'normal' ? fullPrivilegeActions : {}),
+    }));
+  };
+
+  const PrivilegeModifyDelete = ({ modifyKey, deleteKey }) => {
+    if (isReadOnlyProfile) return null;
+    return (
+      <>
+        <label className="user-priv-action-label">
+          <input
+            type="checkbox"
+            checked={form[modifyKey]}
+            onChange={(e) => setForm({ ...form, [modifyKey]: e.target.checked })}
+          />
+          Modify
+        </label>
+        <label className="user-priv-action-label">
+          <input
+            type="checkbox"
+            checked={form[deleteKey]}
+            onChange={(e) => setForm({ ...form, [deleteKey]: e.target.checked })}
+          />
+          Delete
+        </label>
+      </>
+    );
+  };
 
   const validate = () => {
     const e = {};
@@ -562,6 +622,14 @@ function UserForm({ user, locations, assetTypes, onClose, onSaved }) {
     const payload = { ...form, email: form.email.trim() };
     delete payload.confirm_password;
     if (!payload.password) delete payload.password;
+    if (payload.profile_type === 'normal') {
+      payload.location_can_modify = false;
+      payload.location_can_delete = false;
+      payload.asset_type_can_modify = false;
+      payload.asset_type_can_delete = false;
+      payload.asset_can_modify = false;
+      payload.asset_can_delete = false;
+    }
     try {
       if (isEdit) await api.put(`/users/${user.id}`, payload);
       else await api.post('/users', payload);
@@ -644,7 +712,7 @@ function UserForm({ user, locations, assetTypes, onClose, onSaved }) {
           <div className="form-row">
             <label>Profile Type <span className="required">*</span></label>
             <div className="field-wrap">
-              <select value={form.profile_type} onChange={e => setForm({ ...form, profile_type: e.target.value })}>
+              <select value={form.profile_type} onChange={e => handleProfileTypeChange(e.target.value)}>
                 <option value="super_admin">Super Administrator</option>
                 <option value="admin">Administrator</option>
                 <option value="normal">Normal</option>
@@ -693,19 +761,14 @@ function UserForm({ user, locations, assetTypes, onClose, onSaved }) {
           <div className="form-row">
             <label>Location Privileges</label>
             <div className="field-wrap">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div className="user-priv-field-row">
                 <input
                   readOnly
                   value={locPrivLabel(form.location_privileges)}
-                  style={{ flex: 1, padding: '7px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, background: '#f7f8fc', cursor: 'pointer' }}
+                  className="user-priv-picker-input"
                   onClick={() => setShowLocPicker(true)}
                 />
-                <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
-                  <input type="checkbox" checked={form.location_can_modify} onChange={e => setForm({ ...form, location_can_modify: e.target.checked })} /> Modify
-                </label>
-                <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
-                  <input type="checkbox" checked={form.location_can_delete} onChange={e => setForm({ ...form, location_can_delete: e.target.checked })} /> Delete
-                </label>
+                <PrivilegeModifyDelete modifyKey="location_can_modify" deleteKey="location_can_delete" />
               </div>
               {form.location_privileges && form.location_privileges.length > 0 && (
                 <div style={{ marginTop: 6, fontSize: 11.5, color: '#2563EB', background: '#eff6ff', padding: '4px 8px', borderRadius: 5 }}>
@@ -719,19 +782,14 @@ function UserForm({ user, locations, assetTypes, onClose, onSaved }) {
           <div className="form-row">
             <label>Asset Type Privileges</label>
             <div className="field-wrap">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div className="user-priv-field-row">
                 <input
                   readOnly
                   value={assetTypePrivLabel(form.asset_type_privileges)}
-                  style={{ flex: 1, padding: '7px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, background: '#f7f8fc', cursor: 'pointer' }}
+                  className="user-priv-picker-input"
                   onClick={() => setShowAssetTypePicker(true)}
                 />
-                <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
-                  <input type="checkbox" checked={form.asset_type_can_modify} onChange={e => setForm({ ...form, asset_type_can_modify: e.target.checked })} /> Modify
-                </label>
-                <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
-                  <input type="checkbox" checked={form.asset_type_can_delete} onChange={e => setForm({ ...form, asset_type_can_delete: e.target.checked })} /> Delete
-                </label>
+                <PrivilegeModifyDelete modifyKey="asset_type_can_modify" deleteKey="asset_type_can_delete" />
               </div>
               {form.asset_type_privileges && form.asset_type_privileges.length > 0 && (
                 <div style={{ marginTop: 6, fontSize: 11.5, color: '#2563EB', background: '#eff6ff', padding: '4px 8px', borderRadius: 5 }}>
@@ -745,16 +803,14 @@ function UserForm({ user, locations, assetTypes, onClose, onSaved }) {
           <div className="form-row">
             <label>Asset Privileges</label>
             <div className="field-wrap">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input readOnly value={assetPrivLabel(form.asset_privileges)}
-                  style={{ flex: 1, padding: '7px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, background: '#f7f8fc' }} />
-                <button className="btn btn-secondary btn-sm" onClick={() => setAssetPrivPicker(true)}>...</button>
-                <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
-                  <input type="checkbox" checked={form.asset_can_modify} onChange={e => setForm({ ...form, asset_can_modify: e.target.checked })} /> Modify
-                </label>
-                <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
-                  <input type="checkbox" checked={form.asset_can_delete} onChange={e => setForm({ ...form, asset_can_delete: e.target.checked })} /> Delete
-                </label>
+              <div className="user-priv-field-row">
+                <input
+                  readOnly
+                  value={assetPrivLabel(form.asset_privileges)}
+                  className="user-priv-picker-input"
+                />
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setAssetPrivPicker(true)}>...</button>
+                <PrivilegeModifyDelete modifyKey="asset_can_modify" deleteKey="asset_can_delete" />
               </div>
             </div>
           </div>

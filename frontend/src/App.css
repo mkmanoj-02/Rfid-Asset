@@ -180,6 +180,36 @@ tr:hover td { background: #f8fafc; }
 .form-group textarea { resize: vertical; min-height: 80px; }
 .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; }
 
+/* User form — privilege rows */
+.user-priv-field-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.user-priv-picker-input {
+  flex: 1 1 180px;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+  background: #f7f8fc;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+.user-priv-action-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  white-space: nowrap;
+  margin: 0;
+  cursor: pointer;
+  font-weight: 400;
+  color: #374151;
+}
+
 /* Asset privilege picker (Users) */
 .asset-priv-modal { width: min(520px, 95vw); box-sizing: border-box; }
 .asset-priv-add-row {
