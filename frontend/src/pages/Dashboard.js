@@ -132,7 +132,12 @@ export default function Dashboard() {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (evt) => { setMapImage(evt.target.result); localStorage.setItem(MAP_STORAGE_KEY, evt.target.result); };
+    reader.onload = (evt) => {
+      setMapImage(evt.target.result);
+      localStorage.setItem(MAP_STORAGE_KEY, evt.target.result);
+      savePins({});
+      setPlacingPin(null);
+    };
     reader.readAsDataURL(file);
     e.target.value = '';
   };

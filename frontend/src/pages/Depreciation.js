@@ -154,11 +154,11 @@ function RulesTab({ assetTypes }) {
               <div className="form-row">
                 <label>Options</label>
                 <div className="field-wrap" style={{ gap: 8 }}>
-                  <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <label className="checkbox-option-label">
                     <input type="checkbox" checked={form.stop_on_disposal} onChange={e => setForm({ ...form, stop_on_disposal: e.target.checked })} />
                     Stop depreciation on disposal
                   </label>
-                  <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <label className="checkbox-option-label">
                     <input type="checkbox" checked={form.partial_year} onChange={e => setForm({ ...form, partial_year: e.target.checked })} />
                     Support partial-year depreciation
                   </label>

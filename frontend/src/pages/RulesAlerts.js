@@ -251,19 +251,14 @@ function RuleWizard({ locations, assetTypes, onClose, onSaved, editRule }) {
                     <option value="">— Any Location —</option>
                     {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                   </select>
-                </div>
-              </div>
-              {form.location_id && (
-                <div className="form-row">
-                  <label />
-                  <div className="field-wrap">
-                    <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {form.location_id && (
+                    <label className="checkbox-option-label">
                       <input type="checkbox" checked={form.include_sub_locations} onChange={e => setForm({ ...form, include_sub_locations: e.target.checked })} />
                       Include Sub-Locations
                     </label>
-                  </div>
+                  )}
                 </div>
-              )}
+              </div>
               <div className="form-row">
                 <label>Asset Type</label>
                 <div className="field-wrap">
