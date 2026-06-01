@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import api from '../api';
+import api, { getAttributeList, getAttributes } from '../api';
 import { toastApiFailure } from '../apiErrorHandling';
 import { useToast } from '../Toast';
 import ConfirmModal from '../components/ConfirmModal';
@@ -313,35 +313,108 @@ function AssetTypeTreePicker(props) {
   );
 }
 
+/** Dropdown catalog — one GET /attribute-list per session (not per asset type). */
+let privilegeAttrCatalogCache = null;
+let privilegeAttrCatalogInflight = null;
+
+function loadPrivilegeAttrCatalog() {
+  if (privilegeAttrCatalogCache) return Promise.resolve(privilegeAttrCatalogCache);
+  if (!privilegeAttrCatalogInflight) {
+    privilegeAttrCatalogInflight = getAttributeList()
+      .then((r) => {
+        privilegeAttrCatalogCache = (Array.isArray(r.data) ? r.data : [])
+          .map((a) => ({ ...a, list_options: [] }));
+        return privilegeAttrCatalogCache;
+      })
+      .finally(() => {
+        privilegeAttrCatalogInflight = null;
+      });
+  }
+  return privilegeAttrCatalogInflight;
+}
+
+/** List options for one attribute — at most one GET per attribute id per session. */
+const privilegeListOptionsCache = new Map();
+const privilegeListOptionsInflight = new Map();
+
+async function loadListOptionsForAttribute(attributeId, assetTypes) {
+  const key = Number(attributeId);
+  if (privilegeListOptionsCache.has(key)) return privilegeListOptionsCache.get(key);
+  if (privilegeListOptionsInflight.has(key)) return privilegeListOptionsInflight.get(key);
+
+  const promise = (async () => {
+    const types = assetTypes?.length ? assetTypes : (await api.get('/asset-types')).data;
+    const batches = await Promise.all(
+      types.map((t) => getAttributes(t.id).then((r) => ({ typeId: t.id, rows: Array.isArray(r.data) ? r.data : [] }))),
+    );
+    for (const { rows } of batches) {
+      const match = rows.find((a) => Number(a.id) === key);
+      if (match) {
+        const opts = match.list_options || [];
+        privilegeListOptionsCache.set(key, opts);
+        return opts;
+      }
+    }
+    privilegeListOptionsCache.set(key, []);
+    return [];
+  })().finally(() => {
+    privilegeListOptionsInflight.delete(key);
+  });
+
+  privilegeListOptionsInflight.set(key, promise);
+  return promise;
+}
+
 // ── Attribute-based Asset Privilege Picker ─────────────────────
 // Shows all attributes from all asset types, user picks attribute + enters value
-function AssetPrivilegePicker({ current, onClose, onSave }) {
+function AssetPrivilegePicker({ current, onClose, onSave, assetTypes = [] }) {
   // current: array of { attribute_id, attribute_name, value } or null
   const [allAttrs, setAllAttrs] = useState([]);
   const [entries, setEntries] = useState(current || []); // [{ attribute_id, attribute_name, value }]
   const [selAttr, setSelAttr] = useState('');
   const [selVal, setSelVal] = useState('');
   const [loading, setLoading] = useState(true);
+  const [listOptionsLoading, setListOptionsLoading] = useState(false);
 
   useEffect(() => {
-    api.get('/asset-types').then(async r => {
-      const types = r.data;
-      const attrs = [];
-      for (const t of types) {
-        const ar = await api.get(`/asset-types/${t.id}/attributes`);
-        ar.data.forEach(a => {
-          if (!attrs.find(x => x.id === a.id)) {
-            attrs.push({ ...a, type_name: t.name });
-          }
-        });
-      }
-      setAllAttrs(attrs);
-      setLoading(false);
-    }).catch((e) => {
-      toastApiFailure(e, 'Privileges · attributes');
-      setLoading(false);
-    });
+    let cancelled = false;
+    setLoading(true);
+    loadPrivilegeAttrCatalog()
+      .then((attrs) => {
+        if (!cancelled) setAllAttrs(attrs);
+      })
+      .catch((e) => {
+        if (!cancelled) toastApiFailure(e, 'Privileges · attributes');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
   }, []);
+
+  const selectedAttr = allAttrs.find((a) => String(a.id) === String(selAttr));
+
+  useEffect(() => {
+    if (!selectedAttr || selectedAttr.attr_type !== 'list') return undefined;
+    if (selectedAttr.list_options?.length) return undefined;
+
+    let cancelled = false;
+    setListOptionsLoading(true);
+    loadListOptionsForAttribute(selectedAttr.id, assetTypes)
+      .then((opts) => {
+        if (cancelled) return;
+        setAllAttrs((prev) =>
+          prev.map((a) => (Number(a.id) === Number(selectedAttr.id) ? { ...a, list_options: opts } : a))
+        );
+      })
+      .catch((e) => {
+        if (!cancelled) toastApiFailure(e, 'Privileges · list options');
+      })
+      .finally(() => {
+        if (!cancelled) setListOptionsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [selAttr, selectedAttr?.id, selectedAttr?.attr_type, assetTypes]);
 
   const addEntry = () => {
     if (!selAttr) return;
@@ -355,8 +428,6 @@ function AssetPrivilegePicker({ current, onClose, onSave }) {
   };
 
   const removeEntry = (idx) => setEntries(entries.filter((_, i) => i !== idx));
-
-  const selectedAttr = allAttrs.find(a => String(a.id) === String(selAttr));
 
   return (
     <div className="modal-overlay" style={{ zIndex: 400 }}>
@@ -373,15 +444,21 @@ function AssetPrivilegePicker({ current, onClose, onSave }) {
           >
             <option value="">- Select attribute -</option>
             {allAttrs.map(a => (
-              <option key={a.id} value={a.id}>{a.name} ({a.type_name})</option>
+              <option key={a.id} value={a.id}>
+                {a.name}{a.attr_type ? ` (${a.attr_type})` : ''}
+              </option>
             ))}
           </select>
 
           {selectedAttr && (
             selectedAttr.attr_type === 'list' ? (
-              <select value={selVal} onChange={e => setSelVal(e.target.value)}
-                style={{ flex: 1, padding: '7px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13 }}>
-                <option value="">- Select value -</option>
+              <select
+                value={selVal}
+                onChange={e => setSelVal(e.target.value)}
+                disabled={listOptionsLoading}
+                style={{ flex: 1, padding: '7px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13 }}
+              >
+                <option value="">{listOptionsLoading ? 'Loading values…' : '- Select value -'}</option>
                 {(selectedAttr.list_options || []).map(o => <option key={o.id} value={o.option_value}>{o.option_value}</option>)}
               </select>
             ) : (
@@ -708,6 +785,7 @@ function UserForm({ user, locations, assetTypes, onClose, onSaved }) {
       {/* Attribute-based asset privilege picker */}
       {assetPrivPicker && (
         <AssetPrivilegePicker
+          assetTypes={assetTypes}
           current={form.asset_privileges}
           onClose={() => setAssetPrivPicker(false)}
           onSave={val => { setForm({ ...form, asset_privileges: val }); setAssetPrivPicker(false); }}

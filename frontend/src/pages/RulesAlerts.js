@@ -159,21 +159,24 @@ function RuleWizard({ locations, assetTypes, onClose, onSaved, editRule }) {
   // Load ALL date attributes across all asset types (for maintenance filter)
   useEffect(() => {
     if (filterType !== 'maintenance') return;
-    api.get('/asset-types').then(async r => {
-      const types = r.data;
-      const seen = new Set();
-      const attrs = [];
-      for (const t of types) {
-        const ar = await api.get(`/asset-types/${t.id}/attributes`);
-        ar.data.filter(a => a.attr_type === 'date').forEach(a => {
-          if (!seen.has(a.name.toLowerCase())) {
-            seen.add(a.name.toLowerCase());
-            attrs.push({ ...a, type_name: t.name });
-          }
-        });
-      }
-      setAllDateAttrs(attrs);
-    }).catch((e) => toastApiFailure(e, 'Rule wizard · attributes'));
+    let cancelled = false;
+    getAttributeList()
+      .then((r) => {
+        if (cancelled) return;
+        const seen = new Set();
+        const attrs = [];
+        (Array.isArray(r.data) ? r.data : [])
+          .filter((a) => a.attr_type === 'date')
+          .forEach((a) => {
+            const key = String(a.name || '').toLowerCase();
+            if (seen.has(key)) return;
+            seen.add(key);
+            attrs.push(a);
+          });
+        setAllDateAttrs(attrs);
+      })
+      .catch((e) => toastApiFailure(e, 'Rule wizard · attributes'));
+    return () => { cancelled = true; };
   }, [filterType]);
 
   const needsDuration = ['stays_at', 'not_scanned', 'is_missing'].includes(form.asset_action);
