@@ -11,40 +11,16 @@ const {
   cleanupLocationImageOnDelete,
   truthyFormFlag,
 } = require('../controllers/locationImages');
+const { assertLocationAccess } = require('../lib/userAuthz');
+const { requireModify, requireDelete } = require('../middleware/requireAuthz');
 
-// Helper: parse privilege array from user record
-function parsePriv(val) {
-  if (!val) return null;
-  if (Array.isArray(val)) return val.length ? val : null;
-  try { const p = JSON.parse(val); return p && p.length ? p : null; } catch { return null; }
-}
-
-// Expand a list of location IDs to include all their sub-locations recursively
-async function expandWithSubLocations(ids) {
-  if (!ids || !ids.length) return ids;
-  const [all] = await db.query('SELECT id, parent_id FROM locations');
-  const result = new Set(ids.map(Number));
-  const addChildren = (pid) => {
-    all.filter(l => l.parent_id === pid).forEach(l => {
-      if (!result.has(l.id)) { result.add(l.id); addChildren(l.id); }
-    });
-  };
-  ids.forEach(id => addChildren(Number(id)));
-  return [...result];
+function allowedLocationIds(req) {
+  return req.authz?.locationIds ?? null;
 }
 
 // Get all locations as a flat list with parent info
 router.get('/', async (req, res) => {
-  const { user_id } = req.query;
-  let allowedIds = null;
-
-  if (user_id) {
-    const [users] = await db.query('SELECT location_privileges, profile_type FROM users WHERE id = ?', [user_id]);
-    if (users.length && users[0].profile_type !== 'super_admin') {
-      const base = parsePriv(users[0].location_privileges);
-      allowedIds = base ? await expandWithSubLocations(base) : null;
-    }
-  }
+  const allowedIds = allowedLocationIds(req);
 
   let query = `SELECT l.*, p.name AS parent_name, lt.name AS location_type_name
     FROM locations l
@@ -62,16 +38,7 @@ router.get('/', async (req, res) => {
 
 // Get tree structure
 router.get('/tree', async (req, res) => {
-  const { user_id } = req.query;
-  let allowedIds = null;
-
-  if (user_id) {
-    const [users] = await db.query('SELECT location_privileges, profile_type FROM users WHERE id = ?', [user_id]);
-    if (users.length && users[0].profile_type !== 'super_admin') {
-      const base = parsePriv(users[0].location_privileges);
-      allowedIds = base ? await expandWithSubLocations(base) : null;
-    }
-  }
+  const allowedIds = allowedLocationIds(req);
 
   let query = 'SELECT * FROM locations';
   const params = [];
@@ -86,40 +53,28 @@ router.get('/tree', async (req, res) => {
   res.json(buildTree(rows));
 });
 
-// --- Image: multipart field "image" (jpg, jpeg, png, webp; max 5MB) ---
 router.post(
   '/:id/image',
+  requireModify('location'),
   uploadImageMiddleware('locations'),
   handleMulterImageError,
   resourceImages.upload('locations')
 );
-router.delete('/:id/image', resourceImages.remove('locations'));
+router.delete('/:id/image', requireModify('location'), resourceImages.remove('locations'));
 
 router.get('/:id', async (req, res) => {
+  const locErr = assertLocationAccess(req.authz, res, req.params.id);
+  if (locErr) return locErr;
+
   const [rows] = await db.query(`
     SELECT l.*, p.name AS parent_name 
     FROM locations l LEFT JOIN locations p ON l.parent_id = p.id
     WHERE l.id = ?`, [req.params.id]);
   if (!rows.length) return res.status(404).json({ message: 'Not found' });
-
-  // Privilege check — non-super-admins can only fetch locations they are allowed to see
-  const userId = req.headers['x-user-id'];
-  if (userId) {
-    const [users] = await db.query('SELECT location_privileges, profile_type FROM users WHERE id = ?', [userId]);
-    if (users.length && users[0].profile_type !== 'super_admin') {
-      const base = parsePriv(users[0].location_privileges);
-      if (base) {
-        const allowed = await expandWithSubLocations(base);
-        if (!allowed.includes(Number(req.params.id)))
-          return res.status(403).json({ message: 'Access denied to this location' });
-      }
-    }
-  }
-
   res.json(rows[0]);
 });
 
-router.post('/', optionalImageUpload('locations'), async (req, res, next) => {
+router.post('/', requireModify('location'), optionalImageUpload('locations'), async (req, res, next) => {
   try {
   const { name, description, parent_id } = req.body;
   if (!name || !String(name).trim()) {
@@ -163,14 +118,11 @@ router.post('/', optionalImageUpload('locations'), async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.put('/:id', optionalImageUpload('locations'), async (req, res, next) => {
+router.put('/:id', requireModify('location'), optionalImageUpload('locations'), async (req, res, next) => {
   try {
-  const userId = req.headers['x-user-id'];
-  if (userId) {
-    const [users] = await db.query('SELECT location_can_modify, profile_type FROM users WHERE id = ?', [userId]);
-    if (users.length && users[0].profile_type !== 'super_admin' && !users[0].location_can_modify)
-      return res.status(403).json({ message: 'You do not have permission to modify locations' });
-  }
+  const locErr = assertLocationAccess(req.authz, res, req.params.id);
+  if (locErr) return locErr;
+
   const { name, description, parent_id } = req.body;
   const pid = parent_id === undefined || parent_id === null || parent_id === '' ? null : parent_id;
   const [existing] = await db.query(
@@ -218,17 +170,15 @@ router.put('/:id', optionalImageUpload('locations'), async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.delete('/bulk', async (req, res, next) => {
+router.delete('/bulk', requireDelete('location'), async (req, res, next) => {
   try {
     const { ids } = req.body;
     if (!Array.isArray(ids) || !ids.length)
       return res.status(400).json({ message: 'ids array is required' });
 
-    const userId = req.headers['x-user-id'];
-    if (userId) {
-      const [users] = await db.query('SELECT location_can_delete, profile_type FROM users WHERE id = ?', [userId]);
-      if (users.length && users[0].profile_type !== 'super_admin' && !users[0].location_can_delete)
-        return res.status(403).json({ message: 'You do not have permission to delete locations' });
+    for (const rawId of ids) {
+      const locErr = assertLocationAccess(req.authz, res, rawId);
+      if (locErr) return locErr;
     }
 
     const placeholders = ids.map(() => '?').join(',');
@@ -238,23 +188,24 @@ router.delete('/bulk', async (req, res, next) => {
     );
     for (const row of rows) await cleanupLocationImageOnDelete(row);
     await db.query(`DELETE FROM locations WHERE id IN (${placeholders})`, ids);
-
     for (const row of rows)
       await audit.log('Location', 'Deleted', `Location "${row.name}" was deleted`, req.auditUser, req.auditUserId);
-
     res.json({ message: `${rows.length} location(s) deleted` });
-  } catch (err) { next(err); }
+  } catch (e) { next(e); }
 });
 
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', requireDelete('location'), async (req, res, next) => {
   try {
+    const locErr = assertLocationAccess(req.authz, res, req.params.id);
+    if (locErr) return locErr;
+
     const [rows] = await db.query('SELECT name, image_url FROM locations WHERE id = ?', [req.params.id]);
     if (!rows.length) return res.status(404).json({ message: 'Not found' });
     await cleanupLocationImageOnDelete(rows[0]);
     await db.query('DELETE FROM locations WHERE id = ?', [req.params.id]);
     await audit.log('Location', 'Deleted', `Location "${rows[0].name}" was deleted`, req.auditUser, req.auditUserId);
     res.json({ message: 'Deleted' });
-  } catch (err) { next(err); }
+  } catch (e) { next(e); }
 });
 
 module.exports = router;

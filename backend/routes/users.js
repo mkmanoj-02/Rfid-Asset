@@ -5,6 +5,15 @@ const bcrypt   = require('bcryptjs');
 const audit    = require('../audit');
 const refreshTokenService = require('../services/refreshTokenService');
 
+const { requireUserAdmin } = require('../middleware/requireAuthz');
+const { validateAndNormalizeAssetPrivileges } = require('../lib/assetPrivilegeValidation');
+
+async function assetPrivilegesToJson(raw) {
+  const result = await validateAndNormalizeAssetPrivileges(raw);
+  if (!result.ok) return result;
+  return { ok: true, json: result.value ? JSON.stringify(result.value) : null };
+}
+
 const SELECT_COLS = `
   id, username, email, profile_type,
   location_privileges, location_can_modify, location_can_delete,
@@ -13,6 +22,8 @@ const SELECT_COLS = `
   asset_privileges, asset_can_modify, asset_can_delete,
   created_at
 `;
+
+// router.use(requireUserAdmin);
 
 // GET all users
 router.get('/', async (req, res) => {
@@ -38,16 +49,21 @@ router.post('/', async (req, res) => {
   } = req.body;
 
   if (!username || !password)
-    return res.status(400).json({ message: 'Username and password are required' });
+    return res.status(400).json({ status: false, message: 'Username and password are required' });
 
   // Email validation
   if (!email || !email.toString().trim())
-    return res.status(400).json({ message: 'Email is required' });
+    return res.status(400).json({ status: false, message: 'Email is required' });
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(email.toString().trim()))
-    return res.status(400).json({ message: 'Invalid email address' });
+    return res.status(400).json({ status: false, message: 'Invalid email address' });
 
   const password_hash = await bcrypt.hash(password, 10);
+
+  const assetPrivResolved = await assetPrivilegesToJson(asset_privileges);
+  if (!assetPrivResolved.ok) {
+    return res.status(400).json({ status: false, message: assetPrivResolved.message });
+  }
 
   try {
     const [result] = await db.query(
@@ -69,7 +85,7 @@ router.post('/', async (req, res) => {
         asset_type_privileges    ? JSON.stringify(asset_type_privileges)    : null,
         asset_type_can_modify    !== false ? 1 : 0,
         asset_type_can_delete    !== false ? 1 : 0,
-        asset_privileges         ? JSON.stringify(asset_privileges)         : null,
+        assetPrivResolved.json,
         asset_can_modify         !== false ? 1 : 0,
         asset_can_delete         !== false ? 1 : 0,
       ]
@@ -77,7 +93,9 @@ router.post('/', async (req, res) => {
     await audit.log('User', 'Added', `User "${username}" (${profile_type || 'admin'}) was created`, req.auditUser, req.auditUserId);
     res.status(201).json({ id: result.insertId });
   } catch (e) {
-    if (e.code === 'ER_DUP_ENTRY') return res.status(400).json({ message: 'Username or email already exists' });
+    if (e.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({ status: false, message: 'Username or email already exists' });
+    }
     throw e;
   }
 });
@@ -94,10 +112,15 @@ router.put('/:id', async (req, res) => {
 
   // Email validation
   if (!email || !email.toString().trim())
-    return res.status(400).json({ message: 'Email is required' });
+    return res.status(400).json({ status: false, message: 'Email is required' });
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(email.toString().trim()))
-    return res.status(400).json({ message: 'Invalid email address' });
+    return res.status(400).json({ status: false, message: 'Invalid email address' });
+
+  const assetPrivResolved = await assetPrivilegesToJson(asset_privileges);
+  if (!assetPrivResolved.ok) {
+    return res.status(400).json({ status: false, message: assetPrivResolved.message });
+  }
 
   const privCols = [
     ['location_privileges',      location_privileges      ? JSON.stringify(location_privileges)      : null],
@@ -109,7 +132,7 @@ router.put('/:id', async (req, res) => {
     ['asset_type_privileges',    asset_type_privileges    ? JSON.stringify(asset_type_privileges)    : null],
     ['asset_type_can_modify',    asset_type_can_modify    ? 1 : 0],
     ['asset_type_can_delete',    asset_type_can_delete    ? 1 : 0],
-    ['asset_privileges',         asset_privileges         ? JSON.stringify(asset_privileges)         : null],
+    ['asset_privileges',         assetPrivResolved.json],
     ['asset_can_modify',         asset_can_modify         ? 1 : 0],
     ['asset_can_delete',         asset_can_delete         ? 1 : 0],
   ];
@@ -134,7 +157,9 @@ router.put('/:id', async (req, res) => {
     await audit.log('User', 'Modified', `User "${username}" was updated`, req.auditUser, req.auditUserId);
     res.json({ message: 'Updated' });
   } catch (e) {
-    if (e.code === 'ER_DUP_ENTRY') return res.status(400).json({ message: 'Username or email already exists' });
+    if (e.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({ status: false, message: 'Username or email already exists' });
+    }
     throw e;
   }
 });

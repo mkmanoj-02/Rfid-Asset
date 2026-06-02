@@ -14,13 +14,16 @@ const {
   safeUnlinkCustomAssetFile,
   truthyFormFlag,
 } = require('../controllers/imageInheritance');
-
-// Helper: parse privilege array from user record
-function parsePriv(val) {
-  if (!val) return null;
-  if (Array.isArray(val)) return val.length ? val : null;
-  try { const p = JSON.parse(val); return p && p.length ? p : null; } catch { return null; }
-}
+const {
+  assertModify,
+  assertDelete,
+  assertAssetPayload,
+  assertAssetInScope,
+  scopeAssetWhere,
+} = require('../lib/userAuthz');
+const { requireModify, requireDelete } = require('../middleware/requireAuthz');
+const { withTransaction } = require('../lib/importHelpers');
+const fs = require('fs').promises;
 
 const ASSET_INVENTORY_STATUSES = ['in_inventory', 'missing', 'not_in_inventory'];
 
@@ -45,20 +48,6 @@ function parseSinceQuery(since) {
   const d = new Date(String(since));
   if (Number.isNaN(d.getTime())) return { error: 'Invalid since; use ISO 8601 datetime' };
   return { date: d };
-}
-
-// Helper: expand location IDs to include all sub-locations recursively
-async function expandWithSubLocations(ids) {
-  if (!ids || !ids.length) return ids;
-  const [all] = await db.query('SELECT id, parent_id FROM locations');
-  const result = new Set(ids.map(Number));
-  const addChildren = (pid) => {
-    all.filter(l => l.parent_id === pid).forEach(l => {
-      if (!result.has(l.id)) { result.add(l.id); addChildren(l.id); }
-    });
-  };
-  ids.forEach(id => addChildren(Number(id)));
-  return [...result];
 }
 
 async function loadListOptionsByAttributeIds(attributeIds) {
@@ -114,29 +103,10 @@ router.get('/', async (req, res, next) => {
   const pageSize = Math.min(500, Math.max(1, parseInt(limit)));
   const offset   = (pageNum - 1) * pageSize;
 
-  let allowedTypeIds = null;
-  let allowedLocationIds = null;
-
-  let assetAttrFilters = null; // [{ attribute_id, value }]
-
-  if (user_id) {
-    const [users] = await db.query('SELECT asset_type_privileges, location_privileges, asset_privileges, profile_type FROM users WHERE id = ?', [user_id]);
-    if (users.length && users[0].profile_type !== 'super_admin') {
-      allowedTypeIds = parsePriv(users[0].asset_type_privileges);
-      // Expand location privileges to include sub-locations
-      const baseLocIds = parsePriv(users[0].location_privileges);
-      allowedLocationIds = baseLocIds ? await expandWithSubLocations(baseLocIds) : null;
-      // asset_privileges = attribute-based filter
-      if (users[0].asset_privileges) {
-        try {
-          const ap = typeof users[0].asset_privileges === 'string'
-            ? JSON.parse(users[0].asset_privileges)
-            : users[0].asset_privileges;
-          if (ap && ap.length) assetAttrFilters = ap;
-        } catch {}
-      }
-    }
-  }
+  const authz = req.authz;
+  const allowedTypeIds = authz?.typeIds ?? null;
+  const allowedLocationIds = authz?.locationIds ?? null;
+  const assetAttrFilters = authz?.attrFilters ?? null;
 
   const baseJoin = `FROM assets a
     LEFT JOIN asset_types at ON a.asset_type_id = at.id
@@ -266,19 +236,77 @@ router.get('/', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/** Lightweight list for dropdowns: id, name, rfid_tag (respects user asset scope). */
+router.get('/dropdown', async (req, res, next) => {
+  try {
+    const { search, location_id, asset_type_id, limit } = req.query;
+    const maxLimit = Math.min(2000, Math.max(1, parseInt(limit, 10) || 500));
+
+    const extraConditions = [];
+    const extraParams = [];
+
+    if (location_id !== undefined && location_id !== '') {
+      const locId = parseInt(location_id, 10);
+      if (Number.isNaN(locId)) {
+        return res.status(400).json({ message: 'Invalid location_id' });
+      }
+      extraConditions.push('a.current_location_id = ?');
+      extraParams.push(locId);
+    }
+
+    if (asset_type_id !== undefined && asset_type_id !== '') {
+      const typeId = parseInt(asset_type_id, 10);
+      if (Number.isNaN(typeId)) {
+        return res.status(400).json({ message: 'Invalid asset_type_id' });
+      }
+      extraConditions.push('a.asset_type_id = ?');
+      extraParams.push(typeId);
+    }
+
+    const searchTerm = search != null ? String(search).trim() : '';
+    if (searchTerm) {
+      const s = `%${searchTerm}%`;
+      extraConditions.push(
+        '(a.name LIKE ? OR a.asset_serial LIKE ? OR a.rfid_tag LIKE ?)'
+      );
+      extraParams.push(s, s, s);
+    }
+
+    const scoped = scopeAssetWhere(req.authz, 'a', extraConditions, extraParams);
+    const whereSql = scoped.sql || 'WHERE 1=1';
+
+    const [rows] = await db.query(
+      `SELECT a.id, a.name, a.rfid_tag
+       FROM assets a
+       ${whereSql}
+       ORDER BY a.name ASC, a.id ASC
+       LIMIT ?`,
+      [...scoped.params, maxLimit]
+    );
+
+    res.json(rows);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // --- Image: multipart field "image" (jpg, jpeg, png, webp; max 5MB) ---
 router.post(
   '/:id/image',
+  requireModify('asset'),
   uploadImageMiddleware('assets'),
   handleMulterImageError,
   resourceImages.upload('assets')
 );
-router.delete('/:id/image', resourceImages.remove('assets'));
+router.delete('/:id/image', requireModify('asset'), resourceImages.remove('assets'));
 
 router.get('/:id', async (req, res, next) => {
   try {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) return res.status(400).json({ message: 'Invalid asset ID' });
+
+  const scopeErr = await assertAssetInScope(req.authz, res, id);
+  if (scopeErr) return scopeErr;
 
   const [rows] = await db.query(`
     SELECT a.*, at.name AS asset_type_name, l.name AS location_name, tt.name AS tag_type_name, v.name AS vendor_name,
@@ -326,10 +354,13 @@ router.get('/:id/attributes', async (req, res, next) => {
 });
 
 // Save/update attribute values for an asset
-router.put('/:id/attributes', async (req, res, next) => {
+router.put('/:id/attributes', requireModify('asset'), async (req, res, next) => {
   try {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) return res.status(400).json({ message: 'Invalid asset ID' });
+
+  const scopeErr = await assertAssetInScope(req.authz, res, id);
+  if (scopeErr) return scopeErr;
 
   const { values } = req.body; // [{ attribute_id, value }]
   for (const v of values) {
@@ -348,9 +379,12 @@ router.put('/:id/attributes', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post('/', optionalImageUpload('assets'), async (req, res, next) => {
+router.post('/', requireModify('asset'), optionalImageUpload('assets'), async (req, res, next) => {
   try {
   const { rfid_tag, tag_type_id, vendor_id, asset_serial, name, asset_type_id, current_location_id, status, description, asset_inventory_status } = req.body;
+
+  const payloadErr = assertAssetPayload(req.authz, res, { asset_type_id, current_location_id });
+  if (payloadErr) return payloadErr;
 
   // --- Mandatory field validation ---
   const errors = [];
@@ -387,66 +421,69 @@ router.post('/', optionalImageUpload('assets'), async (req, res, next) => {
     return next(imgErr);
   }
 
-  const [result] = await db.query(
-    `INSERT INTO assets (rfid_tag, tag_type_id, vendor_id, asset_serial, name, asset_type_id,
-      current_location_id, status, description, asset_inventory_status, image_url, is_custom_image)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      rfid_tag || null, tag_type_id || null, vendor_id || null, asset_serial, name, asset_type_id,
-      locationId, status || 'active', description || null, invStatus, imageUrl, isCustom,
-    ]
-  );
-  const assetId = result.insertId;
+  let assetId;
+  try {
+    assetId = await withTransaction(db, async (conn) => {
+      const [result] = await conn.query(
+        `INSERT INTO assets (rfid_tag, tag_type_id, vendor_id, asset_serial, name, asset_type_id,
+          current_location_id, status, description, asset_inventory_status, image_url, is_custom_image)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          rfid_tag || null, tag_type_id || null, vendor_id || null, asset_serial, name, asset_type_id,
+          locationId, status || 'active', description || null, invStatus, imageUrl, isCustom,
+        ]
+      );
+      const id = result.insertId;
 
-  if (asset_type_id) {
-    const [attrs] = await db.query('SELECT id FROM asset_type_attributes WHERE asset_type_id = ?', [asset_type_id]);
-    for (const attr of attrs) {
-      await db.query('INSERT IGNORE INTO asset_attribute_values (asset_id, attribute_id, value) VALUES (?, ?, NULL)', [assetId, attr.id]);
+      if (asset_type_id) {
+        const [attrs] = await conn.query(
+          'SELECT id FROM asset_type_attributes WHERE asset_type_id = ?',
+          [asset_type_id]
+        );
+        for (const attr of attrs) {
+          await conn.query(
+            'INSERT IGNORE INTO asset_attribute_values (asset_id, attribute_id, value) VALUES (?, ?, NULL)',
+            [id, attr.id]
+          );
+        }
+      }
+
+      await conn.query(
+        'INSERT INTO movement_history (asset_id, from_location_id, to_location_id, notes) VALUES (?, ?, NULL, ?)',
+        [id, locationId, 'Initial placement']
+      );
+
+      if (shouldLogRfidTagMovement(null, rfid_tag)) {
+        await insertRfidTagMovement(conn, id, locationId);
+      }
+
+      return id;
+    });
+  } catch (txErr) {
+    if (req.file?.path) {
+      try { await fs.unlink(req.file.path); } catch {}
     }
+    throw txErr;
   }
 
-  await db.query(
-    'INSERT INTO movement_history (asset_id, from_location_id, to_location_id, notes) VALUES (?, NULL, ?, ?)',
-    [assetId, locationId, 'Initial placement']
-  );
-  if (shouldLogRfidTagMovement(null, rfid_tag)) {
-    await insertRfidTagMovement(db, assetId, locationId);
-  }
-  // Trigger rule engine for is_added rules
   setImmediate(() => runRules().catch(e => console.error('Rule engine error:', e.message)));
   await audit.log('Asset', 'Added', `Asset "${name}" (Serial: ${asset_serial || 'N/A'}) was added`, req.auditUser, req.auditUserId);
   res.status(201).json({ id: assetId, image_url: imageUrl, is_custom_image: isCustom });
   } catch (err) { next(err); }
 });
 
-router.put('/:id', optionalImageUpload('assets'), async (req, res, next) => {
+router.put('/:id', requireModify('asset'), optionalImageUpload('assets'), async (req, res, next) => {
   try {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) return res.status(400).json({ message: 'Invalid asset ID' });
 
+  const scopeErr = await assertAssetInScope(req.authz, res, id);
+  if (scopeErr) return scopeErr;
+
   const { rfid_tag, tag_type_id, vendor_id, asset_serial, name, asset_type_id, current_location_id, status, description, asset_inventory_status } = req.body;
 
-  // Check asset modify privilege
-  const userId = req.headers['x-user-id'];
-  if (userId) {
-    const [users] = await db.query(
-      'SELECT asset_can_modify, location_privileges, profile_type FROM users WHERE id = ?', [userId]
-    );
-    if (users.length && users[0].profile_type !== 'super_admin') {
-      if (!users[0].asset_can_modify)
-        return res.status(403).json({ message: 'You do not have permission to modify assets' });
-
-      // If moving to a new location, check it is within the user's allowed locations
-      if (current_location_id) {
-        const baseLocIds = parsePriv(users[0].location_privileges);
-        if (baseLocIds) {
-          const allowedLocIds = await expandWithSubLocations(baseLocIds);
-          if (!allowedLocIds.includes(Number(current_location_id)))
-            return res.status(403).json({ message: 'You do not have permission to move assets to that location' });
-        }
-      }
-    }
-  }
+  const payloadErr = assertAssetPayload(req.authz, res, { asset_type_id, current_location_id });
+  if (payloadErr) return payloadErr;
 
   // --- Mandatory field validation ---
   const editErrors = [];
@@ -515,11 +552,16 @@ router.put('/:id', optionalImageUpload('assets'), async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.delete('/bulk', async (req, res, next) => {
+router.delete('/bulk', requireDelete('asset'), async (req, res, next) => {
   try {
     const { ids } = req.body;
     if (!Array.isArray(ids) || !ids.length)
       return res.status(400).json({ message: 'ids array is required' });
+
+    for (const rawId of ids) {
+      const scopeErr = await assertAssetInScope(req.authz, res, rawId);
+      if (scopeErr) return scopeErr;
+    }
 
     const placeholders = ids.map(() => '?').join(',');
     const [rows] = await db.query(`SELECT name, asset_serial FROM assets WHERE id IN (${placeholders})`, ids);
@@ -532,10 +574,13 @@ router.delete('/bulk', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', requireDelete('asset'), async (req, res, next) => {
   try {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) return res.status(400).json({ message: 'Invalid asset ID' });
+
+  const scopeErr = await assertAssetInScope(req.authz, res, id);
+  if (scopeErr) return scopeErr;
 
   const [rows] = await db.query(
     'SELECT name, asset_serial, image_url, is_custom_image FROM assets WHERE id = ?',

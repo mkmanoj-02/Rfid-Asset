@@ -262,7 +262,7 @@ async function runRules() {
              JOIN assets a ON mh.asset_id = a.id
              LEFT JOIN asset_types at ON a.asset_type_id = at.id
              LEFT JOIN locations fl ON mh.from_location_id = fl.id
-             JOIN locations tl ON mh.to_location_id = tl.id
+             LEFT JOIN locations tl ON mh.to_location_id = tl.id
              WHERE mh.moved_at > DATE_SUB(NOW(), INTERVAL 3 MINUTE)
                ${rule.asset_type_id ? 'AND a.asset_type_id = ?' : ''}
              ORDER BY mh.moved_at DESC`,
@@ -352,7 +352,7 @@ async function runRules() {
                FROM movement_history mh
                JOIN assets a ON mh.asset_id = a.id
                LEFT JOIN asset_types at ON a.asset_type_id = at.id
-               LEFT JOIN locations l ON mh.to_location_id = l.id
+               LEFT JOIN locations l ON l.id = COALESCE(mh.to_location_id, mh.from_location_id)
                WHERE mh.notes IN ('Initial placement','Imported')
                  AND mh.moved_at > DATE_SUB(NOW(), INTERVAL 3 MINUTE)
                  ${rule.asset_type_id ? 'AND a.asset_type_id = ?' : ''}`,

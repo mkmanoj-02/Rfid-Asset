@@ -1,5 +1,4 @@
-CREATE DATABASE IF NOT EXISTS asset_management;
-USE asset_management;
+-- Database is selected by migrate.js from DB_DATABASE / DB_NAME in .env
 
 CREATE TABLE IF NOT EXISTS locations (
   id INT AUTO_INCREMENT PRIMARY KEY,

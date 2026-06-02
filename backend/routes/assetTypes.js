@@ -15,28 +15,19 @@ const {
   propagateTypeImageToInheritedAssets,
 } = require('../controllers/imageInheritance');
 const { publicUrlForStoredFile, ENTITY_UPLOAD_SUBDIR } = require('../helper/upload');
-
-// Helper: parse privilege array
-function parsePriv(val) {
-  if (!val) return null;
-  if (Array.isArray(val)) return val.length ? val : null;
-  try { const p = JSON.parse(val); return p && p.length ? p : null; } catch { return null; }
-}
+const { assertAssetTypeAccess } = require('../lib/userAuthz');
+const { requireModify, requireDelete } = require('../middleware/requireAuthz');
+const {
+  normalizeAssetTypeName,
+  findAssetTypeNameConflict,
+} = require('../lib/assetTypeName');
 
 router.get('/', async (req, res) => {
-  const { user_id } = req.query;
-  let allowedIds = null;
-
-  if (user_id) {
-    const [users] = await db.query('SELECT asset_type_privileges, profile_type FROM users WHERE id = ?', [user_id]);
-    if (users.length && users[0].profile_type !== 'super_admin') {
-      allowedIds = parsePriv(users[0].asset_type_privileges);
-    }
-  }
+  const allowedIds = req.authz?.typeIds ?? null;
 
   let query = `SELECT at.*, p.name AS parent_name FROM asset_types at LEFT JOIN asset_types p ON at.parent_id = p.id`;
   const params = [];
-  if (allowedIds) {
+  if (allowedIds?.length) {
     query += ` WHERE at.id IN (${allowedIds.map(() => '?').join(',')})`;
     params.push(...allowedIds);
   }
@@ -48,27 +39,35 @@ router.get('/', async (req, res) => {
 // --- Image: multipart field "image" (jpg, jpeg, png, webp; max 5MB) ---
 router.post(
   '/:id/image',
+  requireModify('asset_type'),
   uploadImageMiddleware('asset_types'),
   handleMulterImageError,
   resourceImages.upload('asset_types')
 );
-router.delete('/:id/image', resourceImages.remove('asset_types'));
+router.delete('/:id/image', requireModify('asset_type'), resourceImages.remove('asset_types'));
 
 router.get('/:id', async (req, res) => {
+  const typeErr = assertAssetTypeAccess(req.authz, res, req.params.id);
+  if (typeErr) return typeErr;
   const [rows] = await db.query('SELECT * FROM asset_types WHERE id = ?', [req.params.id]);
   if (!rows.length) return res.status(404).json({ message: 'Not found' });
   res.json(rows[0]);
 });
 
-router.post('/', optionalImageUpload('asset_types'), async (req, res, next) => {
+router.post('/', requireModify('asset_type'), optionalImageUpload('asset_types'), async (req, res, next) => {
   try {
-  const { name, description } = req.body;
+  const name = normalizeAssetTypeName(req.body.name);
+  const { description } = req.body;
   const attributes = parseAttributesField(req.body) ?? req.body.attributes;
-  if (!name || !String(name).trim()) {
+  if (!name) {
     return res.status(400).json({ message: 'Name is required' });
   }
-  const [existing] = await db.query('SELECT id FROM asset_types WHERE LOWER(name) = LOWER(?)', [name]);
-  if (existing.length) return res.status(400).json({ message: `Asset type "${name}" already exists` });
+  const conflict = await findAssetTypeNameConflict(db, name);
+  if (conflict) {
+    return res.status(400).json({
+      message: `Asset type "${conflict.name}" already exists (names must be unique across all parents)`,
+    });
+  }
 
   let imageUrl = null;
   if (req.file) {
@@ -116,19 +115,23 @@ router.post('/', optionalImageUpload('asset_types'), async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.put('/:id', optionalImageUpload('asset_types'), async (req, res, next) => {
+router.put('/:id', requireModify('asset_type'), optionalImageUpload('asset_types'), async (req, res, next) => {
   try {
-  const userId = req.headers['x-user-id'];
-  if (userId) {
-    const [users] = await db.query('SELECT asset_type_can_modify, profile_type FROM users WHERE id = ?', [userId]);
-    if (users.length && users[0].profile_type !== 'super_admin' && !users[0].asset_type_can_modify)
-      return res.status(403).json({ message: 'You do not have permission to modify asset types' });
-  }
+  const typeErr = assertAssetTypeAccess(req.authz, res, req.params.id);
+  if (typeErr) return typeErr;
   const typeId = req.params.id;
-  const { name, description } = req.body;
+  const name = normalizeAssetTypeName(req.body.name);
+  const { description } = req.body;
   const attributes = parseAttributesField(req.body) ?? req.body.attributes;
-  const [existing] = await db.query('SELECT id FROM asset_types WHERE LOWER(name) = LOWER(?) AND id != ?', [name, typeId]);
-  if (existing.length) return res.status(400).json({ message: `Asset type "${name}" already exists` });
+  if (!name) {
+    return res.status(400).json({ message: 'Name is required' });
+  }
+  const conflict = await findAssetTypeNameConflict(db, name, typeId);
+  if (conflict) {
+    return res.status(400).json({
+      message: `Asset type "${conflict.name}" already exists (names must be unique across all parents)`,
+    });
+  }
 
   const [[typeRow]] = await db.query('SELECT image_url FROM asset_types WHERE id = ?', [typeId]);
   if (!typeRow) return res.status(404).json({ message: 'Not found' });
@@ -217,17 +220,15 @@ router.put('/:id', optionalImageUpload('asset_types'), async (req, res, next) =>
   } catch (err) { next(err); }
 });
 
-router.delete('/bulk', async (req, res, next) => {
+router.delete('/bulk', requireDelete('asset_type'), async (req, res, next) => {
   try {
     const { ids } = req.body;
     if (!Array.isArray(ids) || !ids.length)
       return res.status(400).json({ message: 'ids array is required' });
 
-    const userId = req.headers['x-user-id'];
-    if (userId) {
-      const [users] = await db.query('SELECT asset_type_can_delete, profile_type FROM users WHERE id = ?', [userId]);
-      if (users.length && users[0].profile_type !== 'super_admin' && !users[0].asset_type_can_delete)
-        return res.status(403).json({ message: 'You do not have permission to delete asset types' });
+    for (const rawId of ids) {
+      const typeErr = assertAssetTypeAccess(req.authz, res, rawId);
+      if (typeErr) return typeErr;
     }
 
     const placeholders = ids.map(() => '?').join(',');
@@ -241,9 +242,11 @@ router.delete('/bulk', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', requireDelete('asset_type'), async (req, res, next) => {
   try {
     const id = req.params.id;
+    const typeErr = assertAssetTypeAccess(req.authz, res, id);
+    if (typeErr) return typeErr;
     const [[{ assetCount }]] = await db.query(
       'SELECT COUNT(*) AS assetCount FROM assets WHERE asset_type_id = ?',
       [id]
@@ -266,6 +269,8 @@ router.delete('/:id', async (req, res, next) => {
 
 // Get all attributes for an asset type (with list options)
 router.get('/:id/attributes', async (req, res) => {
+  const typeErr = assertAssetTypeAccess(req.authz, res, req.params.id);
+  if (typeErr) return typeErr;
   const [attrs] = await db.query(
     'SELECT * FROM asset_type_attributes WHERE asset_type_id = ? ORDER BY sort_order, id',
     [req.params.id]
@@ -293,13 +298,9 @@ router.get('/:id/attributes', async (req, res) => {
 });
 
 // Add attribute to asset type
-router.post('/:id/attributes', async (req, res) => {
-  const userId = req.headers['x-user-id'];
-  if (userId) {
-    const [users] = await db.query('SELECT asset_type_can_modify, profile_type FROM users WHERE id = ?', [userId]);
-    if (users.length && users[0].profile_type !== 'super_admin' && !users[0].asset_type_can_modify)
-      return res.status(403).json({ message: 'You do not have permission to modify asset types' });
-  }
+router.post('/:id/attributes', requireModify('asset_type'), async (req, res) => {
+  const typeErr = assertAssetTypeAccess(req.authz, res, req.params.id);
+  if (typeErr) return typeErr;
   const { attr_type, default_value, list_options } = req.body;
   const name = trimAttrName(req.body.name);
   if (!name)
@@ -341,13 +342,9 @@ router.post('/:id/attributes', async (req, res) => {
 });
 
 // Update attribute
-router.put('/:typeId/attributes/:attrId', async (req, res) => {
-  const userId = req.headers['x-user-id'];
-  if (userId) {
-    const [users] = await db.query('SELECT asset_type_can_modify, profile_type FROM users WHERE id = ?', [userId]);
-    if (users.length && users[0].profile_type !== 'super_admin' && !users[0].asset_type_can_modify)
-      return res.status(403).json({ message: 'You do not have permission to modify asset types' });
-  }
+router.put('/:typeId/attributes/:attrId', requireModify('asset_type'), async (req, res) => {
+  const typeErr = assertAssetTypeAccess(req.authz, res, req.params.typeId);
+  if (typeErr) return typeErr;
   const { attr_type, default_value, list_options } = req.body;
   const name = trimAttrName(req.body.name);
   if (!name)
@@ -379,13 +376,9 @@ router.put('/:typeId/attributes/:attrId', async (req, res) => {
 });
 
 // Delete attribute
-router.delete('/:typeId/attributes/:attrId', async (req, res) => {
-  const userId = req.headers['x-user-id'];
-  if (userId) {
-    const [users] = await db.query('SELECT asset_type_can_delete, profile_type FROM users WHERE id = ?', [userId]);
-    if (users.length && users[0].profile_type !== 'super_admin' && !users[0].asset_type_can_delete)
-      return res.status(403).json({ message: 'You do not have permission to delete asset types' });
-  }
+router.delete('/:typeId/attributes/:attrId', requireDelete('asset_type'), async (req, res) => {
+  const typeErr = assertAssetTypeAccess(req.authz, res, req.params.typeId);
+  if (typeErr) return typeErr;
   // Remove all stored values for this attribute across all assets
   await db.query('DELETE FROM asset_attribute_values WHERE attribute_id = ?', [req.params.attrId]);
   // Remove list options

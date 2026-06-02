@@ -1,4 +1,14 @@
-USE asset_2;
+-- Import performance: name lookups and attribute upserts
+USE asset;
+
+-- assets.asset_serial should already be UNIQUE from schema_v3; safe no-op if exists
+-- CREATE UNIQUE INDEX idx_assets_serial ON assets(asset_serial);
+
+-- Ignore "Duplicate key name" if indexes already exist
+CREATE INDEX idx_locations_name ON locations(name);
+CREATE INDEX idx_asset_types_name ON asset_types(name);
+CREATE INDEX idx_tag_types_name ON tag_types(name);
+CREATE INDEX idx_vendors_name ON vendors(name);
 
 -- Singleton row: customizable app logo, name, and subtitle (sidebar + login)
 CREATE TABLE IF NOT EXISTS site_branding (

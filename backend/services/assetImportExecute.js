@@ -223,7 +223,7 @@ async function executeAssetChunk(conn, rows, attrState) {
       const placementMovements = [];
       const rfidMovements = [];
       for (const { assetId, row } of linked) {
-        placementMovements.push([assetId, null, row._locationId, 'Imported']);
+        placementMovements.push([assetId, row._locationId, null, 'Imported']);
         if (isValidRfidTag(row.rfid_tag)) {
           rfidMovements.push([assetId, row._locationId, row._locationId, RFID_TAG_MOVEMENT_NOTE]);
         }

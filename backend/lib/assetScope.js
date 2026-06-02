@@ -43,33 +43,6 @@ async function expandWithSubLocations(ids) {
 }
 
 /**
- * @returns {{ locationIds: number[]|null, typeIds: number[]|null, attrFilters: object[]|null }}
- */
-async function getUserAssetScope(userId) {
-  if (!userId) {
-    return { locationIds: null, typeIds: null, attrFilters: null };
-  }
-  const [users] = await db.query(
-    `SELECT location_privileges, asset_type_privileges, asset_privileges, profile_type
-     FROM users WHERE id = ?`,
-    [userId]
-  );
-  if (!users.length || users[0].profile_type === 'super_admin') {
-    return { locationIds: null, typeIds: null, attrFilters: null };
-  }
-
-  const u = users[0];
-  let locationIds = null;
-  const baseLoc = parsePriv(u.location_privileges);
-  if (baseLoc) locationIds = await expandWithSubLocations(baseLoc);
-
-  const typeIds = parsePriv(u.asset_type_privileges);
-  const attrFilters = parseAssetPrivileges(u.asset_privileges);
-
-  return { locationIds, typeIds, attrFilters };
-}
-
-/**
  * SQL conditions on an assets row alias (default `a`).
  * @param {{ locationIds?: number[]|null, typeIds?: number[]|null, attrFilters?: object[]|null, alias?: string, skip?: Set<string> }} scope
  */
@@ -110,6 +83,5 @@ module.exports = {
   parsePriv,
   parseAssetPrivileges,
   expandWithSubLocations,
-  getUserAssetScope,
   buildAssetWhereClause,
 };

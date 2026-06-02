@@ -11,6 +11,7 @@ const {
   buildSerialMap,
   buildRfidMap,
   markImportRowDuplicates,
+  markAssetTypeNameDuplicatesInFile,
   findInNameMap,
   resolveMasterIdFromMaps,
   slimAssetPreviewRow,
@@ -18,6 +19,8 @@ const {
   slimAssetTypePreviewRow,
   withTransaction,
 } = require('../lib/importHelpers');
+const { findAssetTypeNameConflict } = require('../lib/assetTypeName');
+const { requireModify } = require('../middleware/requireAuthz');
 
 const VALID_ASSET_STATUSES = new Set(['active', 'inactive', 'maintenance']);
 
@@ -173,7 +176,7 @@ function validateAssetImportRow(row, ctx) {
   if (!hasVendorInput) errors.push('Vendor is required');
   else if (vendorRes.error) errors.push(vendorRes.error);
 
-  let status = 'active';
+  let status = row.status;
   if (row.status != null && String(row.status).trim() !== '') {
     const normalized = normalizeStatus(row.status);
     if (!normalized) errors.push('Status must be active, inactive, or maintenance');
@@ -301,11 +304,17 @@ async function executeAssetTypesBatch(rows) {
           }
         }
       } else {
+        const typeName = (row.name || '').trim();
+        const conflict = await findAssetTypeNameConflict(db, typeName);
+        if (conflict) {
+          errors++;
+          continue;
+        }
         const [result] = await db.query(
           'INSERT INTO asset_types (name, description, parent_id) VALUES (?,?,?)',
-          [row.name, row.description || null, parentId]
+          [typeName, row.description || null, parentId]
         );
-        nameToId[row.name.toLowerCase()] = result.insertId;
+        nameToId[typeName.toLowerCase()] = result.insertId;
         if (row.attributes && row.attributes.length) {
           const attrRows = row.attributes.map((attr) => [
             result.insertId,
@@ -332,7 +341,7 @@ async function executeAssetTypesBatch(rows) {
 
 // ── Locations ──────────────────────────────────────────────────
 
-router.post('/locations/preview', async (req, res) => {
+router.post('/locations/preview', requireModify('location'), async (req, res) => {
   const { rows } = req.body;
   const [existing] = await db.query('SELECT id, name FROM locations');
   const nameMap = buildNameMap(existing);
@@ -369,7 +378,7 @@ router.post('/locations/preview', async (req, res) => {
   res.json(result);
 });
 
-router.post('/locations/execute', async (req, res) => {
+router.post('/locations/execute', requireModify('location'), async (req, res) => {
   const { rows } = req.body;
   const stats = await executeLocationsBatch(rows);
   await audit.log(
@@ -384,31 +393,26 @@ router.post('/locations/execute', async (req, res) => {
 
 // ── Asset types ────────────────────────────────────────────────
 
-router.post('/asset-types/preview', async (req, res) => {
+router.post('/asset-types/preview', requireModify('asset_type'), async (req, res) => {
   const { rows } = req.body;
   const [existing] = await db.query('SELECT id, name FROM asset_types');
   const nameMap = buildNameMap(existing);
-  const workingMap = new Map(nameMap);
 
   const result = rows.map((row) => {
     const name = (row.name || '').trim();
     const errors = [];
     if (!name) errors.push('Asset type name is required');
 
-    const existingMatch = findInNameMap(name, workingMap);
+    const existingMatch = findInNameMap(name, nameMap);
 
     let parentMatch = null;
     let parentFix = null;
     if (row.parent_name && row.parent_name.trim()) {
-      parentMatch = findInNameMap(row.parent_name.trim(), workingMap);
+      parentMatch = findInNameMap(row.parent_name.trim(), nameMap);
       if (!parentMatch) errors.push(`Parent type "${row.parent_name}" not found`);
       else if (parentMatch.name.toLowerCase() !== row.parent_name.trim().toLowerCase()) {
         parentFix = parentMatch.name;
       }
-    }
-
-    if (!existingMatch && name) {
-      workingMap.set(name.toLowerCase(), { id: `_new_${name}`, name });
     }
 
     return slimAssetTypePreviewRow({
@@ -424,10 +428,11 @@ router.post('/asset-types/preview', async (req, res) => {
     });
   });
 
+  markAssetTypeNameDuplicatesInFile(result);
   res.json(result);
 });
 
-router.post('/asset-types/execute', async (req, res) => {
+router.post('/asset-types/execute', requireModify('asset_type'), async (req, res) => {
   const { rows } = req.body;
   const stats = await executeAssetTypesBatch(rows);
   await audit.log(
@@ -442,7 +447,7 @@ router.post('/asset-types/execute', async (req, res) => {
 
 // ── Assets: check / smartfix / preview / execute ───────────────
 
-router.post('/assets/check', async (req, res) => {
+router.post('/assets/check', requireModify('asset'), async (req, res) => {
   const rows = (req.body.rows || []).map(normalizeAssetImportRow);
   const [assetTypes] = await db.query('SELECT id, name FROM asset_types');
   const [locations] = await db.query('SELECT id, name FROM locations');
@@ -457,7 +462,7 @@ router.post('/assets/check', async (req, res) => {
   });
 });
 
-router.post('/assets/smartfix', async (req, res) => {
+router.post('/assets/smartfix', requireModify('asset'), async (req, res) => {
   const rows = (req.body.rows || []).map(normalizeAssetImportRow);
 
   const typeNames = new Set();
@@ -522,7 +527,7 @@ router.post('/assets/smartfix', async (req, res) => {
   });
 });
 
-router.post('/assets/preview', async (req, res) => {
+router.post('/assets/preview', requireModify('asset'), async (req, res) => {
   const rows = (req.body.rows || []).map(normalizeAssetImportRow);
   const ctx = await buildAssetImportContext();
   const result = rows.map((row) => validateAssetImportRow(row, ctx));
@@ -548,7 +553,7 @@ async function buildAssetImportContext() {
   };
 }
 
-router.post('/assets/execute', async (req, res) => {
+router.post('/assets/execute', requireModify('asset'), async (req, res) => {
   const rows = (req.body.rows || []).map(normalizeAssetImportRow);
   const ctx = await buildAssetImportContext();
   const validated = rows.map((row) => validateAssetImportRow(row, ctx));

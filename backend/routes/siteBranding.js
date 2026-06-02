@@ -56,7 +56,7 @@ router.put(
     } catch (err) {
       if (err.code === 'ER_NO_SUCH_TABLE') {
         return res.status(503).json({
-          message: 'Site branding is not configured. Run: node migrate-v17.js',
+          message: 'Site branding is not configured. Run: npm run migrate',
         });
       }
       throw err;

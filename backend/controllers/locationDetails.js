@@ -99,7 +99,7 @@ async function getLocationDashboardDetail(locationId, assetScope = null) {
      FROM movement_history mh
      JOIN assets a ON mh.asset_id = a.id
      LEFT JOIN locations fl ON mh.from_location_id = fl.id
-     JOIN locations tl ON mh.to_location_id = tl.id
+     LEFT JOIN locations tl ON mh.to_location_id = tl.id
      WHERE ${recentTxWhere}
      ORDER BY mh.moved_at DESC
      LIMIT 5`,

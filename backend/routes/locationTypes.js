@@ -2,15 +2,25 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const audit = require('../audit');
+const { locationTypeAllowed, deny } = require('../lib/userAuthz');
+const { requireModify, requireDelete } = require('../middleware/requireAuthz');
 
 // Get all
 router.get('/', async (req, res) => {
-  const [rows] = await db.query('SELECT * FROM location_types ORDER BY name');
+  const allowedIds = req.authz?.locationTypeIds ?? null;
+  let query = 'SELECT * FROM location_types';
+  const params = [];
+  if (allowedIds?.length) {
+    query += ` WHERE id IN (${allowedIds.map(() => '?').join(',')})`;
+    params.push(...allowedIds);
+  }
+  query += ' ORDER BY name';
+  const [rows] = await db.query(query, params);
   res.json(rows);
 });
 
 // Create
-router.post('/', async (req, res) => {
+router.post('/', requireModify('location_type'), async (req, res) => {
   const { name, description } = req.body;
   if (!name) return res.status(400).json({ message: 'Name is required' });
   const [existing] = await db.query('SELECT id FROM location_types WHERE LOWER(name)=LOWER(?)', [name]);
@@ -21,12 +31,9 @@ router.post('/', async (req, res) => {
 });
 
 // Update
-router.put('/:id', async (req, res) => {
-  const userId = req.headers['x-user-id'];
-  if (userId) {
-    const [users] = await db.query('SELECT location_type_can_modify, profile_type FROM users WHERE id = ?', [userId]);
-    if (users.length && users[0].profile_type !== 'super_admin' && !users[0].location_type_can_modify)
-      return res.status(403).json({ message: 'You do not have permission to modify location types' });
+router.put('/:id', requireModify('location_type'), async (req, res) => {
+  if (!locationTypeAllowed(req.authz, req.params.id)) {
+    return deny(res, 'You do not have access to this location type');
   }
   const { name, description } = req.body;
   const [existing] = await db.query('SELECT id FROM location_types WHERE LOWER(name)=LOWER(?) AND id!=?', [name, req.params.id]);
@@ -37,17 +44,16 @@ router.put('/:id', async (req, res) => {
 });
 
 // Bulk Delete
-router.delete('/bulk', async (req, res, next) => {
+router.delete('/bulk', requireDelete('location_type'), async (req, res, next) => {
   try {
     const { ids } = req.body;
     if (!Array.isArray(ids) || !ids.length)
       return res.status(400).json({ message: 'ids array is required' });
 
-    const userId = req.headers['x-user-id'];
-    if (userId) {
-      const [users] = await db.query('SELECT location_type_can_delete, profile_type FROM users WHERE id = ?', [userId]);
-      if (users.length && users[0].profile_type !== 'super_admin' && !users[0].location_type_can_delete)
-        return res.status(403).json({ message: 'You do not have permission to delete location types' });
+    for (const rawId of ids) {
+      if (!locationTypeAllowed(req.authz, rawId)) {
+        return deny(res, 'You do not have access to this location type');
+      }
     }
 
     const placeholders = ids.map(() => '?').join(',');
@@ -62,12 +68,9 @@ router.delete('/bulk', async (req, res, next) => {
 });
 
 // Delete
-router.delete('/:id', async (req, res) => {
-  const userId = req.headers['x-user-id'];
-  if (userId) {
-    const [users] = await db.query('SELECT location_type_can_delete, profile_type FROM users WHERE id = ?', [userId]);
-    if (users.length && users[0].profile_type !== 'super_admin' && !users[0].location_type_can_delete)
-      return res.status(403).json({ message: 'You do not have permission to delete location types' });
+router.delete('/:id', requireDelete('location_type'), async (req, res) => {
+  if (!locationTypeAllowed(req.authz, req.params.id)) {
+    return deny(res, 'You do not have access to this location type');
   }
   const [rows] = await db.query('SELECT name FROM location_types WHERE id=?', [req.params.id]);
   await db.query('DELETE FROM location_types WHERE id=?', [req.params.id]);

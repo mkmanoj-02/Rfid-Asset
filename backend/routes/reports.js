@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { RFID_TAG_MOVEMENT_NOTE } = require('../lib/rfidMovements');
+const { scopeAssetWhere } = require('../lib/userAuthz');
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -89,10 +90,15 @@ router.get('/inventory-missing', async (req, res) => {
     )
   `;
 
-  const [[{ total }]] = await db.query('SELECT COUNT(*) AS total FROM assets');
+  const totalScope = scopeAssetWhere(req.authz, 'a', [], []);
+  const [[{ total }]] = await db.query(
+    `SELECT COUNT(*) AS total FROM assets a ${totalScope.sql}`,
+    totalScope.params
+  );
+  const missingScope = scopeAssetWhere(req.authz, 'a', [missingWhere], [fromDate, toDate]);
   const [[{ missing }]] = await db.query(
-    `SELECT COUNT(*) AS missing FROM assets a WHERE ${missingWhere}`,
-    [fromDate, toDate]
+    `SELECT COUNT(*) AS missing FROM assets a ${missingScope.sql}`,
+    missingScope.params
   );
   const inventory = total - missing;
 
@@ -116,9 +122,10 @@ router.get('/inventory-missing', async (req, res) => {
     LEFT JOIN movement_history mh ON mh.asset_id = a.id
       AND mh.moved_at >= ?
       AND mh.moved_at < DATE_ADD(?, INTERVAL 1 DAY)
+    ${totalScope.active ? `WHERE ${totalScope.sql.replace(/^WHERE /, '')}` : ''}
     GROUP BY a.id, at.name, l.name
     ORDER BY report_status ASC, a.id DESC`,
-    [fromDate, toDate]
+    [...totalScope.params, fromDate, toDate]
   );
   const assets = assetRows.map((r) => ({
     ...mapReportAssetRow(r),
@@ -288,7 +295,11 @@ router.get('/movement-trend', async (req, res) => {
 
 // Status breakdown
 router.get('/status-breakdown', async (req, res) => {
-  const [rows] = await db.query('SELECT status, COUNT(*) AS count FROM assets GROUP BY status');
+  const scope = scopeAssetWhere(req.authz, 'a', [], []);
+  const [rows] = await db.query(
+    `SELECT a.status, COUNT(*) AS count FROM assets a ${scope.sql} GROUP BY a.status`,
+    scope.params
+  );
   res.json(rows);
 });
 

@@ -13,6 +13,6 @@ CREATE TABLE IF NOT EXISTS vendors (
 );
 
 -- Link assets to a vendor (nullable, no cascade delete)
-ALTER TABLE assets ADD COLUMN IF NOT EXISTS vendor_id INT DEFAULT NULL AFTER tag_type_id;
-ALTER TABLE assets ADD CONSTRAINT IF NOT EXISTS fk_assets_vendor
+ALTER TABLE assets ADD COLUMN vendor_id INT DEFAULT NULL AFTER tag_type_id;
+ALTER TABLE assets ADD CONSTRAINT fk_assets_vendor
   FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE SET NULL;

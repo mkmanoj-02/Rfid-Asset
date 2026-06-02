@@ -83,6 +83,10 @@ app.use('/api/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/public/locations', require('./routes/publicLocations'));
 
 app.use(verifyToken);
+const attachUserContext = require('./middleware/attachUserContext');
+const loadAuthz = require('./middleware/loadAuthz');
+app.use(attachUserContext);
+app.use(loadAuthz);
 app.use('/api/locations', require('./routes/locations'));
 app.use('/api/asset-types', require('./routes/assetTypes'));
 app.use('/api/attribute-list', require('./routes/attributeList'));

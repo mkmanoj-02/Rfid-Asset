@@ -6,6 +6,7 @@ const CHUNK_SIZE = 500;
 
 const RFID_DUP_FILE_MSG = 'Duplicate RFID tag in import file';
 const SERIAL_DUP_FILE_MSG = 'Duplicate asset serial in import file';
+const ASSET_TYPE_DUP_FILE_MSG = 'Duplicate asset type name in import file';
 
 function chunkArray(arr, size = CHUNK_SIZE) {
   const out = [];
@@ -76,6 +77,21 @@ function markImportRowDuplicates(rows) {
       } else {
         serialSeen.set(serial, index);
       }
+    }
+  });
+}
+
+/** Flag duplicate asset type names within one import batch (names are globally unique). */
+function markAssetTypeNameDuplicatesInFile(rows) {
+  const seen = new Map();
+  rows.forEach((row, index) => {
+    const key = row.name != null ? String(row.name).trim().toLowerCase() : '';
+    if (!key) return;
+    if (seen.has(key)) {
+      appendImportRowError(row, ASSET_TYPE_DUP_FILE_MSG);
+      appendImportRowError(rows[seen.get(key)], ASSET_TYPE_DUP_FILE_MSG);
+    } else {
+      seen.set(key, index);
     }
   });
 }
@@ -181,6 +197,8 @@ module.exports = {
   buildSerialMap,
   buildRfidMap,
   markImportRowDuplicates,
+  markAssetTypeNameDuplicatesInFile,
+  ASSET_TYPE_DUP_FILE_MSG,
   findInNameMap,
   resolveMasterIdFromMaps,
   slimAssetPreviewRow,
