@@ -680,6 +680,15 @@ function AssetDetail({ asset, types, locations, locationTree, tagTypes, vendors,
   const changeLocation = async () => {
     if (!newLocationId) return;
     await updateAsset(asset.id, { ...editForm, current_location_id: newLocationId, notes: locationNotes });
+
+    // Refresh trace history so the "Trace History" tab reflects the new movement immediately
+    try {
+      const traceRes = await getAssetMovements(asset.id);
+      setTrace(traceRes.data);
+    } catch (e) {
+      toastApiFailure(e, 'Trace history');
+    }
+
     setLocationModal(false);
     setLocationNotes('');
     onRefresh({
@@ -2085,8 +2094,13 @@ export default function Assets() {
               {!loading && pagedItems.map((item, i) => {
                 const lastSeenRaw = item.lastseen ?? item.lastSeen;
                 const lastSeenDisp = formatAssetLastSeenDisplay(lastSeenRaw);
+                const isMissingRow = String(item.asset_inventory_status || '').toLowerCase() === 'missing';
                 return (
-                <tr key={item.id} style={{ background: checkedIds.has(item.id) ? '#f0f4ff' : 'inherit' }}>
+                <tr
+                  key={item.id}
+                  className={isMissingRow ? 'assets-row-missing' : undefined}
+                  style={{ background: checkedIds.has(item.id) ? '#f0f4ff' : 'inherit' }}
+                >
                   <td className="assets-col-check" style={{ padding: '10px 12px' }}><input type="checkbox" checked={checkedIds.has(item.id)} onChange={() => toggleCheck(item.id)} /></td>
                   <td className="assets-col-num" style={{ padding: '10px 8px', color: '#9ca3af', fontSize: 12 }}>{(currentPage - 1) * pageSize + i + 1}</td>
                   <td className="assets-col-flex" title={item.asset_serial || ''}>{item.asset_serial || '—'}</td>

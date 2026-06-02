@@ -1059,6 +1059,9 @@ tr:hover td { background: #f8fafc; }
 .assets-data-table .assets-col-actions { width: 130px; }
 .assets-data-table .assets-col-inv { width: 108px; }
 .assets-data-table .assets-col-flex { width: auto; min-width: 88px; }
+.assets-row-missing td {
+  color: #b91c1c;
+}
 .assets-bulk-bar {
   flex-shrink: 0;
   display: flex;
