@@ -334,6 +334,18 @@ function SuperAdminRoute({ children }) {
   return children;
 }
 
+function RequireAuth({ children }) {
+  const { currentUser } = useAuth();
+  if (!currentUser) return <Navigate to="/login" replace />;
+  return children;
+}
+
+function RedirectIfAuthenticated({ children }) {
+  const { currentUser } = useAuth();
+  if (currentUser) return <Navigate to="/" replace />;
+  return children;
+}
+
 /* ─── Sidebar ────────────────────────────────────────────────── */
 function Sidebar({ mobileOpen, onMobileClose }) {
   const { currentUser, logout } = useAuth();
@@ -446,11 +458,27 @@ function MobileOverlay({ open, onClose }) {
 
 /* ─── App Shell ──────────────────────────────────────────────── */
 function AppShell() {
-  const { currentUser } = useAuth();
+  const { logout } = useAuth();
   const { branding } = useBranding();
+  const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  if (!currentUser) return <Login />;
+  useEffect(() => {
+    let handlingPop = false;
+
+    const onPopState = () => {
+      if (handlingPop) return;
+      handlingPop = true;
+      logout().finally(() => {
+        navigate('/login', { replace: true });
+      });
+    };
+
+    window.addEventListener('popstate', onPopState);
+    return () => {
+      window.removeEventListener('popstate', onPopState);
+    };
+  }, [logout, navigate]);
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: '#F1F5F9' }}>
@@ -509,6 +537,7 @@ function AppShell() {
             <Route path="/settings/tag-types" element={<SuperAdminRoute><TagTypesSettings /></SuperAdminRoute>} />
             <Route path="/settings/vendors"   element={<SuperAdminRoute><VendorsSettings /></SuperAdminRoute>} />
             <Route path="/depreciation"          element={<Depreciation />} />
+            <Route path="*"                      element={<Navigate to="/" replace />} />
           </Routes>
         </main>
       </div>
@@ -523,7 +552,24 @@ export default function App() {
         <ToastProvider>
           <BrowserRouter>
             <ToastRouteSync />
-            <AppShell />
+            <Routes>
+              <Route
+                path="/login"
+                element={(
+                  <RedirectIfAuthenticated>
+                    <Login />
+                  </RedirectIfAuthenticated>
+                )}
+              />
+              <Route
+                path="/*"
+                element={(
+                  <RequireAuth>
+                    <AppShell />
+                  </RequireAuth>
+                )}
+              />
+            </Routes>
           </BrowserRouter>
         </ToastProvider>
       </BrandingProvider>
