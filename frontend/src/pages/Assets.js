@@ -1822,7 +1822,7 @@ export default function Assets() {
 
   const selectedAssets = pagedItems.filter(i => checkedIds.has(i.id));
   const hasFilters = search || filterLocation || filterType || filterInventoryStatus;
-  const tableColSpan = 12 + tableAttrColumns.length;
+  const tableColSpan = 11 + tableAttrColumns.length;
   const tableMinWidth = 1120 + tableAttrColumns.length * 132;
 
   const handleTableAttrColumnsChange = useCallback((next) => {
@@ -2077,7 +2077,6 @@ export default function Assets() {
                     {col.name}
                   </th>
                 ))}
-                <SortTh col="asset_inventory_status" label="Inv / Missing" align="center" className="assets-col-inv" />
                 <th className="assets-col-image" style={{ padding: '10px 8px', textAlign: 'center' }}>Image</th>
                 <th className="assets-col-actions" style={{ textAlign: 'center' }}>Actions</th>
               </tr>
@@ -2122,9 +2121,6 @@ export default function Assets() {
                       <td key={col.name} className="assets-attr-td assets-col-flex" title={cell === '—' ? undefined : cell}>{cell}</td>
                     );
                   })}
-                  <td className="assets-col-inv" style={{ textAlign: 'center', verticalAlign: 'middle' }} title={inventoryStatusLabel(item.asset_inventory_status)}>
-                    <InventoryStatusCell status={item.asset_inventory_status} />
-                  </td>
                   <td className="assets-col-image" style={{ padding: '10px 8px', textAlign: 'center', verticalAlign: 'middle' }}>
                     <AssetTableThumb imageUrl={item.image_url} name={item.name} />
                   </td>
