@@ -227,34 +227,72 @@ export function exportPDFSections(sections, title = 'Report', filename = 'export
 }
 
 /* ─── Export button component ────────────────────────────────── */
-export function ExportButtons({ onExcel, onPDF, label = 'Export' }) {
+const EXCEL_BTN_STYLE = {
+  display: 'inline-flex', alignItems: 'center', gap: 5,
+  padding: '6px 12px', borderRadius: 8, fontSize: 12.5, fontWeight: 600,
+  background: '#F0FDF4', color: '#15803D',
+  border: '1px solid #BBF7D0', transition: 'all 0.15s',
+};
+const PDF_BTN_STYLE = {
+  display: 'inline-flex', alignItems: 'center', gap: 5,
+  padding: '6px 12px', borderRadius: 8, fontSize: 12.5, fontWeight: 600,
+  background: '#FEF2F2', color: '#DC2626',
+  border: '1px solid #FECACA', transition: 'all 0.15s',
+};
+
+function exportBtnDisabledStyle(base) {
+  return {
+    ...base,
+    cursor: 'not-allowed',
+    opacity: 0.55,
+    pointerEvents: 'auto',
+  };
+}
+
+export function ExportButtons({ onExcel, onPDF, disabled = false, label = 'Export' }) {
+  const noDataTitle = 'No data to export';
+
+  const handleExcel = (e) => {
+    if (disabled) {
+      e.preventDefault();
+      return;
+    }
+    onExcel?.();
+  };
+
+  const handlePDF = (e) => {
+    if (disabled) {
+      e.preventDefault();
+      return;
+    }
+    onPDF?.();
+  };
+
   return (
     <div style={{ display: 'flex', gap: 6 }}>
       <button
-        onClick={onExcel}
-        style={{
-          display: 'inline-flex', alignItems: 'center', gap: 5,
-          padding: '6px 12px', borderRadius: 8, fontSize: 12.5, fontWeight: 600,
-          background: '#F0FDF4', color: '#15803D',
-          border: '1px solid #BBF7D0', cursor: 'pointer',
-          transition: 'all 0.15s',
-        }}
-        onMouseEnter={e => e.currentTarget.style.background = '#DCFCE7'}
-        onMouseLeave={e => e.currentTarget.style.background = '#F0FDF4'}
+        type="button"
+        onClick={handleExcel}
+        title={disabled ? noDataTitle : 'Export to Excel'}
+        aria-disabled={disabled}
+        style={disabled
+          ? exportBtnDisabledStyle(EXCEL_BTN_STYLE)
+          : { ...EXCEL_BTN_STYLE, cursor: 'pointer' }}
+        onMouseEnter={disabled ? undefined : (e) => { e.currentTarget.style.background = '#DCFCE7'; }}
+        onMouseLeave={disabled ? undefined : (e) => { e.currentTarget.style.background = '#F0FDF4'; }}
       >
         📊 Excel
       </button>
       <button
-        onClick={onPDF}
-        style={{
-          display: 'inline-flex', alignItems: 'center', gap: 5,
-          padding: '6px 12px', borderRadius: 8, fontSize: 12.5, fontWeight: 600,
-          background: '#FEF2F2', color: '#DC2626',
-          border: '1px solid #FECACA', cursor: 'pointer',
-          transition: 'all 0.15s',
-        }}
-        onMouseEnter={e => e.currentTarget.style.background = '#FEE2E2'}
-        onMouseLeave={e => e.currentTarget.style.background = '#FEF2F2'}
+        type="button"
+        onClick={handlePDF}
+        title={disabled ? noDataTitle : 'Export to PDF'}
+        aria-disabled={disabled}
+        style={disabled
+          ? exportBtnDisabledStyle(PDF_BTN_STYLE)
+          : { ...PDF_BTN_STYLE, cursor: 'pointer' }}
+        onMouseEnter={disabled ? undefined : (e) => { e.currentTarget.style.background = '#FEE2E2'; }}
+        onMouseLeave={disabled ? undefined : (e) => { e.currentTarget.style.background = '#FEF2F2'; }}
       >
         📄 PDF
       </button>

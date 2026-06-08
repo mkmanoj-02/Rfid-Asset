@@ -1933,6 +1933,7 @@ export default function Assets() {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {/* Export buttons */}
           <ExportButtons
+            disabled={total === 0}
             onExcel={async () => {
               const all = await fetchAllForExport();
               if (!all.length) return;
