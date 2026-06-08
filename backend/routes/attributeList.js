@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { trimAttrName } = require('../attributeNameUtil');
+const { filterAttributesByPrivilege } = require('../lib/assetScope');
 
 function buildAttributeScope(asset_type_id, allowedTypeIds) {
   const conditions = [];
@@ -96,7 +97,7 @@ router.get('/', async (req, res, next) => {
         : [],
     }));
 
-    res.json(payload);
+    res.json(filterAttributesByPrivilege(payload, req.authz));
   } catch (err) {
     next(err);
   }

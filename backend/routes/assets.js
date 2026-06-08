@@ -20,6 +20,8 @@ const {
   assertAssetPayload,
   assertAssetInScope,
   scopeAssetWhere,
+  filterEmbeddedAssetAttributes,
+  filterAttributesByPrivilege,
 } = require('../lib/userAuthz');
 const { requireModify, requireDelete } = require('../middleware/requireAuthz');
 const { withTransaction } = require('../lib/importHelpers');
@@ -217,6 +219,7 @@ router.get('/', async (req, res, next) => {
     const [rows] = await db.query(query, [...params, pageSize, offset]);
 
     await attachAssetAttributeValues(rows);
+    filterEmbeddedAssetAttributes(rows, authz);
 
     return res.json({
       data: rows,
@@ -232,6 +235,7 @@ router.get('/', async (req, res, next) => {
   // No pagination — return all records as a plain array
   const [rows] = await db.query(query, params);
   await attachAssetAttributeValues(rows);
+  filterEmbeddedAssetAttributes(rows, authz);
   res.json(rows);
   } catch (err) { next(err); }
 });
@@ -320,6 +324,7 @@ router.get('/:id', async (req, res, next) => {
   `, [id]);
   if (!rows.length) return res.status(404).json({ message: 'Not found' });
   await attachAssetAttributeValues(rows);
+  filterEmbeddedAssetAttributes(rows, req.authz);
   res.json(rows[0]);
   } catch (err) { next(err); }
 });
@@ -329,6 +334,9 @@ router.get('/:id/attributes', async (req, res, next) => {
   try {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) return res.status(400).json({ message: 'Invalid asset ID' });
+
+  const scopeErr = await assertAssetInScope(req.authz, res, id);
+  if (scopeErr) return scopeErr;
 
   const [rows] = await db.query(`
     SELECT aav.*, ata.name, ata.attr_type
@@ -349,7 +357,7 @@ router.get('/:id/attributes', async (req, res, next) => {
       row.list_options = [];
     }
   }
-  res.json(rows);
+  res.json(filterAttributesByPrivilege(rows, req.authz));
   } catch (err) { next(err); }
 });
 

@@ -20,9 +20,44 @@ function parseAssetPrivileges(val) {
   if (!val) return null;
   try {
     const ap = typeof val === 'string' ? JSON.parse(val) : val;
-    return ap && ap.length ? ap : null;
+    if (!ap || !Array.isArray(ap) || !ap.length) return null;
+    return ap.map((entry) => ({
+      attribute_id: entry.attribute_id,
+      attribute_name: entry.attribute_name,
+      value: entry.value != null ? String(entry.value).trim() : '',
+    })).filter((e) => e.attribute_name && e.value);
   } catch {
     return null;
+  }
+}
+
+/** Names allowed when user has asset_privileges; null = no restriction. */
+function getPrivilegedAttributeNameSet(authz) {
+  if (!authz?.attrFilters?.length) return null;
+  return new Set(
+    authz.attrFilters
+      .map((f) => String(f.attribute_name || '').trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
+function filterAttributesByPrivilege(rows, authz) {
+  const allowed = getPrivilegedAttributeNameSet(authz);
+  if (!allowed) return rows;
+  return (rows || []).filter((row) =>
+    allowed.has(String(row.name || '').trim().toLowerCase())
+  );
+}
+
+function filterEmbeddedAssetAttributes(assetRows, authz) {
+  const allowed = getPrivilegedAttributeNameSet(authz);
+  if (!allowed || !assetRows?.length) return;
+  for (const asset of assetRows) {
+    if (Array.isArray(asset.attributes)) {
+      asset.attributes = asset.attributes.filter((attr) =>
+        allowed.has(String(attr.name || '').trim().toLowerCase())
+      );
+    }
   }
 }
 
@@ -84,4 +119,7 @@ module.exports = {
   parseAssetPrivileges,
   expandWithSubLocations,
   buildAssetWhereClause,
+  getPrivilegedAttributeNameSet,
+  filterAttributesByPrivilege,
+  filterEmbeddedAssetAttributes,
 };

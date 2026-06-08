@@ -7,6 +7,10 @@ const {
   parsePriv,
   parseAssetPrivileges,
   buildAssetWhereClause,
+  expandWithSubLocations,
+  filterAttributesByPrivilege,
+  filterEmbeddedAssetAttributes,
+  getPrivilegedAttributeNameSet,
 } = require('./assetScope');
 
 const MODIFY_FLAGS = {
@@ -411,7 +415,7 @@ async function loadUserAuthz(userId) {
   let locationIds = null;
   if (!isSuperAdminUser) {
     const baseLoc = parsePriv(u.location_privileges);
-    if (baseLoc) locationIds = baseLoc.map(Number);
+    if (baseLoc) locationIds = await expandWithSubLocations(baseLoc.map(Number));
   }
 
   return {
@@ -478,4 +482,7 @@ module.exports = {
   buildMovementScopeWhere,
   buildAlertScopeWhere,
   assertAlertInScope,
+  filterAttributesByPrivilege,
+  filterEmbeddedAssetAttributes,
+  getPrivilegedAttributeNameSet,
 };

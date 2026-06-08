@@ -16,6 +16,7 @@ const {
 } = require('../controllers/imageInheritance');
 const { publicUrlForStoredFile, ENTITY_UPLOAD_SUBDIR } = require('../helper/upload');
 const { assertAssetTypeAccess } = require('../lib/userAuthz');
+const { filterAttributesByPrivilege } = require('../lib/assetScope');
 const { requireModify, requireDelete } = require('../middleware/requireAuthz');
 const {
   normalizeAssetTypeName,
@@ -294,7 +295,7 @@ router.get('/:id/attributes', async (req, res) => {
       attr.list_options = [];
     }
   }
-  res.json(deduped);
+  res.json(filterAttributesByPrivilege(deduped, req.authz));
 });
 
 // Add attribute to asset type
