@@ -7,6 +7,7 @@ const PAGE_SIZES = [25, 50, 100, 500];
 const TYPE_COLORS = {
   'Login':        { bg: '#dbeafe', color: '#1a56db' },
   'Login Failure':{ bg: '#fed7d7', color: '#9b2c2c' },
+  'Logout':       { bg: '#e2e8f0', color: '#4a5568' },
   'Asset':        { bg: '#c6f6d5', color: '#276749' },
   'Asset Type':   { bg: '#e9d8fd', color: '#553c9a' },
   'Location':     { bg: '#fefcbf', color: '#744210' },
@@ -14,11 +15,15 @@ const TYPE_COLORS = {
   'Import':       { bg: '#fed7e2', color: '#97266d' },
   'Rule':         { bg: '#e2e8f0', color: '#4a5568' },
   'Alert':        { bg: '#feebc8', color: '#7b341e' },
+  'Settings':     { bg: '#e9d8fd', color: '#6b46c1' },
+  'Handheld':     { bg: '#c3dafe', color: '#2c5282' },
+  'Dashboard':    { bg: '#b2f5ea', color: '#234e52' },
 };
 
 const TYPE_ICONS = {
   'Login': '🔑',
   'Login Failure': '🚫',
+  'Logout': '🚪',
   'Asset': '📦',
   'Asset Type': '🏷️',
   'Location': '📍',
@@ -26,9 +31,15 @@ const TYPE_ICONS = {
   'Import': '📥',
   'Rule': '📋',
   'Alert': '🔔',
+  'Settings': '⚙️',
+  'Handheld': '📱',
+  'Dashboard': '📊',
 };
 
-const ALL_TYPES = ['all', 'Login', 'Login Failure', 'Asset', 'Asset Type', 'Location', 'User', 'Import', 'Rule', 'Alert'];
+const ALL_TYPES = [
+  'all', 'Login', 'Login Failure', 'Logout', 'Asset', 'Asset Type', 'Location',
+  'User', 'Import', 'Rule', 'Alert', 'Settings', 'Handheld', 'Dashboard',
+];
 
 function defaultFromDate() {
   const d = new Date();

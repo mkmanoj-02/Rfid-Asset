@@ -14,9 +14,8 @@ const MOVEMENT_FROM = `FROM movement_history mh
   LEFT JOIN locations tl ON mh.to_location_id = tl.id`;
   
 const MOVEMENT_SELECT = `SELECT mh.*, a.name AS asset_name, a.rfid_tag,
-
-  fl.name AS from_location, tl.name AS to_location`;
-
+  fl.name AS from_location, tl.name AS to_location,
+  LEAD(mh.moved_at) OVER (PARTITION BY mh.asset_id ORDER BY mh.moved_at ASC, mh.id ASC) AS next_moved_at`;
 function combineWhere(clauses) {
   const parts = clauses.filter((c) => c && c.sql);
 

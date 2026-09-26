@@ -1,6 +1,6 @@
 /* ── Global ─────────────────────────────────────────────────── */
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; background: #F1F5F9; color: #1a202c; }
+body { font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; background: var(--theme-content-bg, #F1F5F9); color: #1a202c; }
 
 /* ── Layout ─────────────────────────────────────────────────── */
 .app-layout { display: flex; min-height: 100vh; }
@@ -9,7 +9,7 @@ body { font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; background: #F1F
 .sidebar { display: none; }
 
 /* ── Main Content ────────────────────────────────────────────── */
-.main-content { flex: 1; padding: 28px 32px; overflow-y: auto; background: #F1F5F9; }
+.main-content { flex: 1; padding: 28px 32px; overflow-y: auto; background: var(--theme-content-bg, #F1F5F9); }
 /* Assets: no page scroll — table fills remaining height, scrolls inside card */
 .main-content:has(.assets-page) {
   overflow: hidden;
@@ -44,8 +44,8 @@ body { font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; background: #F1F
 
 /* ── Buttons ─────────────────────────────────────────────────── */
 .btn { padding: 8px 18px; border: none; border-radius: 8px; cursor: pointer; font-size: 13.5px; font-weight: 500; transition: all 0.15s; }
-.btn-primary { background: #1565c0; color: #fff; }
-.btn-primary:hover { background: #0d47a1; }
+.btn-primary { background: var(--theme-primary, #1565c0); color: #fff; }
+.btn-primary:hover { background: var(--theme-primary-hover, #0d47a1); }
 .btn-danger { background: #e53e3e; color: #fff; }
 .btn-danger:hover { background: #c53030; }
 .btn-secondary { background: #e2e8f0; color: #2d3748; }
@@ -59,7 +59,7 @@ body { font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; background: #F1F
   cursor: not-allowed;
   box-shadow: none;
 }
-.btn-primary:disabled:hover { background: #1565c0; }
+.btn-primary:disabled:hover { background: var(--theme-primary, #1565c0); }
 .btn-secondary:disabled:hover { background: #e2e8f0; }
 .btn-danger:disabled:hover { background: #e53e3e; }
 
@@ -926,7 +926,7 @@ tr:hover td { background: #f8fafc; }
 .detail-tabs { display: flex; gap: 4px; border-bottom: 2px solid #e8edf2; }
 .tab-btn { padding: 10px 20px; border: none; background: none; cursor: pointer; font-size: 13.5px; font-weight: 500; color: #9ca3af; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: color 0.15s, border-color 0.15s; }
 .tab-btn:hover { color: #4b5563; }
-.tab-btn.active { color: #1565c0; border-bottom-color: #1565c0; }
+.tab-btn.active { color: var(--theme-primary, #1565c0); border-bottom-color: var(--theme-primary, #1565c0); }
 .tab-content { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); border: 1px solid #e8edf2; }
 .tab-content table input, .tab-content table select { width: 100%; padding: 6px 10px; border: 1.5px solid #e2e8f0; border-radius: 6px; font-size: 13px; }
 
@@ -1493,8 +1493,8 @@ tr:hover td { background: #f8fafc; }
 .field-wrap input:focus, .field-wrap select:focus, .field-wrap textarea:focus { outline: none; border-color: #1565c0; }
 .field-wrap textarea { resize: vertical; min-height: 80px; }
 .rfid-field { flex-direction: row; align-items: center; gap: 6px; }
-.rfid-field input, .rfid-field select { flex: 1; }
-.picker-btn { flex-shrink: 0; }
+.rfid-field input, .rfid-field select { flex: 1; min-width: 0; }
+.picker-btn { flex-shrink: 0; white-space: nowrap; }
 .required { color: #ef4444; }
 .field-error { color: #ef4444; font-size: 12px; }
 

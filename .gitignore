@@ -1,2 +1,12 @@
 backend/uploads/asset-types/1778831309637-212489487.jpg
 /backend/uploads
+node_modules/
+dist/
+build/
+.env
+*.log
+backend/logs/*.log
+backend/uploads/*
+!backend/uploads/.gitkeep
+!backend/logs/.gitkeep
+.DS_Store

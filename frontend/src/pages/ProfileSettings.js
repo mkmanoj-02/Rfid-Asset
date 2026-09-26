@@ -7,7 +7,7 @@ export default function ProfileSettings() {
       <header className="profile-settings-header">
         <div className="profile-settings-header-text">
           <h1>Profile</h1>
-          <p>Brand your application with a custom logo and display name.</p>
+          <p>Brand your application with a custom logo, favicon, and display name.</p>
         </div>
         <div className="profile-settings-header-badge" aria-hidden>
           <Sparkles size={14} strokeWidth={2} />

@@ -22,10 +22,10 @@ function validateOptionalRfidTag(value, errors) {
   return true;
 }
 
-/** True when the new tag is valid and different from the previous value. */
+/** True when the new tag is non-empty and different from the previous value. */
 function shouldLogRfidTagMovement(previousTag, nextTag) {
   const next = normalizeRfidTag(nextTag);
-  if (!isValidRfidTag(next)) return false;
+  if (!next) return false;
   return normalizeRfidTag(previousTag) !== next;
 }
 

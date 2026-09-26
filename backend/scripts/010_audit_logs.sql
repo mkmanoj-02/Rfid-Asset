@@ -2,7 +2,7 @@ USE asset_management;
 
 CREATE TABLE IF NOT EXISTS audit_logs (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  type ENUM('Login','Login Failure','Asset','Asset Type','Location','User','Import','Rule','Alert') NOT NULL,
+  type ENUM('Login','Login Failure','Logout','Asset','Asset Type','Location','User','Import','Rule','Alert','Settings','Handheld','Dashboard') NOT NULL,
   action VARCHAR(100) NOT NULL,
   description TEXT NOT NULL,
   username VARCHAR(255),

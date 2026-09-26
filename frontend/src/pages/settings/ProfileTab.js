@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ImageIcon, Upload, Type, LayoutTemplate, PanelLeft, Monitor,
+  ImageIcon, Upload, Type, LayoutTemplate, PanelLeft, Monitor, Palette, Globe,
 } from 'lucide-react';
 import { updateSiteBranding } from '../../api';
 import { useBranding } from '../../BrandingContext';
@@ -12,6 +12,7 @@ import {
   BRANDING_IMAGE_EXT,
 } from '../../utils/imageUrl';
 import { useToast } from '../../Toast';
+import { THEMES, getTheme, normalizeThemeId } from '../../themes';
 import './ProfileTab.css';
 
 const ACCEPT =
@@ -32,13 +33,16 @@ function SectionHead({ icon: Icon, title, description }) {
   );
 }
 
-function LogoUploadZone({
+function BrandingUploadZone({
   file,
   previewUrl,
   blobUrl,
   onFileChange,
   onClear,
   inputKey,
+  currentLabel = 'Current logo',
+  emptyTitle = 'Upload your logo',
+  thumbClassName = '',
 }) {
   const inputRef = useRef(null);
   const [dragOver, setDragOver] = useState(false);
@@ -97,11 +101,11 @@ function LogoUploadZone({
       >
         {hasImage ? (
           <div className="profile-upload-filled">
-            <div className="profile-upload-thumb">
+            <div className={`profile-upload-thumb${thumbClassName ? ` ${thumbClassName}` : ''}`}>
               <img src={displayUrl} alt="" />
             </div>
             <div className="profile-upload-meta">
-              <span className="profile-upload-name">{file ? file.name : 'Current logo'}</span>
+              <span className="profile-upload-name">{file ? file.name : currentLabel}</span>
               <span className="profile-upload-hint">Stored exactly as uploaded · max 5MB</span>
               {file && <span className="profile-upload-badge">Unsaved changes</span>}
               <div className="profile-upload-btns">
@@ -136,7 +140,7 @@ function LogoUploadZone({
               <Upload size={20} strokeWidth={2} />
             </div>
             <div className="profile-upload-empty-text">
-              <span className="profile-upload-empty-title">Upload your logo</span>
+              <span className="profile-upload-empty-title">{emptyTitle}</span>
               <span className="profile-upload-empty-sub">Drag and drop or click to browse</span>
             </div>
             <div className="profile-format-tags">
@@ -154,7 +158,7 @@ function LogoUploadZone({
 
 const LOGIN_PREVIEW_BG = `${process.env.PUBLIC_URL || ''}/srmcompressed.jpeg`;
 
-function PreviewFrame({ label, context, variant, children }) {
+function PreviewFrame({ label, context, variant, children, sidebarBg }) {
   const Icon = variant === 'sidebar' ? PanelLeft : Monitor;
   const stageStyle = variant === 'login'
     ? {
@@ -162,7 +166,9 @@ function PreviewFrame({ label, context, variant, children }) {
         backgroundSize: 'cover',
         backgroundPosition: 'center',
       }
-    : undefined;
+    : variant === 'sidebar' && sidebarBg
+      ? { background: sidebarBg }
+      : undefined;
 
   return (
     <div className="profile-frame">
@@ -187,18 +193,26 @@ export default function ProfileTab() {
 
   const [appName, setAppName] = useState('');
   const [appSubtitle, setAppSubtitle] = useState('');
+  const [themeId, setThemeId] = useState('blue');
   const [logoFile, setLogoFile] = useState(null);
   const [removeLogo, setRemoveLogo] = useState(false);
+  const [faviconFile, setFaviconFile] = useState(null);
+  const [removeFavicon, setRemoveFavicon] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [blobUrl, setBlobUrl] = useState(null);
+  const [faviconBlobUrl, setFaviconBlobUrl] = useState(null);
   const [uploadFieldKey, setUploadFieldKey] = useState(0);
+  const [faviconFieldKey, setFaviconFieldKey] = useState(0);
 
   useEffect(() => {
     setAppName(branding.app_name || '');
     setAppSubtitle(branding.app_subtitle || '');
+    setThemeId(normalizeThemeId(branding.theme));
     setLogoFile(null);
     setRemoveLogo(false);
+    setFaviconFile(null);
+    setRemoveFavicon(false);
     setError('');
   }, [branding]);
 
@@ -212,23 +226,51 @@ export default function ProfileTab() {
     return () => URL.revokeObjectURL(url);
   }, [logoFile]);
 
+  useEffect(() => {
+    if (!faviconFile) {
+      setFaviconBlobUrl(null);
+      return undefined;
+    }
+    const url = URL.createObjectURL(faviconFile);
+    setFaviconBlobUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [faviconFile]);
+
   const savedLogoUrl = branding.logo_url && !removeLogo ? branding.logo_url : null;
   const previewLogoUrl = removeLogo ? null : savedLogoUrl;
   const storedPreviewUrl = previewLogoUrl ? resolveImageUrl(previewLogoUrl) : null;
 
+  const savedFaviconUrl = branding.favicon_url && !removeFavicon ? branding.favicon_url : null;
+  const previewFaviconUrl = removeFavicon ? null : savedFaviconUrl;
+  const storedFaviconPreviewUrl = previewFaviconUrl ? resolveImageUrl(previewFaviconUrl) : null;
+  const selectedTheme = getTheme(themeId);
+
   const dirty = useMemo(() => {
     const nameChanged = appName.trim() !== (branding.app_name || '').trim();
     const subChanged = appSubtitle.trim() !== (branding.app_subtitle || '').trim();
-    return nameChanged || subChanged || logoFile != null || removeLogo;
-  }, [appName, appSubtitle, branding, logoFile, removeLogo]);
+    const themeChanged = normalizeThemeId(themeId) !== normalizeThemeId(branding.theme);
+    return (
+      nameChanged
+      || subChanged
+      || themeChanged
+      || logoFile != null
+      || removeLogo
+      || faviconFile != null
+      || removeFavicon
+    );
+  }, [appName, appSubtitle, themeId, branding, logoFile, removeLogo, faviconFile, removeFavicon]);
 
   const resetForm = useCallback(() => {
     setAppName(branding.app_name || '');
     setAppSubtitle(branding.app_subtitle || '');
+    setThemeId(normalizeThemeId(branding.theme));
     setLogoFile(null);
     setRemoveLogo(false);
+    setFaviconFile(null);
+    setRemoveFavicon(false);
     setError('');
     setUploadFieldKey((k) => k + 1);
+    setFaviconFieldKey((k) => k + 1);
   }, [branding]);
 
   const save = async () => {
@@ -241,14 +283,21 @@ export default function ProfileTab() {
     setError('');
     try {
       await updateSiteBranding(
-        { app_name: name, app_subtitle: subtitle },
+        { app_name: name, app_subtitle: subtitle, theme: normalizeThemeId(themeId) },
         logoFile,
-        { removeLogo }
+        {
+          removeLogo,
+          faviconFile,
+          removeFavicon,
+        }
       );
       await refreshBranding();
       setLogoFile(null);
       setRemoveLogo(false);
+      setFaviconFile(null);
+      setRemoveFavicon(false);
       setUploadFieldKey((k) => k + 1);
+      setFaviconFieldKey((k) => k + 1);
       showToast('Profile saved', 'success');
     } catch (e) {
       toastApiFailure(e, 'Profile');
@@ -257,6 +306,8 @@ export default function ProfileTab() {
       setSaving(false);
     }
   };
+
+  const faviconPreviewSrc = faviconBlobUrl || storedFaviconPreviewUrl;
 
   return (
     <div className="profile-page">
@@ -295,11 +346,49 @@ export default function ProfileTab() {
 
             <section className="profile-block">
               <SectionHead
+                icon={Palette}
+                title="Theme"
+                description="Choose the site-wide sidebar and accent colors. Applies for all users after save."
+              />
+              <div className="profile-theme-grid">
+                {Object.values(THEMES).map((t) => {
+                  const selected = themeId === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      className={`profile-theme-card${selected ? ' profile-theme-card--selected' : ''}`}
+                      onClick={() => setThemeId(t.id)}
+                      aria-pressed={selected}
+                    >
+                      <div
+                        className="profile-theme-swatch"
+                        style={{ background: t.sidebarBg }}
+                      >
+                        <div className="profile-theme-swatch-bar" style={{ background: t.primary }} />
+                      </div>
+                      <div className="profile-theme-meta">
+                        <span className="profile-theme-name">{t.label}</span>
+                        <span className="profile-theme-desc">{t.description}</span>
+                      </div>
+                      <div className="profile-theme-dots">
+                        {t.swatches.map((c) => (
+                          <span key={c} style={{ background: c }} />
+                        ))}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className="profile-block">
+              <SectionHead
                 icon={ImageIcon}
                 title="Logo"
                 description="Your image is saved in its original format — no conversion."
               />
-              <LogoUploadZone
+              <BrandingUploadZone
                 inputKey={uploadFieldKey}
                 file={logoFile}
                 previewUrl={storedPreviewUrl}
@@ -311,6 +400,31 @@ export default function ProfileTab() {
                 onClear={() => {
                   if (logoFile) setLogoFile(null);
                   else if (branding.logo_url) setRemoveLogo(true);
+                }}
+              />
+            </section>
+
+            <section className="profile-block">
+              <SectionHead
+                icon={Globe}
+                title="Favicon"
+                description="Shown in the browser tab. Square PNG or SVG works best (32×32 or larger)."
+              />
+              <BrandingUploadZone
+                inputKey={faviconFieldKey}
+                file={faviconFile}
+                previewUrl={storedFaviconPreviewUrl}
+                blobUrl={faviconBlobUrl}
+                currentLabel="Current favicon"
+                emptyTitle="Upload a favicon"
+                thumbClassName="profile-upload-thumb--favicon"
+                onFileChange={(f) => {
+                  setFaviconFile(f);
+                  setRemoveFavicon(false);
+                }}
+                onClear={() => {
+                  if (faviconFile) setFaviconFile(null);
+                  else if (branding.favicon_url) setRemoveFavicon(true);
                 }}
               />
             </section>
@@ -346,7 +460,12 @@ export default function ProfileTab() {
           </div>
 
           <div className="profile-preview-stack">
-            <PreviewFrame label="Sidebar" context="Navigation" variant="sidebar">
+            <PreviewFrame
+              label="Sidebar"
+              context="Navigation"
+              variant="sidebar"
+              sidebarBg={selectedTheme.sidebarBg}
+            >
               <AppBrand
                 appName={appName}
                 appSubtitle={appSubtitle}
@@ -365,10 +484,31 @@ export default function ProfileTab() {
                 variant="login-dark"
               />
             </PreviewFrame>
+
+            <div className="profile-frame">
+              <div className="profile-frame-chrome">
+                <Globe size={12} strokeWidth={2} />
+                <span>Browser tab</span>
+                <em>Favicon</em>
+              </div>
+              <div className="profile-frame-stage profile-frame-stage--favicon">
+                <div className="profile-favicon-tab">
+                  <div className="profile-favicon-tab-icon">
+                    {faviconPreviewSrc ? (
+                      <img src={faviconPreviewSrc} alt="" />
+                    ) : (
+                      <span className="profile-favicon-tab-placeholder" />
+                    )}
+                  </div>
+                  <span className="profile-favicon-tab-title">
+                    {(appName || 'RFID Asset').trim() || 'RFID Asset'}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
         </aside>
       </div>
     </div>
   );
 }
-

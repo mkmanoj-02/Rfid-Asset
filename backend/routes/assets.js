@@ -29,6 +29,17 @@ const fs = require('fs').promises;
 
 const ASSET_INVENTORY_STATUSES = ['in_inventory', 'missing', 'not_in_inventory'];
 
+/** Remove a tag from the unprocessed queue once it is assigned to an asset. */
+async function consumeUnprocessedTag(tagValue, queryFn = db) {
+  const tag = tagValue != null ? String(tagValue).trim() : '';
+  if (!tag) return;
+  try {
+    await queryFn.query('DELETE FROM unprocessed_tags WHERE tag_value = ?', [tag]);
+  } catch (e) {
+    console.error('Failed to remove unprocessed tag:', e.message);
+  }
+}
+
 /** @returns {string} defaultVal when val omitted; null when invalid */
 function normalizeAssetInventoryStatus(val, defaultVal = 'in_inventory') {
   if (val === undefined || val === null || val === '') return defaultVal;
@@ -403,7 +414,6 @@ router.post('/', requireModify('asset'), optionalImageUpload('assets'), async (r
   if (!vendor_id) errors.push('Vendor is required');
   if (!tag_type_id) errors.push('Tag type is required');
   if (!status || !status.toString().trim()) errors.push('Status is required');
-  if (rfid_tag && rfid_tag.toString().trim().length !== 24) errors.push('RFID tag must be exactly 24 characters');
   const invStatus = normalizeAssetInventoryStatus(asset_inventory_status, 'in_inventory');
   if (asset_inventory_status !== undefined && asset_inventory_status !== null && asset_inventory_status !== '' && !invStatus)
     errors.push(`asset_inventory_status must be one of: ${ASSET_INVENTORY_STATUSES.join(', ')}`);
@@ -465,6 +475,8 @@ router.post('/', requireModify('asset'), optionalImageUpload('assets'), async (r
         await insertRfidTagMovement(conn, id, locationId);
       }
 
+      await consumeUnprocessedTag(rfid_tag, conn);
+
       return id;
     });
   } catch (txErr) {
@@ -502,7 +514,6 @@ router.put('/:id', requireModify('asset'), optionalImageUpload('assets'), async 
   if (!vendor_id) editErrors.push('Vendor is required');
   if (!tag_type_id) editErrors.push('Tag type is required');
   if (!status || !status.toString().trim()) editErrors.push('Status is required');
-  if (rfid_tag && rfid_tag.toString().trim().length !== 24) editErrors.push('RFID tag must be exactly 24 characters');
   if (asset_inventory_status !== undefined && asset_inventory_status !== null && asset_inventory_status !== '') {
     const st = normalizeAssetInventoryStatus(asset_inventory_status, 'in_inventory');
     if (!st) editErrors.push(`asset_inventory_status must be one of: ${ASSET_INVENTORY_STATUSES.join(', ')}`);
@@ -551,6 +562,7 @@ router.put('/:id', requireModify('asset'), optionalImageUpload('assets'), async 
   if (shouldLogRfidTagMovement(existing[0].rfid_tag, rfid_tag) && locId) {
     await insertRfidTagMovement(db, id, locId);
   }
+  await consumeUnprocessedTag(rfid_tag);
   await audit.log('Asset', 'Modified', `Asset ID ${id} was updated`, req.auditUser, req.auditUserId);
   res.json({
     message: 'Updated',

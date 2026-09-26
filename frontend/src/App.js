@@ -3,10 +3,11 @@ import { BrowserRouter, Routes, Route, NavLink, useNavigate, Navigate } from 're
 import {
   LayoutDashboard, Package, Tag, MapPin, Users, History,
   Bell, BarChart2, ClipboardList, Upload, ChevronDown,
-  Menu, X, LogOut, Settings as SettingsIcon, Truck, TrendingDown, Smartphone, Building2,
+  Menu, X, LogOut, Settings as SettingsIcon, Truck, TrendingDown, Smartphone, Building2, ScanLine,
 } from 'lucide-react';
 import AppBrand from './components/AppBrand';
 import { BrandingProvider, useBranding } from './BrandingContext';
+import { SIDEBAR_CHROME, getTheme } from './themes';
 import Dashboard         from './pages/Dashboard';
 import Locations         from './pages/Locations';
 import AssetTypes        from './pages/AssetTypes';
@@ -24,25 +25,19 @@ import AppSettings       from './pages/Settings';
 import ProfileSettings   from './pages/ProfileSettings';
 import Depreciation      from './pages/Depreciation';
 import HandheldDevices   from './pages/HandheldDevices';
+import UnprocessedTags   from './pages/UnprocessedTags';
 import { AuthProvider, useAuth } from './AuthContext';
 import { ToastProvider }         from './Toast';
 import ToastRouteSync            from './ToastRouteSync';
 import './App.css';
 
-/* ─── Design tokens ──────────────────────────────────────────── */
-const S = {
-  sidebarW:    250,
-  bg:          'linear-gradient(160deg, #0EA5E9 0%, #1296DB 40%, #2563EB 100%)',
-  hover:       'rgba(255,255,255,0.12)',
-  active:      'rgba(255,255,255,0.20)',
-  activeBorder:'rgba(255,255,255,0.85)',
-  text:        '#FFFFFF',
-  muted:       'rgba(255,255,255,0.65)',
-  divider:     'rgba(255,255,255,0.15)',
-  glass:       'rgba(255,255,255,0.08)',
-  radius:      10,
-  transition:  'all 0.18s ease',
-};
+/* ─── Design tokens (theme-aware sidebar chrome) ─────────────── */
+const S = SIDEBAR_CHROME;
+
+function useChromeTheme() {
+  const { branding } = useBranding();
+  return getTheme(branding?.theme);
+}
 
 const PROFILE_LABELS = {
   super_admin: 'Super Administrator',
@@ -195,6 +190,7 @@ function SettingsDropdown() {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const navigate = useNavigate();
+  const theme = useChromeTheme();
 
   // Close on outside click
   useEffect(() => {
@@ -204,7 +200,7 @@ function SettingsDropdown() {
   }, []);
 
   const items = [
-    { icon: Building2, label: 'Profile', path: '/settings/profile', desc: 'Logo, app name & tagline' },
+    { icon: Building2, label: 'Profile', path: '/settings/profile', desc: 'Logo, favicon, app name, tagline & theme' },
     { icon: Tag, label: 'Tag Management', path: '/settings', desc: 'Manage tag types & tag recommendations' },
     { icon: Truck, label: 'Vendors', path: '/settings/vendors', desc: 'Manage asset vendors & suppliers' },
   ];
@@ -220,9 +216,9 @@ function SettingsDropdown() {
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           width: 36, height: 36, borderRadius: 9,
-          background: open ? 'rgba(37,99,235,0.12)' : 'transparent',
-          border: `1.5px solid ${open ? '#2563EB' : '#e2e8f0'}`,
-          cursor: 'pointer', color: open ? '#2563EB' : '#64748b',
+          background: open ? `${theme.accent}1f` : 'transparent',
+          border: `1.5px solid ${open ? theme.accent : '#e2e8f0'}`,
+          cursor: 'pointer', color: open ? theme.accent : '#64748b',
           transition: 'all 0.15s ease',
         }}
         className="settings-gear-btn"
@@ -276,10 +272,10 @@ function SettingsDropdown() {
             >
               <div style={{
                 width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-                background: 'linear-gradient(135deg, #EFF6FF, #DBEAFE)',
+                background: `${theme.accent}18`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
-                <Icon size={15} strokeWidth={2} color="#2563EB" />
+                <Icon size={15} strokeWidth={2} color={theme.accent} />
               </div>
               <div>
                 <div style={{ fontSize: 13.5, fontWeight: 600, color: '#1e293b' }}>{label}</div>
@@ -350,14 +346,15 @@ function RedirectIfAuthenticated({ children }) {
 function Sidebar({ mobileOpen, onMobileClose }) {
   const { currentUser, logout } = useAuth();
   const { branding } = useBranding();
+  const theme = useChromeTheme();
   const isSuperAdmin = currentUser?.profile_type === 'super_admin';
   const isAdmin      = currentUser?.profile_type === 'admin' || isSuperAdmin;
 
   return (
     <nav style={{
       width: S.sidebarW, minWidth: S.sidebarW, height: '100vh',
-      background: S.bg, display: 'flex', flexDirection: 'column',
-      boxShadow: '4px 0 32px rgba(14,165,233,0.25), 2px 0 0 rgba(255,255,255,0.06)',
+      background: theme.sidebarBg, display: 'flex', flexDirection: 'column',
+      boxShadow: theme.sidebarShadow,
       position: 'relative', overflow: 'hidden',
     }}>
       <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0,
@@ -391,10 +388,11 @@ function Sidebar({ mobileOpen, onMobileClose }) {
           <SidebarDivider />
           <SectionLabel label="Manage" />
           <NavGroup label="Assets" icon={Package} defaultOpen>
-            <NavItem to="/assets"      icon={Package} label="Assets"      indent />
-            <NavItem to="/asset-types" icon={Tag}     label="Asset Types" indent />
-            <NavItem to="/locations"   icon={MapPin}  label="Locations"   indent />
-            <NavItem to="/users"       icon={Users}   label={isSuperAdmin ? 'Users' : 'My Profile'} indent />
+            <NavItem to="/assets"            icon={Package}   label="Assets"            indent />
+            <NavItem to="/asset-types"       icon={Tag}       label="Asset Types"       indent />
+            <NavItem to="/locations"         icon={MapPin}    label="Locations"         indent />
+            <NavItem to="/unprocessed-tags"  icon={ScanLine}  label="Unprocessed Tags"  indent />
+            <NavItem to="/users"             icon={Users}     label={isSuperAdmin ? 'Users' : 'My Profile'} indent />
           </NavGroup>
 
           <SidebarDivider />
@@ -460,6 +458,7 @@ function MobileOverlay({ open, onClose }) {
 function AppShell() {
   const { logout } = useAuth();
   const { branding } = useBranding();
+  const theme = useChromeTheme();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -481,7 +480,7 @@ function AppShell() {
   }, [logout, navigate]);
 
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: '#F1F5F9' }}>
+    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: theme.contentBg }}>
 
       {/* Desktop sidebar */}
       <div style={{ flexShrink: 0, height: '100vh', position: 'sticky', top: 0 }} className="sidebar-desktop">
@@ -504,8 +503,8 @@ function AppShell() {
         {/* Mobile top bar */}
         <div className="mobile-topbar" style={{
           display: 'none', alignItems: 'center', gap: 12,
-          padding: '12px 16px', background: S.bg,
-          boxShadow: '0 2px 12px rgba(14,165,233,0.3)', flexShrink: 0,
+          padding: '12px 16px', background: theme.sidebarBg,
+          boxShadow: theme.sidebarShadow, flexShrink: 0,
         }}>
           <button onClick={() => setMobileOpen(true)} style={{
             background: 'rgba(255,255,255,0.15)', border: 'none',
@@ -525,6 +524,7 @@ function AppShell() {
             <Route path="/assets"                element={<Assets />} />
             <Route path="/asset-types"           element={<AssetTypes />} />
             <Route path="/locations"             element={<Locations />} />
+            <Route path="/unprocessed-tags"      element={<UnprocessedTags />} />
             <Route path="/movements"             element={<Movements />} />
             <Route path="/import"                element={<Import />} />
             <Route path="/users"                 element={<UsersPage />} />

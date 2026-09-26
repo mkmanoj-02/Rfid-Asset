@@ -33,6 +33,13 @@ const files = [
   '020_dashboard_image.sql',
   '021_movement_to_location_nullable.sql',
   '022_asset_types_unique_name.sql',
+  '023_unprocessed_tags.sql',
+  '024_site_branding_theme.sql',
+  '025_audit_logs_type_enum.sql',
+  '026_site_branding_favicon.sql',
+  '027_reader_locations.sql',
+  '028_zones.sql',
+  '029_readers_floor_plan.sql',
 ];
 
 /** MySQL errors that are safe to skip when re-running migrations. */
@@ -76,6 +83,7 @@ async function createConnection() {
     host: process.env.DB_HOST || 'localhost',
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || '',
+    port: Number(process.env.DB_PORT) || 3306,
     database,
     multipleStatements: true,
   });

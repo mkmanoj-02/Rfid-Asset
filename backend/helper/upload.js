@@ -24,6 +24,7 @@ const ENTITY_UPLOAD_SUBDIR = {
   asset_types: 'asset-types',
   site_branding: 'site-branding',
   dashboard_image: 'dashboardimage',
+  floor_plan: 'floor-plan',
 };
 
 /** Allowed extensions and acceptable MIME types */
@@ -84,21 +85,35 @@ function validateImageFile(req, file, cb) {
   cb(null, true);
 }
 
-/**
- * Express middleware: multipart field name `image`, writes to uploads/{entityFolder}/.
- * @param {'assets'|'locations'|'asset_types'} entityKey
- */
-function uploadImageMiddleware(entityKey) {
+function createMulter(entityKey) {
   const subdir = ENTITY_UPLOAD_SUBDIR[entityKey];
   if (!subdir) {
     throw new Error(`uploadImageMiddleware: unknown entity "${entityKey}"`);
   }
-  const storage = createStorage(subdir);
   return multer({
-    storage,
+    storage: createStorage(subdir),
     limits: { fileSize: MAX_FILE_BYTES },
     fileFilter: validateImageFile,
-  }).single('image');
+  });
+}
+
+/**
+ * Express middleware: multipart field name `image`, writes to uploads/{entityFolder}/.
+ * @param {'assets'|'locations'|'asset_types'|'site_branding'|'dashboard_image'} entityKey
+ */
+function uploadImageMiddleware(entityKey) {
+  return createMulter(entityKey).single('image');
+}
+
+/**
+ * Site branding: optional logo (`image`) and favicon (`favicon`) in one multipart request.
+ * @param {'site_branding'} entityKey
+ */
+function uploadBrandingFieldsMiddleware(entityKey = 'site_branding') {
+  return createMulter(entityKey).fields([
+    { name: 'image', maxCount: 1 },
+    { name: 'favicon', maxCount: 1 },
+  ]);
 }
 
 /**
@@ -151,6 +166,7 @@ function diskPathFromImageUrl(imageUrl) {
 
 module.exports = {
   uploadImageMiddleware,
+  uploadBrandingFieldsMiddleware,
   handleMulterImageError,
   publicUrlForStoredFile,
   diskPathFromImageUrl,

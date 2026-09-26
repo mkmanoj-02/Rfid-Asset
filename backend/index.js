@@ -105,6 +105,11 @@ app.use('/api/tag-types', require('./routes/tagTypes'));
 app.use('/api/vendors',  require('./routes/vendors'));
 app.use('/api/depreciation', require('./routes/depreciation'));
 app.use('/api/handheld-devices', require('./routes/handheldDevices'));
+app.use('/api/reader-locations', require('./routes/readerLocations'));
+app.use('/api/zones', require('./routes/zones'));
+app.use('/api/readers', require('./routes/readers'));
+app.use('/api/floor-plan', require('./routes/floorPlan'));
+app.use('/api/unprocessed-tags', require('./routes/unprocessedTags'));
 app.use('/api/site-branding', siteBrandingRoutes);
 
 const { startRuleEngine } = require('./ruleEngine');

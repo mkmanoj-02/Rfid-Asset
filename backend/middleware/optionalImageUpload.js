@@ -2,7 +2,11 @@
  * Runs multer only when Content-Type is multipart/form-data (keeps JSON APIs working).
  */
 
-const { uploadImageMiddleware, handleMulterImageError } = require('../helper/upload');
+const {
+  uploadImageMiddleware,
+  uploadBrandingFieldsMiddleware,
+  handleMulterImageError,
+} = require('../helper/upload');
 const { isMultipartRequest } = require('../controllers/imageInheritance');
 
 /**
@@ -19,4 +23,16 @@ function optionalImageUpload(entityKey) {
   };
 }
 
-module.exports = { optionalImageUpload };
+/** Logo (`image`) + favicon (`favicon`) for site branding PUT */
+function optionalBrandingUpload() {
+  const multerMw = uploadBrandingFieldsMiddleware('site_branding');
+  return (req, res, next) => {
+    if (!isMultipartRequest(req)) return next();
+    multerMw(req, res, (err) => {
+      if (err) return handleMulterImageError(err, req, res, next);
+      next();
+    });
+  };
+}
+
+module.exports = { optionalImageUpload, optionalBrandingUpload };

@@ -3,7 +3,7 @@ import {
   getAssets, createAssetMultipart, updateAsset, updateAssetMultipart, deleteAsset, bulkDeleteAssets,
   getAssetTypes, getLocations, getLocationTree,
   getAssetAttributes, saveAssetAttributes, getAssetMovements,
-  getRfidTags, removeRfidTag, getAttributes, getAttributeList,
+  getRfidTags, removeRfidTag, getUnprocessedTags, getAttributes, getAttributeList,
   getTagTypes, createTagType, updateTagType, deleteTagType, getTagRecommendationForAssetType,
   getVendors, createVendor, updateVendor, deleteVendor
 } from '../api';
@@ -148,17 +148,191 @@ function ConfirmModal({ title, message, subMessage, confirmLabel = 'Delete', con
   );
 }
 
+// ── RFID picker: live reader buffer + unprocessed_tags ─────────
+function RfidField({ value, onChange, placeholder = 'Enter or select RFID tag...' }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerTab, setPickerTab] = useState('reader');
+
+  const openPicker = (tab) => {
+    setPickerTab(tab);
+    setPickerOpen(true);
+  };
+
+  return (
+    <>
+      <div className="field-wrap rfid-field">
+        <input
+          value={value || ''}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+        />
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm picker-btn"
+          title="Select tag from live reader"
+          onClick={() => openPicker('reader')}
+        >
+          Reader
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm picker-btn"
+          title="Select from unprocessed tags"
+          onClick={() => openPicker('unprocessed')}
+        >
+          Unprocessed
+        </button>
+      </div>
+      <RfidPickerModal
+        open={pickerOpen}
+        initialTab={pickerTab}
+        onClose={() => setPickerOpen(false)}
+        onSelect={(tag) => {
+          onChange(tag);
+          setPickerOpen(false);
+        }}
+      />
+    </>
+  );
+}
+
+function RfidPickerModal({ open, initialTab = 'reader', onClose, onSelect }) {
+  const rfidPollErrLastRef = useRef(0);
+  const [tab, setTab] = useState(initialTab);
+  const [readerTags, setReaderTags] = useState([]);
+  const [unprocessed, setUnprocessed] = useState([]);
+
+  useEffect(() => {
+    if (!open) return;
+    setTab(initialTab === 'unprocessed' ? 'unprocessed' : 'reader');
+  }, [open, initialTab]);
+
+  useEffect(() => {
+    if (!open) return;
+    const load = () => {
+      getRfidTags()
+        .then((r) => setReaderTags(Array.isArray(r.data) ? r.data : []))
+        .catch((e) => {
+          const now = Date.now();
+          if (now - rfidPollErrLastRef.current > 12000) {
+            rfidPollErrLastRef.current = now;
+            toastApiFailure(e, 'RFID tags');
+          }
+        });
+      getUnprocessedTags()
+        .then((r) => setUnprocessed(Array.isArray(r.data) ? r.data : []))
+        .catch((e) => {
+          const now = Date.now();
+          if (now - rfidPollErrLastRef.current > 12000) {
+            rfidPollErrLastRef.current = now;
+            toastApiFailure(e, 'Unprocessed tags');
+          }
+        });
+    };
+    load();
+    const interval = setInterval(load, 2000);
+    return () => clearInterval(interval);
+  }, [open]);
+
+  if (!open) return null;
+
+  const pickReader = async (tag) => {
+    try {
+      await removeRfidTag(tag);
+    } catch (e) {
+      toastApiFailure(e, 'RFID tag');
+      return;
+    }
+    onSelect(tag);
+  };
+
+  const pickUnprocessed = (tag) => {
+    onSelect(tag);
+  };
+
+  const tabBtn = (id, label, count) => (
+    <button
+      type="button"
+      className={`tab-btn ${tab === id ? 'active' : ''}`}
+      onClick={() => setTab(id)}
+      style={{ flex: 1 }}
+    >
+      {label}{typeof count === 'number' ? ` (${count})` : ''}
+    </button>
+  );
+
+  return (
+    <div className="modal-overlay" style={{ zIndex: 200 }}>
+      <div className="modal" style={{ width: 440 }}>
+        <h2>Select RFID Tag</h2>
+        <p style={{ fontSize: 13, color: '#888', marginBottom: 12 }}>
+          Use a live reader scan or pick an unprocessed tag. Unprocessed tags are removed from the queue after the asset is saved.
+        </p>
+
+        <div className="detail-tabs" style={{ marginBottom: 12 }}>
+          {tabBtn('reader', 'From reader', readerTags.length)}
+          {tabBtn('unprocessed', 'Unprocessed', unprocessed.length)}
+        </div>
+
+        {tab === 'reader' && (
+          readerTags.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '24px 0', color: '#aaa' }}>
+              <div style={{ fontSize: 24, marginBottom: 8 }}>📡</div>
+              Waiting for RFID reader…
+            </div>
+          ) : (
+            <div className="rfid-tag-list" style={{ maxHeight: 320 }}>
+              {readerTags.map((tag) => (
+                <div key={`reader-${tag}`} className="rfid-tag-item" onClick={() => pickReader(tag)}>
+                  <div>
+                    <code>{tag}</code>
+                    <div style={{ fontSize: 11, color: '#0ea5e9', marginTop: 2 }}>Live reader</div>
+                  </div>
+                  <span className="btn btn-primary btn-sm">Select</span>
+                </div>
+              ))}
+            </div>
+          )
+        )}
+
+        {tab === 'unprocessed' && (
+          unprocessed.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '24px 0', color: '#aaa' }}>
+              No unprocessed tags available
+            </div>
+          ) : (
+            <div className="rfid-tag-list" style={{ maxHeight: 320 }}>
+              {unprocessed.map((row) => (
+                <div key={`unp-${row.id}`} className="rfid-tag-item" onClick={() => pickUnprocessed(row.tag_value)}>
+                  <div>
+                    <code>{row.tag_value}</code>
+                    <div style={{ fontSize: 11, color: '#b45309', marginTop: 2 }}>
+                      Unprocessed{row.source ? ` · ${row.source}` : ''}
+                    </div>
+                  </div>
+                  <span className="btn btn-primary btn-sm">Select</span>
+                </div>
+              ))}
+            </div>
+          )
+        )}
+
+        <div className="modal-actions">
+          <button type="button" className="btn btn-secondary" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Add Asset Form ─────────────────────────────────────────────
 function AddAssetModal({ types, locations, locationTree, tagTypes, vendors, onClose, onSaved }) {
   const { showToast } = useToast();
-  const rfidPollErrLastRef = useRef(0);
   const [form, setForm] = useState({
     asset_serial: '', name: '', rfid_tag: '',
     tag_type_id: '', vendor_id: '',
     asset_type_id: '', current_location_id: '', status: 'active', description: ''
   });
-  const [rfidTags, setRfidTags] = useState([]);
-  const [rfidPickerOpen, setRfidPickerOpen] = useState(false);
   const [errors, setErrors] = useState({});
   const [typeAttrs, setTypeAttrs] = useState([]);
   const [attrValues, setAttrValues] = useState({});
@@ -175,32 +349,6 @@ function AddAssetModal({ types, locations, locationTree, tagTypes, vendors, onCl
       setAttrValues(defaults);
     }).catch((e) => toastApiFailure(e, 'Attributes'));
   }, [form.asset_type_id]);
-
-  // Poll RFID tags every 2s when picker is open
-  useEffect(() => {
-    if (!rfidPickerOpen) return;
-    const load = () => getRfidTags().then(r => setRfidTags(r.data)).catch((e) => {
-      const now = Date.now();
-      if (now - rfidPollErrLastRef.current > 12000) {
-        rfidPollErrLastRef.current = now;
-        toastApiFailure(e, 'RFID tags');
-      }
-    });
-    load();
-    const interval = setInterval(load, 2000);
-    return () => clearInterval(interval);
-  }, [rfidPickerOpen]);
-
-  const selectRfid = async (tag) => {
-    setForm({ ...form, rfid_tag: tag });
-    try {
-      await removeRfidTag(tag);
-    } catch (e) {
-      toastApiFailure(e, 'RFID tag');
-      return;
-    }
-    setRfidPickerOpen(false);
-  };
 
   const pickAssetType = async (assetTypeId) => {
     const id = assetTypeId ? String(assetTypeId) : '';
@@ -290,10 +438,10 @@ function AddAssetModal({ types, locations, locationTree, tagTypes, vendors, onCl
           </div>
           <div className="form-row">
             <label>RFID</label>
-            <div className="field-wrap rfid-field">
-              <input value={form.rfid_tag} readOnly placeholder="Select from reader..." />
-              <button className="btn btn-secondary btn-sm picker-btn" onClick={() => setRfidPickerOpen(true)}>...</button>
-            </div>
+            <RfidField
+              value={form.rfid_tag}
+              onChange={(tag) => setForm((prev) => ({ ...prev, rfid_tag: tag }))}
+            />
           </div>
           <div className="form-row">
             <label>Asset Type <span className="required">*</span></label>
@@ -416,35 +564,6 @@ function AddAssetModal({ types, locations, locationTree, tagTypes, vendors, onCl
         </div>
       </div>
 
-      {/* RFID Tag Picker */}
-      {rfidPickerOpen && (
-        <div className="modal-overlay" style={{ zIndex: 200 }}>
-          <div className="modal" style={{ width: 380 }}>
-            <h2>Select RFID Tag</h2>
-            <p style={{ fontSize: 13, color: '#888', marginBottom: 12 }}>
-              Scan with handheld/fixed reader. Tags appear below automatically.
-            </p>
-            {rfidTags.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '24px 0', color: '#aaa' }}>
-                <div style={{ fontSize: 24, marginBottom: 8 }}>📡</div>
-                Waiting for RFID reader...
-              </div>
-            ) : (
-              <div className="rfid-tag-list">
-                {rfidTags.map(tag => (
-                  <div key={tag} className="rfid-tag-item" onClick={() => selectRfid(tag)}>
-                    <code>{tag}</code>
-                    <span className="btn btn-primary btn-sm">Select</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className="modal-actions">
-              <button className="btn btn-secondary" onClick={() => setRfidPickerOpen(false)}>Close</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -878,9 +997,10 @@ function AssetDetail({ asset, types, locations, locationTree, tagTypes, vendors,
               </div>
               <div className="form-row">
                 <label>RFID</label>
-                <div className="field-wrap">
-                  <input value={editForm.rfid_tag || ''} onChange={e => setEditForm({ ...editForm, rfid_tag: e.target.value })} placeholder="RFID tag" />
-                </div>
+                <RfidField
+                  value={editForm.rfid_tag}
+                  onChange={(tag) => setEditForm((prev) => ({ ...prev, rfid_tag: tag }))}
+                />
               </div>
               <div className="form-row">
                 <label>Asset Type <span className="required">*</span></label>
