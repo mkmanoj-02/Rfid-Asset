@@ -40,6 +40,7 @@ const files = [
   '027_reader_locations.sql',
   '028_zones.sql',
   '029_readers_floor_plan.sql',
+  '030_asset_attachments.sql',
 ];
 
 /** MySQL errors that are safe to skip when re-running migrations. */

@@ -206,7 +206,7 @@ router.delete("/:id", async (req, res) => {
     req.auditUserId,
   );
 
-  res.status(204).json().send();
+  res.status(204).send();
 });
 
 module.exports = router;

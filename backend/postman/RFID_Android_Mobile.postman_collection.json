@@ -1,0 +1,404 @@
+{
+  "info": {
+    "_postman_id": "5d2b7e0a-3c41-4b8e-9f6d-android-mobile-api",
+    "name": "RFID Asset — Android Mobile APIs",
+    "description": "Android handheld APIs.\n\n1. Run **Auth → Login** first (saves `accessToken` and `refreshToken`).\n2. Every other request uses Bearer `{{accessToken}}`.\n3. On 401, run **Auth → Refresh Token**.\n4. **Create Asset** saves the new id into `assetId`.\n\nAsset `status`: INVENTORIED | MISSING | UNTAGGED. `inventoryStatus`: inventory | missing.\nAttribute `fieldType`: TEXT | NUMBER | DATE | LIST (LIST includes `options`).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://testrfidasset.2cqr.in" },
+    { "key": "accessToken", "value": "" },
+    { "key": "refreshToken", "value": "" },
+    { "key": "assetId", "value": "1" },
+    { "key": "locationId", "value": "1" },
+    { "key": "assetTypeId", "value": "1" },
+    { "key": "rfid", "value": "E28000000000000000000001" },
+    { "key": "deviceName", "value": "Warehouse Handheld 3" },
+    { "key": "since", "value": "2026-01-01T00:00:00Z" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const data = pm.response.json();",
+                  "  if (data.accessToken) pm.collectionVariables.set('accessToken', data.accessToken);",
+                  "  if (data.refreshToken) pm.collectionVariables.set('refreshToken', data.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"administrator\",\n  \"password\": \"admin\"\n}"
+            },
+            "url": "{{baseUrl}}/api/auth/login",
+            "description": "Public. Returns `user`, `accessToken`, `refreshToken`. Saves both tokens to collection variables."
+          }
+        },
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/auth/me",
+            "description": "Current logged-in user."
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const data = pm.response.json();",
+                  "  if (data.accessToken) pm.collectionVariables.set('accessToken', data.accessToken);",
+                  "  if (data.refreshToken) pm.collectionVariables.set('refreshToken', data.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/auth/refresh-token",
+            "description": "Call when any request returns 401. Rotates the refresh token."
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/auth/logout"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Catalog Download",
+      "item": [
+        {
+          "name": "Asset Types",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/mobile/asset-types",
+            "description": "Returns `{ assetTypes: [{ id, name, image, attributeDefs: [{ id, key, label, fieldType, options? }] }] }`."
+          }
+        },
+        {
+          "name": "Assets (all)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/mobile/assets",
+            "description": "Every asset the user may see. Returns `{ assets: [...] }`."
+          }
+        },
+        {
+          "name": "Assets (changed since)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/mobile/assets?since={{since}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "mobile", "assets"],
+              "query": [{ "key": "since", "value": "{{since}}", "description": "ISO 8601 datetime" }]
+            },
+            "description": "Incremental sync: only assets updated after `since`."
+          }
+        },
+        {
+          "name": "Locations (list + tree)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/public/locations",
+            "description": "Returns `{ status, list, tree }`. Requires access token."
+          }
+        },
+        {
+          "name": "Locations (list)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/public/locations/list"
+          }
+        },
+        {
+          "name": "Locations (tree)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/public/locations/tree"
+          }
+        },
+        {
+          "name": "Assets at Location",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/public/locations?location={{locationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "public", "locations"],
+              "query": [{ "key": "location", "value": "{{locationId}}" }]
+            },
+            "description": "Assets at that location including sub-locations."
+          }
+        },
+        {
+          "name": "Handheld Device Attributes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/handheld-devices/mobile/attributes?device_name={{deviceName}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "handheld-devices", "mobile", "attributes"],
+              "query": [{ "key": "device_name", "value": "{{deviceName}}" }]
+            },
+            "description": "Attributes mapped to an active handheld device (exact name match)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dashboard Sync",
+      "item": [
+        {
+          "name": "Sync",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deviceName\": \"{{deviceName}}\",\n  \"syncedAt\": 1759040000000,\n  \"assets\": [\n    {\n      \"id\": \"asset-9f3a\",\n      \"clientAction\": \"CREATE\",\n      \"serial\": \"AST-20001\",\n      \"name\": \"New Laptop\",\n      \"assetTypeId\": {{assetTypeId}},\n      \"locationId\": {{locationId}},\n      \"rfid\": \"E2800003E89999\",\n      \"description\": \"\",\n      \"attributes\": { \"manufacturer\": \"Dell\", \"model\": \"Latitude 5440\" },\n      \"status\": \"INVENTORIED\",\n      \"lastSeenAt\": 1759040000000,\n      \"newlyTagged\": true,\n      \"updatedAt\": 1759040000000\n    },\n    {\n      \"id\": {{assetId}},\n      \"clientAction\": \"UPDATE\",\n      \"status\": \"MISSING\"\n    }\n  ]\n}"
+            },
+            "url": "{{baseUrl}}/api/mobile/sync",
+            "description": "CREATE inserts (or updates when the serial exists). Anything else updates by numeric id, then by serial.\n\nReturns `{ inventoriedCount, missingCount, newlyTaggedAssets: [{ id, serverId, serial, name }], errors: [{ id, serial, message }] }`."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tag Assign",
+      "item": [
+        {
+          "name": "Search Untagged Assets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/mobile/assets?untagged=true&q=laptop",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "mobile", "assets"],
+              "query": [
+                { "key": "untagged", "value": "true" },
+                { "key": "q", "value": "laptop", "description": "Serial, name, or attribute value" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Lookup by RFID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/mobile/assets/lookup?rfid={{rfid}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "mobile", "assets", "lookup"],
+              "query": [{ "key": "rfid", "value": "{{rfid}}" }]
+            },
+            "description": "200 with the asset holding the tag, 404 if the tag is free. Out-of-scope assets return only id, serial, name, rfid, inScope=false."
+          }
+        },
+        {
+          "name": "Create Asset",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const data = pm.response.json();",
+                  "  if (data.id) pm.collectionVariables.set('assetId', data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"serial\": \"AST-20002\",\n  \"name\": \"New Laptop\",\n  \"assetTypeId\": {{assetTypeId}},\n  \"locationId\": {{locationId}},\n  \"rfid\": \"{{rfid}}\",\n  \"description\": \"\",\n  \"attributes\": { \"manufacturer\": \"Dell\", \"model\": \"Latitude 5440\" }\n}"
+            },
+            "url": "{{baseUrl}}/api/mobile/assets",
+            "description": "Status is always INVENTORIED. 201 with the asset; 409 if serial/RFID already used; 403 if location/type not allowed. Saves id into `assetId`."
+          }
+        },
+        {
+          "name": "Assign Tag",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rfid\": \"{{rfid}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/mobile/assets/{{assetId}}/tag",
+            "description": "Assigns/replaces the tag and marks the asset inventoried. 409 `{ message, asset }` when another asset holds the tag."
+          }
+        },
+        {
+          "name": "Remove Tag",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/api/mobile/assets/{{assetId}}/rfid",
+            "description": "Clears the RFID tag (user confirmed moving it to another asset). Returns the asset."
+          }
+        },
+        {
+          "name": "Upload Image",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [{ "key": "file", "type": "file", "src": [] }]
+            },
+            "url": "{{baseUrl}}/api/mobile/assets/{{assetId}}/image",
+            "description": "jpg, jpeg, png, webp, gif, svg; max 5MB. Returns `{ imageUrl }`."
+          }
+        },
+        {
+          "name": "Upload Attachment",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": [] },
+                { "key": "name", "value": "warranty.pdf", "type": "text" }
+              ]
+            },
+            "url": "{{baseUrl}}/api/mobile/assets/{{assetId}}/attachments",
+            "description": "pdf, images, doc/docx, xls/xlsx, csv, txt; max 10MB. One attachment per asset (replaces previous). Returns `{ attachmentUrl, attachmentName }`."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Asset Details & Edit",
+      "item": [
+        {
+          "name": "Get Asset",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/mobile/assets/{{assetId}}",
+            "description": "404 when missing or outside the user's scope."
+          }
+        },
+        {
+          "name": "Update Location",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"locationId\": {{locationId}}\n}"
+            },
+            "url": "{{baseUrl}}/api/mobile/assets/{{assetId}}",
+            "description": "Search → context menu → Update Location. Records a movement. 403 if the location is not allowed."
+          }
+        },
+        {
+          "name": "Edit Asset",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Dell Latitude 5440\",\n  \"description\": \"Assigned to IT\",\n  \"attributes\": { \"manufacturer\": \"Dell\", \"model\": \"Latitude 5440\" }\n}"
+            },
+            "url": "{{baseUrl}}/api/mobile/assets/{{assetId}}",
+            "description": "Only sent fields change. serial, assetTypeId, rfid and imageUrl are ignored — upload a new image with Tag Assign → Upload Image."
+          }
+        }
+      ]
+    },
+    {
+      "name": "RFID Scan Buffer",
+      "item": [
+        {
+          "name": "Post Scanned Tag",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tag\": \"{{rfid}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/rfid/scan"
+          }
+        },
+        {
+          "name": "Get Scanned Tags",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/rfid/tags"
+          }
+        },
+        {
+          "name": "Clear Scanned Tags",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/api/rfid/tags"
+          }
+        }
+      ]
+    }
+  ]
+}

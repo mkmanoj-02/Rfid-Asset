@@ -25,7 +25,16 @@ const ENTITY_UPLOAD_SUBDIR = {
   site_branding: 'site-branding',
   dashboard_image: 'dashboardimage',
   floor_plan: 'floor-plan',
+  attachments: 'attachments',
 };
+
+/** Max attachment size (10 MB) */
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
+const ATTACHMENT_EXTENSIONS = new Set([
+  '.pdf', '.jpg', '.jpeg', '.png', '.webp',
+  '.doc', '.docx', '.xls', '.xlsx', '.csv', '.txt',
+]);
 
 /** Allowed extensions and acceptable MIME types */
 const EXT_TO_MIMES = {
@@ -101,8 +110,41 @@ function createMulter(entityKey) {
  * Express middleware: multipart field name `image`, writes to uploads/{entityFolder}/.
  * @param {'assets'|'locations'|'asset_types'|'site_branding'|'dashboard_image'} entityKey
  */
-function uploadImageMiddleware(entityKey) {
-  return createMulter(entityKey).single('image');
+function uploadImageMiddleware(entityKey, fieldName = 'image') {
+  return createMulter(entityKey).single(fieldName);
+}
+
+function validateAttachmentFile(req, file, cb) {
+  const ext = path.extname(file.originalname || '').toLowerCase();
+  if (!ext || !ATTACHMENT_EXTENSIONS.has(ext)) {
+    return cb(
+      new Error(`Invalid file type. Allowed attachment types: ${[...ATTACHMENT_EXTENSIONS].join(', ')}`)
+    );
+  }
+  cb(null, true);
+}
+
+/** Express middleware: single attachment in `fieldName`, writes to uploads/attachments/. */
+function uploadAttachmentMiddleware(fieldName = 'file') {
+  return multer({
+    storage: createStorage(ENTITY_UPLOAD_SUBDIR.attachments),
+    limits: { fileSize: MAX_ATTACHMENT_BYTES },
+    fileFilter: validateAttachmentFile,
+  }).single(fieldName);
+}
+
+function handleMulterAttachmentError(err, req, res, next) {
+  if (!err) return next();
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ message: 'File too large. Maximum size is 10MB.' });
+    }
+    return res.status(400).json({ message: err.message || 'Upload failed.' });
+  }
+  if (err.message && err.message.startsWith('Invalid file type')) {
+    return res.status(400).json({ message: err.message });
+  }
+  return next(err);
 }
 
 /**
@@ -167,7 +209,9 @@ function diskPathFromImageUrl(imageUrl) {
 module.exports = {
   uploadImageMiddleware,
   uploadBrandingFieldsMiddleware,
+  uploadAttachmentMiddleware,
   handleMulterImageError,
+  handleMulterAttachmentError,
   publicUrlForStoredFile,
   diskPathFromImageUrl,
   UPLOAD_ROOT,

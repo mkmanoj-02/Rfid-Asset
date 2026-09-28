@@ -79,14 +79,15 @@ app.get('/api/site-branding', siteBrandingRoutes.getBranding);
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Public locations for Android (no access token)
-app.use('/api/public/locations', require('./routes/publicLocations'));
-
 app.use(verifyToken);
 const attachUserContext = require('./middleware/attachUserContext');
 const loadAuthz = require('./middleware/loadAuthz');
 app.use(attachUserContext);
 app.use(loadAuthz);
+
+// Android app APIs (require access token)
+app.use('/api/public/locations', require('./routes/publicLocations'));
+app.use('/api/mobile', require('./routes/mobile'));
 app.use('/api/locations', require('./routes/locations'));
 app.use('/api/asset-types', require('./routes/assetTypes'));
 app.use('/api/attribute-list', require('./routes/attributeList'));

@@ -1,0 +1,962 @@
+{
+  "info": {
+    "_postman_id": "c3dadc9d-41a6-4851-9b7d-837125a3a25c",
+    "name": "RFID Asset — Readers & Floor Plan",
+    "description": "Auth + Reader Locations, Zones, Readers, and Floor Plan APIs.\n\n1. Run **Auth → Login** first (saves `accessToken`).\n2. Other requests use Bearer `{{accessToken}}`.\n3. Create endpoints save returned ids into collection variables.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "44739241",
+    "_collection_link": "https://go.postman.co/collection/44739241-c3dadc9d-41a6-4851-9b7d-837125a3a25c?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {\n  const data = pm.response.json();\n  if (data.accessToken) pm.collectionVariables.set('accessToken', data.accessToken);\n  if (data.refreshToken) pm.collectionVariables.set('refreshToken', data.refreshToken);\n}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"1234\"\n}",
+              "options": {
+                "raw": {
+                  "language": "text"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Public. Saves accessToken and refreshToken to collection variables.\nUpdate username/password if your local admin differs."
+          },
+          "response": []
+        },
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "me"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const data = pm.response.json();",
+                  "  if (data.accessToken) pm.collectionVariables.set('accessToken', data.accessToken);",
+                  "  if (data.refreshToken) pm.collectionVariables.set('refreshToken', data.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/refresh-token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "refresh-token"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Reader Locations",
+      "item": [
+        {
+          "name": "List locations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/reader-locations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "reader-locations"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create location",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {\n  const data = pm.response.json();\n  if (data.id != null) pm.collectionVariables.set('readerLocationId', String(data.id));\n}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"TTF\"\n}",
+              "options": {
+                "raw": {
+                  "language": "text"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/reader-locations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "reader-locations"
+              ]
+            },
+            "description": "400 empty name · 409 duplicate (case-insensitive)"
+          },
+          "response": []
+        },
+        {
+          "name": "Update location",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Kutt TTF\"\n}",
+              "options": {
+                "raw": {
+                  "language": "text"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/reader-locations/{{readerLocationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "reader-locations",
+                "{{readerLocationId}}"
+              ]
+            },
+            "description": "Renames location and updates readers still using the old name."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete location",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/reader-locations/{{readerLocationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "reader-locations",
+                "{{readerLocationId}}"
+              ]
+            },
+            "description": "204. Clears location to empty string on readers that used that name."
+          },
+          "response": []
+        }
+      ],
+      "description": "Catalog names for the reader Location dropdown (`reader_locations`)."
+    },
+    {
+      "name": "Zones",
+      "item": [
+        {
+          "name": "List zones",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/zones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "zones"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create zone",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {\n  const data = pm.response.json();\n  if (data.id != null) pm.collectionVariables.set('zoneId', String(data.id));\n}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"chn\"\n}",
+              "options": {
+                "raw": {
+                  "language": "text"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/zones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "zones"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update zone",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"vala\"\n}",
+              "options": {
+                "raw": {
+                  "language": "text"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/zones/{{zoneId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "zones",
+                "{{zoneId}}"
+              ]
+            },
+            "description": "Renames zone and updates readers.zone_type still using the old name."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete zone",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "body": {
+              "mode": "file",
+              "file": {
+                "src": ""
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/zones/{{zoneId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "zones",
+                "{{zoneId}}"
+              ]
+            },
+            "description": "204. Clears zone_type to empty string on matching readers."
+          },
+          "response": []
+        }
+      ],
+      "description": "Catalog names for the reader Zone dropdown (`zones`). Not floor-plan rectangles."
+    },
+    {
+      "name": "Readers",
+      "item": [
+        {
+          "name": "List readers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/readers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "readers"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get reader",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/readers/{{readerId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "readers",
+                "{{readerId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create reader",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {\n  const data = pm.response.json();\n  if (data.id != null) pm.collectionVariables.set('readerId', String(data.id));\n}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Dock 1\",\n  \"readerType\": \"IR-Reader\",\n  \"ipAddress\": \"192.168.1.20\",\n  \"port\": 2022,\n  \"location\": \"Receiving dock\",\n  \"zoneType\": \"DOOR\",\n  \"mode\": \"IN\",\n  \"antennaCount\": 4,\n  \"txPower\": 30,\n  \"readDuration\": 1000,\n  \"itemSeen\": 20,\n  \"itemSeenEnabled\": true,\n  \"antennas\": [\n    { \"number\": 1, \"txPower\": 30, \"enabled\": true },\n    { \"number\": 2, \"txPower\": 30, \"enabled\": true },\n    { \"number\": 3, \"txPower\": 30, \"enabled\": true },\n    { \"number\": 4, \"txPower\": 30, \"enabled\": true }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/readers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "readers"
+              ]
+            },
+            "description": "readerType: IR-Reader | 4-Port Reader\nmode: IN | OUT | MONITORING\nlocation / zoneType must match catalog names (or empty)."
+          },
+          "response": []
+        },
+        {
+          "name": "Update reader",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Dock 1\",\n  \"readerType\": \"4-Port Reader\",\n  \"ipAddress\": \"192.168.1.20\",\n  \"port\": 2022,\n  \"location\": \"North gate\",\n  \"zoneType\": \"GENERIC\",\n  \"mode\": \"OUT\",\n  \"antennaCount\": 2,\n  \"txPower\": 28,\n  \"readDuration\": 1000,\n  \"itemSeen\": 20,\n  \"itemSeenEnabled\": true,\n  \"antennas\": [\n    { \"number\": 1, \"txPower\": 28, \"enabled\": true },\n    { \"number\": 2, \"txPower\": 28, \"enabled\": false }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/readers/{{readerId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "readers",
+                "{{readerId}}"
+              ]
+            },
+            "description": "Does not write connectionStatus. Antenna rows rebuilt to antennaCount (keeps existing within range)."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete reader",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/readers/{{readerId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "readers",
+                "{{readerId}}"
+              ]
+            },
+            "description": "204. Antennas deleted with the reader."
+          },
+          "response": []
+        },
+        {
+          "name": "Start reader",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/readers/{{readerId}}/start",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "readers",
+                "{{readerId}}",
+                "start"
+              ]
+            },
+            "description": "Sets connectionStatus = CONNECTED"
+          },
+          "response": []
+        },
+        {
+          "name": "Stop reader",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/readers/{{readerId}}/stop",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "readers",
+                "{{readerId}}",
+                "stop"
+              ]
+            },
+            "description": "Sets connectionStatus = DISCONNECTED"
+          },
+          "response": []
+        },
+        {
+          "name": "Start all readers",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/readers/start-all",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "readers",
+                "start-all"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Stop all readers",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/readers/stop-all",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "readers",
+                "stop-all"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update reader placement",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"placed\": true,\n  \"positionX\": 120,\n  \"positionY\": 80\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/readers/{{readerId}}/placement",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "readers",
+                "{{readerId}}",
+                "placement"
+              ]
+            },
+            "description": "Off map: { \"placed\": false, \"positionX\": 0, \"positionY\": 0 }\nWhen placed=true, copies current floor plan imageUrl onto the reader if set."
+          },
+          "response": []
+        },
+        {
+          "name": "Update antenna placement",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"placed\": true,\n  \"positionX\": 160,\n  \"positionY\": 90\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/readers/{{readerId}}/antennas/{{antennaNumber}}/placement",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "readers",
+                "{{readerId}}",
+                "antennas",
+                "{{antennaNumber}}",
+                "placement"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Floor Plan",
+      "item": [
+        {
+          "name": "Get layout",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/floor-plan",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "floor-plan"
+              ]
+            },
+            "description": "Returns { imageUrl, zones[] }"
+          },
+          "response": []
+        },
+        {
+          "name": "Upload image",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "image",
+                  "type": "file",
+                  "description": "Select a JPG/PNG/WebP/GIF/SVG file (max 5MB). Field name must be `image`.",
+                  "value": null
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/floor-plan/image",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "floor-plan",
+                "image"
+              ]
+            },
+            "description": "multipart field name: image → 200 { imageUrl }"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete image",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/floor-plan/image",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "floor-plan",
+                "image"
+              ]
+            },
+            "description": "204. Clears image URL."
+          },
+          "response": []
+        },
+        {
+          "name": "Create floor zone (DOOR)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const data = pm.response.json();",
+                  "  if (data.id != null) pm.collectionVariables.set('floorZoneId', String(data.id));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"DOOR\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/floor-plan/zones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "floor-plan",
+                "zones"
+              ]
+            },
+            "description": "Names: Door Zone, Door Zone 2… First at 80,80; each new shifts +24. Size 220×120."
+          },
+          "response": []
+        },
+        {
+          "name": "Create floor zone (BIN)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const data = pm.response.json();",
+                  "  if (data.id != null) pm.collectionVariables.set('floorZoneId', String(data.id));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"BIN\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/floor-plan/zones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "floor-plan",
+                "zones"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update floor zone",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"x\": 100,\n  \"y\": 120,\n  \"width\": 220,\n  \"height\": 120,\n  \"minimized\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/floor-plan/zones/{{floorZoneId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "floor-plan",
+                "zones",
+                "{{floorZoneId}}"
+              ]
+            },
+            "description": "Partial updates OK. Minimize only: { \"minimized\": true }"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete floor zone",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/floor-plan/zones/{{floorZoneId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "floor-plan",
+                "zones",
+                "{{floorZoneId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Save layout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/floor-plan/save",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "floor-plan",
+                "save"
+              ]
+            },
+            "description": "Copies the floor plan image URL onto every reader."
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5004"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "refreshToken",
+      "value": ""
+    },
+    {
+      "key": "readerLocationId",
+      "value": "1"
+    },
+    {
+      "key": "zoneId",
+      "value": "1"
+    },
+    {
+      "key": "readerId",
+      "value": "1"
+    },
+    {
+      "key": "antennaNumber",
+      "value": "1"
+    },
+    {
+      "key": "floorZoneId",
+      "value": "1"
+    }
+  ]
+}

@@ -3,7 +3,7 @@ const assetQueryService = require('../services/assetQueryService');
 
 /**
  * GET /api/public/locations
- * Android / public (no access token).
+ * Android (requires access token).
  * - No query: { list, tree }
  * - ?location=1 (or location_id): assets at that location (+ sub-locations)
  */
