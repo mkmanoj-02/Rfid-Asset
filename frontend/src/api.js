@@ -8,13 +8,13 @@ import {
 } from "./authToken";
 
 /** API origin — used by axios and all upload image URLs. Local: set REACT_APP_API_BASE_URL=http://localhost:5004 in .env */
-// export const API_BASE_URL = (
-//   process.env.REACT_APP_API_BASE_URL || "https://testrfidasset.2cqr.in"
-// ).replace(/\/+$/, "");
-
 export const API_BASE_URL = (
-  process.env.REACT_APP_API_BASE_URL || "http://localhost:5004"
+  process.env.REACT_APP_API_BASE_URL || "https://testrfidasset.2cqr.in"
 ).replace(/\/+$/, "");
+
+// export const API_BASE_URL = (
+//   process.env.REACT_APP_API_BASE_URL || "http://localhost:5004"
+// ).replace(/\/+$/, "");
 
 const api = axios.create({ baseURL: `${API_BASE_URL}/api` });
 
@@ -240,6 +240,7 @@ export function buildAssetFormData(
 ) {
   const fd = new FormData();
   const keys = [
+    "asset_code",
     "rfid_tag",
     "tag_type_id",
     "vendor_id",
@@ -301,10 +302,13 @@ export const getRfidTags = () => api.get("/rfid/tags");
 export const removeRfidTag = (tag) =>
   api.delete(`/rfid/tags/${encodeURIComponent(tag)}`);
 
-export const getUnprocessedTags = (params) =>
-  api.get("/unprocessed-tags", { params });
-export const deleteUnprocessedTag = (id) =>
-  api.delete(`/unprocessed-tags/${id}`);
+export const getZones = () => api.get("/zones");
+
+export const getUnassignedTags = (params) =>
+  api.get("/unassigned-tags", { params });
+export const assignUnassignedTag = (id, assetId) =>
+  api.post(`/unassigned-tags/${id}/assign`, { asset_id: assetId });
+export const deleteUnassignedTag = (id) => api.delete(`/unassigned-tags/${id}`);
 
 /** @param {number|string|{ asset_id?, search?, page?, limit? }} paramsOrAssetId */
 export const getMovements = (paramsOrAssetId) => {
@@ -382,6 +386,14 @@ export const getHandheldMobileAttributes = (deviceName) =>
   api.get("/handheld-devices/mobile/attributes", {
     params: { device_name: deviceName },
   });
+
+/** Fixed RFID readers */
+export const getReaders = () => api.get("/readers");
+export const createReader = (data) => api.post("/readers", data);
+export const updateReader = (id, data) => api.put(`/readers/${id}`, data);
+export const deleteReader = (id) => api.delete(`/readers/${id}`);
+export const getReaderLocations = () => api.get("/reader-locations");
+export const getReaderZones = () => api.get("/zones");
 
 /** Public site branding (logo, app name) — no auth required */
 export const getSiteBranding = () => authClient.get("/site-branding");

@@ -42,7 +42,7 @@ function sqlReportAssetsSelect() {
   return `
     SELECT
       a.id AS asset_id,
-      COALESCE(NULLIF(TRIM(a.asset_serial), ''), NULLIF(TRIM(a.rfid_tag), ''), CONCAT('#', a.id)) AS asset_code,
+      COALESCE(NULLIF(TRIM(a.asset_code), ''), NULLIF(TRIM(a.asset_serial), ''), NULLIF(TRIM(a.rfid_tag), ''), CONCAT('#', a.id)) AS asset_code,
       a.name AS asset_name,
       COALESCE(at.name, '') AS asset_type,
       COALESCE(l.name, '') AS location,
@@ -106,7 +106,7 @@ router.get('/inventory-missing', async (req, res) => {
     `
     SELECT
       a.id AS asset_id,
-      COALESCE(NULLIF(TRIM(a.asset_serial), ''), NULLIF(TRIM(a.rfid_tag), ''), CONCAT('#', a.id)) AS asset_code,
+      COALESCE(NULLIF(TRIM(a.asset_code), ''), NULLIF(TRIM(a.asset_serial), ''), NULLIF(TRIM(a.rfid_tag), ''), CONCAT('#', a.id)) AS asset_code,
       a.name AS asset_name,
       COALESCE(at.name, '') AS asset_type,
       COALESCE(l.name, '') AS location,

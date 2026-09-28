@@ -25,7 +25,7 @@ import AppSettings       from './pages/Settings';
 import ProfileSettings   from './pages/ProfileSettings';
 import Depreciation      from './pages/Depreciation';
 import HandheldDevices   from './pages/HandheldDevices';
-import UnprocessedTags   from './pages/UnprocessedTags';
+import UnassignedTags    from './pages/UnassignedTags';
 import { AuthProvider, useAuth } from './AuthContext';
 import { ToastProvider }         from './Toast';
 import ToastRouteSync            from './ToastRouteSync';
@@ -391,7 +391,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
             <NavItem to="/assets"            icon={Package}   label="Assets"            indent />
             <NavItem to="/asset-types"       icon={Tag}       label="Asset Types"       indent />
             <NavItem to="/locations"         icon={MapPin}    label="Locations"         indent />
-            <NavItem to="/unprocessed-tags"  icon={ScanLine}  label="Unprocessed Tags"  indent />
+            <NavItem to="/unassigned-tags"   icon={ScanLine}  label="Unassigned Tags"   indent />
             <NavItem to="/users"             icon={Users}     label={isSuperAdmin ? 'Users' : 'My Profile'} indent />
           </NavGroup>
 
@@ -524,7 +524,7 @@ function AppShell() {
             <Route path="/assets"                element={<Assets />} />
             <Route path="/asset-types"           element={<AssetTypes />} />
             <Route path="/locations"             element={<Locations />} />
-            <Route path="/unprocessed-tags"      element={<UnprocessedTags />} />
+            <Route path="/unassigned-tags"       element={<UnassignedTags />} />
             <Route path="/movements"             element={<Movements />} />
             <Route path="/import"                element={<Import />} />
             <Route path="/users"                 element={<UsersPage />} />

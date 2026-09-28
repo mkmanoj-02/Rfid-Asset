@@ -9,6 +9,7 @@ const {
   buildNameMap,
   buildIdMap,
   buildSerialMap,
+  buildAssetCodeMap,
   buildRfidMap,
   markImportRowDuplicates,
   markAssetTypeNameDuplicatesInFile,
@@ -42,6 +43,7 @@ function normalizeAssetImportRow(row) {
   if (!row || typeof row !== 'object') return row;
   return {
     ...row,
+    asset_code: trimImportCell(row.asset_code),
     asset_serial: trimImportCell(row.asset_serial),
     name: trimImportCell(row.name),
     rfid_tag: normalizeRfidTag(row.rfid_tag),
@@ -131,13 +133,16 @@ function validateAssetImportRow(row, ctx) {
     vendorNameMap,
     vendorIdMap,
     serialMap,
+    assetCodeMap,
     rfidMap,
   } = ctx;
   const errors = [];
 
+  const assetCode = trimImportCell(row.asset_code);
   const serial = trimImportCell(row.asset_serial);
   const name = trimImportCell(row.name);
   const rfidTag = normalizeRfidTag(row.rfid_tag);
+  if (!assetCode) errors.push('Asset ID is required');
   if (!serial) errors.push('Asset Serial is required');
   if (!name) errors.push('Asset Name is required');
   validateOptionalRfidTag(rfidTag, errors);
@@ -166,15 +171,11 @@ function validateAssetImportRow(row, ctx) {
     }
   }
 
-  const hasTagInput = row.tag_type?.trim() || (row.tag_type_id != null && row.tag_type_id !== '');
   const tagRes = resolveMasterIdFromMaps(row, 'tag_type_id', 'tag_type', tagTypeNameMap, tagTypeIdMap, 'Tag type');
-  if (!hasTagInput) errors.push('Tag Type is required');
-  else if (tagRes.error) errors.push(tagRes.error);
+  if (tagRes.error) errors.push(tagRes.error);
 
-  const hasVendorInput = row.vendor?.trim() || (row.vendor_id != null && row.vendor_id !== '');
   const vendorRes = resolveMasterIdFromMaps(row, 'vendor_id', 'vendor', vendorNameMap, vendorIdMap, 'Vendor');
-  if (!hasVendorInput) errors.push('Vendor is required');
-  else if (vendorRes.error) errors.push(vendorRes.error);
+  if (vendorRes.error) errors.push(vendorRes.error);
 
   let status = row.status;
   if (row.status != null && String(row.status).trim() !== '') {
@@ -184,6 +185,14 @@ function validateAssetImportRow(row, ctx) {
   }
 
   const existingMatch = serial ? serialMap.get(serial) : null;
+
+  if (assetCode) {
+    const codeOwner = assetCodeMap.get(assetCode.toLowerCase());
+    if (codeOwner && codeOwner.id !== (existingMatch ? existingMatch.id : null)) {
+      const ref = codeOwner.asset_serial ? ` (serial: ${codeOwner.asset_serial})` : '';
+      errors.push(`Asset ID is already used by another asset${ref}`);
+    }
+  }
 
   if (rfidTag && isValidRfidTag(rfidTag)) {
     const rfidOwner = rfidMap.get(rfidTag);
@@ -197,6 +206,7 @@ function validateAssetImportRow(row, ctx) {
   }
 
   return slimAssetPreviewRow({
+    asset_code: assetCode || row.asset_code,
     asset_serial: serial || row.asset_serial,
     name: name || row.name,
     rfid_tag: rfidTag || row.rfid_tag,
@@ -536,7 +546,7 @@ router.post('/assets/preview', requireModify('asset'), async (req, res) => {
 });
 
 async function buildAssetImportContext() {
-  const [existingAssets] = await db.query('SELECT id, asset_serial, rfid_tag FROM assets');
+  const [existingAssets] = await db.query('SELECT id, asset_code, asset_serial, rfid_tag FROM assets');
   const [assetTypes] = await db.query('SELECT id, name FROM asset_types');
   const [locations] = await db.query('SELECT id, name FROM locations');
   const [tagTypes] = await db.query('SELECT id, name FROM tag_types');
@@ -549,6 +559,7 @@ async function buildAssetImportContext() {
     vendorNameMap: buildNameMap(vendors),
     vendorIdMap: buildIdMap(vendors),
     serialMap: buildSerialMap(existingAssets),
+    assetCodeMap: buildAssetCodeMap(existingAssets),
     rfidMap: buildRfidMap(existingAssets),
   };
 }

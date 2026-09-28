@@ -6,6 +6,7 @@ import { useToast } from '../Toast';
 
 const RFID_DUP_FILE_MSG = 'Duplicate RFID tag in import file';
 const SERIAL_DUP_FILE_MSG = 'Duplicate asset serial in import file';
+const ASSET_CODE_DUP_FILE_MSG = 'Duplicate Asset ID in import file';
 
 function appendImportPreviewError(row, message) {
   if (!row._errors) row._errors = [];
@@ -30,7 +31,17 @@ function isImportPreviewImportableRow(row) {
 function markImportFileDuplicates(rows) {
   const rfidSeen = new Map();
   const serialSeen = new Map();
+  const codeSeen = new Map();
   rows.forEach((row, index) => {
+    const code = row.asset_code != null ? String(row.asset_code).trim().toLowerCase() : '';
+    if (code) {
+      if (codeSeen.has(code)) {
+        appendImportPreviewError(row, ASSET_CODE_DUP_FILE_MSG);
+        appendImportPreviewError(rows[codeSeen.get(code)], ASSET_CODE_DUP_FILE_MSG);
+      } else {
+        codeSeen.set(code, index);
+      }
+    }
     const rfid = row.rfid_tag != null ? String(row.rfid_tag).trim() : '';
     if (rfid.length === 24) {
       if (rfidSeen.has(rfid)) {
@@ -55,19 +66,20 @@ function markImportFileDuplicates(rows) {
 const SAMPLE_CONFIG = {
   assets: {
     headers: [
+      { label: 'Asset ID', required: true },
       { label: 'Asset Serial', required: true },
       { label: 'Asset Name', required: true },
       { label: 'RFID', required: false },
       { label: 'Asset Type', required: true },
-      { label: 'Tag Type', required: true },
-      { label: 'Vendor', required: true },
+      { label: 'Tag Type', required: false },
+      { label: 'Vendor', required: false },
       { label: 'Location', required: true },
       { label: 'Status', required: false },
       { label: 'Description', required: false },
       { label: 'Attribute1', required: false },
       { label: 'Attribute2', required: false },
     ],
-    exampleRow: ['AST-001', 'Office Laptop 01', 'E280-001', 'Laptop', 'RFID', 'Acme Supplies', 'Main Warehouse', 'active', 'Sample row', 'Value 1', 'Value 2'],
+    exampleRow: ['AST-001', 'SN-10001', 'Office Laptop 01', 'E280-001', 'Laptop', 'RFID', 'Acme Supplies', 'Main Warehouse', 'active', 'Sample row', 'Value 1', 'Value 2'],
   },
   'asset-types': {
     headers: [
@@ -713,12 +725,13 @@ function ImportWizard({ title, fields, endpoint }) {
 
 // ── Field definitions (aligned with Add Asset form) ─────────────
 const ASSET_FIELDS = [
+  { key: 'asset_code', label: 'Asset ID', required: true },
   { key: 'asset_serial', label: 'Asset Serial', required: true },
   { key: 'name', label: 'Asset Name', required: true },
   { key: 'rfid_tag', label: 'RFID' },
   { key: 'asset_type', label: 'Asset Type', required: true },
-  { key: 'tag_type', label: 'Tag Type', required: true },
-  { key: 'vendor', label: 'Vendor', required: true },
+  { key: 'tag_type', label: 'Tag Type' },
+  { key: 'vendor', label: 'Vendor' },
   { key: 'location', label: 'Location', required: true },
   { key: 'status', label: 'Status' },
   { key: 'description', label: 'Description' },

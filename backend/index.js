@@ -110,7 +110,7 @@ app.use('/api/reader-locations', require('./routes/readerLocations'));
 app.use('/api/zones', require('./routes/zones'));
 app.use('/api/readers', require('./routes/readers'));
 app.use('/api/floor-plan', require('./routes/floorPlan'));
-app.use('/api/unprocessed-tags', require('./routes/unprocessedTags'));
+app.use('/api/unassigned-tags', require('./routes/unassignedTags'));
 app.use('/api/site-branding', siteBrandingRoutes);
 
 const { startRuleEngine } = require('./ruleEngine');
@@ -127,9 +127,14 @@ app.use((err, req, res, next) => {
 
   if (res.headersSent) return next(err);
 
+  if (err.type === 'entity.parse.failed') {
+    return res.status(400).json({ message: 'Invalid JSON body' });
+  }
+
   // MySQL duplicate entry
   if (err.code === 'ER_DUP_ENTRY') {
-    const field = err.sqlMessage && err.sqlMessage.includes('rfid_tag') ? 'RFID tag' :
+    const field = err.sqlMessage && err.sqlMessage.includes('asset_code') ? 'Asset ID' :
+                  err.sqlMessage && err.sqlMessage.includes('rfid_tag') ? 'RFID tag' :
                   err.sqlMessage && err.sqlMessage.includes('asset_serial') ? 'Asset serial' : 'A field';
     return res.status(409).json({ message: `${field} already exists. Please use a unique value.` });
   }

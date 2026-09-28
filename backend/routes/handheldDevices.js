@@ -11,7 +11,7 @@ function parseAttributeIds(body) {
 
 async function getDeviceById(id) {
   const [rows] = await db.query(
-    'SELECT id, name, description, is_active, created_at FROM handheld_devices WHERE id = ? LIMIT 1',
+    'SELECT id, name, description, platform, is_active, created_at FROM handheld_devices WHERE id = ? LIMIT 1',
     [id]
   );
   return rows[0] || null;
@@ -58,7 +58,7 @@ async function getDefaultAttributeIds() {
 router.get('/', async (req, res, next) => {
   try {
     const [rows] = await db.query(
-      `SELECT d.id, d.name, d.description, d.is_active, d.created_at,
+      `SELECT d.id, d.name, d.description, d.platform, d.is_active, d.created_at,
               COUNT(hda.attribute_id) AS mapped_attribute_count
        FROM handheld_devices d
        LEFT JOIN handheld_device_attributes hda ON hda.device_id = d.id
@@ -133,6 +133,7 @@ router.post('/', async (req, res, next) => {
   try {
     const name = (req.body.name || '').trim();
     const description = req.body.description || null;
+    const platform = (req.body.platform || '').trim() || null;
     const is_active = req.body.is_active !== undefined ? (req.body.is_active ? 1 : 0) : 1;
 
     if (!name) return res.status(400).json({ message: 'Device name is required' });
@@ -146,8 +147,8 @@ router.post('/', async (req, res, next) => {
     }
 
     const [result] = await db.query(
-      'INSERT INTO handheld_devices (name, description, is_active) VALUES (?, ?, ?)',
-      [name, description, is_active]
+      'INSERT INTO handheld_devices (name, description, platform, is_active) VALUES (?, ?, ?, ?)',
+      [name, description, platform, is_active]
     );
 
     const explicitIds = parseAttributeIds(req.body);
@@ -165,6 +166,7 @@ router.post('/', async (req, res, next) => {
       id: result.insertId,
       name,
       description,
+      platform,
       is_active,
       mapped_attribute_count: attributeIds.length,
     });
@@ -181,6 +183,7 @@ router.put('/:id', async (req, res, next) => {
 
     const name = (req.body.name || '').trim();
     const description = req.body.description !== undefined ? (req.body.description || null) : device.description;
+    const platform = req.body.platform !== undefined ? ((req.body.platform || '').trim() || null) : device.platform;
     const is_active = req.body.is_active !== undefined ? (req.body.is_active ? 1 : 0) : device.is_active;
 
     if (!name) return res.status(400).json({ message: 'Device name is required' });
@@ -194,8 +197,8 @@ router.put('/:id', async (req, res, next) => {
     }
 
     await db.query(
-      'UPDATE handheld_devices SET name = ?, description = ?, is_active = ? WHERE id = ?',
-      [name, description, is_active, req.params.id]
+      'UPDATE handheld_devices SET name = ?, description = ?, platform = ?, is_active = ? WHERE id = ?',
+      [name, description, platform, is_active, req.params.id]
     );
 
     const attributeIds = parseAttributeIds(req.body);

@@ -29,15 +29,27 @@ const fs = require('fs').promises;
 
 const ASSET_INVENTORY_STATUSES = ['in_inventory', 'missing', 'not_in_inventory'];
 
-/** Remove a tag from the unprocessed queue once it is assigned to an asset. */
-async function consumeUnprocessedTag(tagValue, queryFn = db) {
+/** Remove a tag from the unassigned queue once it is assigned to an asset. */
+async function consumeUnassignedTag(tagValue, queryFn = db) {
   const tag = tagValue != null ? String(tagValue).trim() : '';
   if (!tag) return;
   try {
-    await queryFn.query('DELETE FROM unprocessed_tags WHERE tag_value = ?', [tag]);
+    await queryFn.query('DELETE FROM unassigned_tags WHERE tag_value = ?', [tag]);
   } catch (e) {
-    console.error('Failed to remove unprocessed tag:', e.message);
+    console.error('Failed to remove unassigned tag:', e.message);
   }
+}
+
+function trimAssetCode(val) {
+  return val == null ? '' : String(val).trim();
+}
+
+async function isAssetCodeTaken(assetCode, excludeId = null) {
+  const [rows] = await db.query(
+    `SELECT id FROM assets WHERE asset_code = ?${excludeId ? ' AND id <> ?' : ''} LIMIT 1`,
+    excludeId ? [assetCode, excludeId] : [assetCode]
+  );
+  return rows.length > 0;
 }
 
 /** @returns {string} defaultVal when val omitted; null when invalid */
@@ -190,6 +202,7 @@ router.get('/', async (req, res, next) => {
   if (search && search.trim().length >= 2) {
     const s = `%${search.trim()}%`;
     conditions.push(`(
+      a.asset_code LIKE ? OR
       a.asset_serial LIKE ? OR
       a.name LIKE ? OR
       a.rfid_tag LIKE ? OR
@@ -200,13 +213,14 @@ router.get('/', async (req, res, next) => {
         WHERE aav2.asset_id = a.id AND aav2.value LIKE ?
       )
     )`);
-    params.push(s, s, s, s, s, s);
+    params.push(s, s, s, s, s, s, s);
   }
 
   const whereClause = conditions.length ? ' WHERE ' + conditions.join(' AND ') : '';
 
   const SORT_MAP = {
     name: 'a.name',
+    asset_code: 'a.asset_code',
     asset_serial: 'a.asset_serial',
     asset_type_name: 'at.name',
     location_name: 'l.name',
@@ -254,11 +268,15 @@ router.get('/', async (req, res, next) => {
 /** Lightweight list for dropdowns: id, name, rfid_tag (respects user asset scope). */
 router.get('/dropdown', async (req, res, next) => {
   try {
-    const { search, location_id, asset_type_id, limit } = req.query;
+    const { search, location_id, asset_type_id, limit, no_rfid } = req.query;
     const maxLimit = Math.min(2000, Math.max(1, parseInt(limit, 10) || 500));
 
     const extraConditions = [];
     const extraParams = [];
+
+    if (no_rfid === '1' || no_rfid === 'true') {
+      extraConditions.push("(a.rfid_tag IS NULL OR TRIM(a.rfid_tag) = '')");
+    }
 
     if (location_id !== undefined && location_id !== '') {
       const locId = parseInt(location_id, 10);
@@ -282,17 +300,18 @@ router.get('/dropdown', async (req, res, next) => {
     if (searchTerm) {
       const s = `%${searchTerm}%`;
       extraConditions.push(
-        '(a.name LIKE ? OR a.asset_serial LIKE ? OR a.rfid_tag LIKE ?)'
+        '(a.name LIKE ? OR a.asset_code LIKE ? OR a.asset_serial LIKE ? OR a.rfid_tag LIKE ?)'
       );
-      extraParams.push(s, s, s);
+      extraParams.push(s, s, s, s);
     }
 
     const scoped = scopeAssetWhere(req.authz, 'a', extraConditions, extraParams);
     const whereSql = scoped.sql || 'WHERE 1=1';
 
     const [rows] = await db.query(
-      `SELECT a.id, a.name, a.rfid_tag
+      `SELECT a.id, a.asset_code, a.name, a.rfid_tag, a.asset_serial, l.name AS location_name
        FROM assets a
+       LEFT JOIN locations l ON l.id = a.current_location_id
        ${whereSql}
        ORDER BY a.name ASC, a.id ASC
        LIMIT ?`,
@@ -401,19 +420,20 @@ router.put('/:id/attributes', requireModify('asset'), async (req, res, next) => 
 router.post('/', requireModify('asset'), optionalImageUpload('assets'), async (req, res, next) => {
   try {
   const { rfid_tag, tag_type_id, vendor_id, asset_serial, name, asset_type_id, current_location_id, status, description, asset_inventory_status } = req.body;
+  const assetCode = trimAssetCode(req.body.asset_code);
 
   const payloadErr = assertAssetPayload(req.authz, res, { asset_type_id, current_location_id });
   if (payloadErr) return payloadErr;
 
   // --- Mandatory field validation ---
   const errors = [];
+  if (!assetCode) errors.push('Asset ID is required');
   if (!name || !name.toString().trim()) errors.push('Asset name is required');
   if (!asset_serial || !asset_serial.toString().trim()) errors.push('Asset serial number is required');
   if (!asset_type_id) errors.push('Asset type is required');
   if (!current_location_id) errors.push('Location is required');
-  if (!vendor_id) errors.push('Vendor is required');
-  if (!tag_type_id) errors.push('Tag type is required');
   if (!status || !status.toString().trim()) errors.push('Status is required');
+  if (assetCode && (await isAssetCodeTaken(assetCode))) errors.push(`Asset ID "${assetCode}" is already used by another asset`);
   const invStatus = normalizeAssetInventoryStatus(asset_inventory_status, 'in_inventory');
   if (asset_inventory_status !== undefined && asset_inventory_status !== null && asset_inventory_status !== '' && !invStatus)
     errors.push(`asset_inventory_status must be one of: ${ASSET_INVENTORY_STATUSES.join(', ')}`);
@@ -443,11 +463,11 @@ router.post('/', requireModify('asset'), optionalImageUpload('assets'), async (r
   try {
     assetId = await withTransaction(db, async (conn) => {
       const [result] = await conn.query(
-        `INSERT INTO assets (rfid_tag, tag_type_id, vendor_id, asset_serial, name, asset_type_id,
+        `INSERT INTO assets (asset_code, rfid_tag, tag_type_id, vendor_id, asset_serial, name, asset_type_id,
           current_location_id, status, description, asset_inventory_status, image_url, is_custom_image)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          rfid_tag || null, tag_type_id || null, vendor_id || null, asset_serial, name, asset_type_id,
+          assetCode, rfid_tag || null, tag_type_id || null, vendor_id || null, asset_serial, name, asset_type_id,
           locationId, status || 'active', description || null, invStatus, imageUrl, isCustom,
         ]
       );
@@ -475,7 +495,7 @@ router.post('/', requireModify('asset'), optionalImageUpload('assets'), async (r
         await insertRfidTagMovement(conn, id, locationId);
       }
 
-      await consumeUnprocessedTag(rfid_tag, conn);
+      await consumeUnassignedTag(rfid_tag, conn);
 
       return id;
     });
@@ -487,7 +507,7 @@ router.post('/', requireModify('asset'), optionalImageUpload('assets'), async (r
   }
 
   setImmediate(() => runRules().catch(e => console.error('Rule engine error:', e.message)));
-  await audit.log('Asset', 'Added', `Asset "${name}" (Serial: ${asset_serial || 'N/A'}) was added`, req.auditUser, req.auditUserId);
+  await audit.log('Asset', 'Added', `Asset "${name}" (Asset ID: ${assetCode}, Serial: ${asset_serial || 'N/A'}) was added`, req.auditUser, req.auditUserId);
   res.status(201).json({ id: assetId, image_url: imageUrl, is_custom_image: isCustom });
   } catch (err) { next(err); }
 });
@@ -501,19 +521,21 @@ router.put('/:id', requireModify('asset'), optionalImageUpload('assets'), async 
   if (scopeErr) return scopeErr;
 
   const { rfid_tag, tag_type_id, vendor_id, asset_serial, name, asset_type_id, current_location_id, status, description, asset_inventory_status } = req.body;
+  const assetCodeProvided = req.body.asset_code !== undefined;
+  const assetCode = trimAssetCode(req.body.asset_code);
 
   const payloadErr = assertAssetPayload(req.authz, res, { asset_type_id, current_location_id });
   if (payloadErr) return payloadErr;
 
   // --- Mandatory field validation ---
   const editErrors = [];
+  if (assetCodeProvided && !assetCode) editErrors.push('Asset ID is required');
   if (!name || !name.toString().trim()) editErrors.push('Asset name is required');
   if (!asset_serial || !asset_serial.toString().trim()) editErrors.push('Asset serial number is required');
   if (!asset_type_id) editErrors.push('Asset type is required');
   if (!current_location_id) editErrors.push('Location is required');
-  if (!vendor_id) editErrors.push('Vendor is required');
-  if (!tag_type_id) editErrors.push('Tag type is required');
   if (!status || !status.toString().trim()) editErrors.push('Status is required');
+  if (assetCode && (await isAssetCodeTaken(assetCode, id))) editErrors.push(`Asset ID "${assetCode}" is already used by another asset`);
   if (asset_inventory_status !== undefined && asset_inventory_status !== null && asset_inventory_status !== '') {
     const st = normalizeAssetInventoryStatus(asset_inventory_status, 'in_inventory');
     if (!st) editErrors.push(`asset_inventory_status must be one of: ${ASSET_INVENTORY_STATUSES.join(', ')}`);
@@ -521,7 +543,7 @@ router.put('/:id', requireModify('asset'), optionalImageUpload('assets'), async 
   if (editErrors.length) return res.status(400).json({ message: editErrors.join('; ') });
 
   const [existing] = await db.query(
-    'SELECT current_location_id, rfid_tag, asset_inventory_status, image_url, is_custom_image, asset_type_id FROM assets WHERE id = ?',
+    'SELECT asset_code, current_location_id, rfid_tag, asset_inventory_status, image_url, is_custom_image, asset_type_id FROM assets WHERE id = ?',
     [id]
   );
   if (!existing.length) return res.status(404).json({ message: 'Not found' });
@@ -539,11 +561,11 @@ router.put('/:id', requireModify('asset'), optionalImageUpload('assets'), async 
   });
 
   await db.query(
-    `UPDATE assets SET rfid_tag = ?, tag_type_id = ?, vendor_id = ?, asset_serial = ?, name = ?,
+    `UPDATE assets SET asset_code = ?, rfid_tag = ?, tag_type_id = ?, vendor_id = ?, asset_serial = ?, name = ?,
       asset_type_id = ?, current_location_id = ?, status = ?, description = ?, asset_inventory_status = ?,
       image_url = ?, is_custom_image = ? WHERE id = ?`,
     [
-      rfid_tag || null, tag_type_id || null, vendor_id || null, asset_serial, name, asset_type_id,
+      assetCode || existing[0].asset_code, rfid_tag || null, tag_type_id || null, vendor_id || null, asset_serial, name, asset_type_id,
       current_location_id || null, status, description || null, invStatus,
       imagePatch.imageUrl, imagePatch.isCustom, id,
     ]
@@ -562,7 +584,7 @@ router.put('/:id', requireModify('asset'), optionalImageUpload('assets'), async 
   if (shouldLogRfidTagMovement(existing[0].rfid_tag, rfid_tag) && locId) {
     await insertRfidTagMovement(db, id, locId);
   }
-  await consumeUnprocessedTag(rfid_tag);
+  await consumeUnassignedTag(rfid_tag);
   await audit.log('Asset', 'Modified', `Asset ID ${id} was updated`, req.auditUser, req.auditUserId);
   res.json({
     message: 'Updated',

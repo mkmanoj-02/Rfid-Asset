@@ -6,6 +6,7 @@ const CHUNK_SIZE = 500;
 
 const RFID_DUP_FILE_MSG = 'Duplicate RFID tag in import file';
 const SERIAL_DUP_FILE_MSG = 'Duplicate asset serial in import file';
+const ASSET_CODE_DUP_FILE_MSG = 'Duplicate Asset ID in import file';
 const ASSET_TYPE_DUP_FILE_MSG = 'Duplicate asset type name in import file';
 
 function chunkArray(arr, size = CHUNK_SIZE) {
@@ -38,6 +39,15 @@ function buildSerialMap(assets) {
   return map;
 }
 
+function buildAssetCodeMap(assets) {
+  const map = new Map();
+  (assets || []).forEach((a) => {
+    const code = a?.asset_code != null ? String(a.asset_code).trim().toLowerCase() : '';
+    if (code) map.set(code, a);
+  });
+  return map;
+}
+
 function buildRfidMap(assets) {
   const map = new Map();
   (assets || []).forEach((a) => {
@@ -53,12 +63,23 @@ function appendImportRowError(row, message) {
   row._status = 'error';
 }
 
-/** Flag duplicate RFID / asset serial within one preview or execute batch. */
+/** Flag duplicate RFID / asset serial / Asset ID within one preview or execute batch. */
 function markImportRowDuplicates(rows) {
   const rfidSeen = new Map();
   const serialSeen = new Map();
+  const codeSeen = new Map();
 
   rows.forEach((row, index) => {
+    const code = row.asset_code != null ? String(row.asset_code).trim().toLowerCase() : '';
+    if (code) {
+      if (codeSeen.has(code)) {
+        appendImportRowError(row, ASSET_CODE_DUP_FILE_MSG);
+        appendImportRowError(rows[codeSeen.get(code)], ASSET_CODE_DUP_FILE_MSG);
+      } else {
+        codeSeen.set(code, index);
+      }
+    }
+
     const rfid = normalizeRfidTag(row.rfid_tag);
     if (isValidRfidTag(rfid)) {
       if (rfidSeen.has(rfid)) {
@@ -122,6 +143,7 @@ function resolveMasterIdFromMaps(row, idKey, nameKey, nameMap, idMap, label) {
 /** Slim preview row for assets (display + execute metadata, no duplicate spread). */
 function slimAssetPreviewRow(row) {
   return {
+    asset_code: row.asset_code,
     asset_serial: row.asset_serial,
     name: row.name,
     rfid_tag: row.rfid_tag,
@@ -195,6 +217,7 @@ module.exports = {
   buildNameMap,
   buildIdMap,
   buildSerialMap,
+  buildAssetCodeMap,
   buildRfidMap,
   markImportRowDuplicates,
   markAssetTypeNameDuplicatesInFile,

@@ -10,7 +10,7 @@ const {
 } = require('../lib/rfidMovements');
 
 const ASSET_COLS =
-  'asset_serial, name, rfid_tag, tag_type_id, vendor_id, asset_type_id, current_location_id, status, description';
+  'asset_code, asset_serial, name, rfid_tag, tag_type_id, vendor_id, asset_type_id, current_location_id, status, description';
 
 /**
  * Ensure attribute definitions exist; returns Map keyed by `${typeId}:${attrNameLower}` -> attrId
@@ -98,13 +98,14 @@ function collectAttributePairs(rows, attrState, assetIdForRow) {
 
 async function batchInsertAssets(conn, rows) {
   if (!rows.length) return [];
-  const placeholders = rows.map(() => '(?,?,?,?,?,?,?,?,?)').join(',');
+  const placeholders = rows.map(() => '(?,?,?,?,?,?,?,?,?,?)').join(',');
   const vals = rows.flatMap((row) => [
+    row.asset_code,
     row.asset_serial,
     row.name,
     row.rfid_tag || null,
-    row.tag_type_id,
-    row.vendor_id,
+    row.tag_type_id || null,
+    row.vendor_id || null,
     row._typeId,
     row._locationId,
     row.status || 'active',
@@ -120,22 +121,24 @@ async function batchInsertAssets(conn, rows) {
 
 async function batchUpdateAssets(conn, rows) {
   if (!rows.length) return;
-  const placeholders = rows.map(() => '(?,?,?,?,?,?,?,?,?)').join(',');
+  const placeholders = rows.map(() => '(?,?,?,?,?,?,?,?,?,?)').join(',');
   const vals = rows.flatMap((row) => [
     row._existingId,
+    row.asset_code,
     row.name,
     row.rfid_tag || null,
-    row.tag_type_id,
-    row.vendor_id,
+    row.tag_type_id || null,
+    row.vendor_id || null,
     row._typeId,
     row._locationId,
     row.status || 'active',
     row.description || null,
   ]);
   await conn.query(
-    `INSERT INTO assets (id, name, rfid_tag, tag_type_id, vendor_id, asset_type_id, current_location_id, status, description)
+    `INSERT INTO assets (id, asset_code, name, rfid_tag, tag_type_id, vendor_id, asset_type_id, current_location_id, status, description)
      VALUES ${placeholders}
      ON DUPLICATE KEY UPDATE
+       asset_code = VALUES(asset_code),
        name = VALUES(name),
        rfid_tag = VALUES(rfid_tag),
        tag_type_id = VALUES(tag_type_id),
@@ -177,7 +180,7 @@ async function executeAssetChunk(conn, rows, attrState) {
       errors++;
       continue;
     }
-    if (!row._locationId || !row._typeId || !row.tag_type_id || !row.vendor_id) {
+    if (!row.asset_code || !row._locationId || !row._typeId) {
       errors++;
       continue;
     }

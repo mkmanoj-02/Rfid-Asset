@@ -41,6 +41,9 @@ const files = [
   '028_zones.sql',
   '029_readers_floor_plan.sql',
   '030_asset_attachments.sql',
+  '031_unassigned_tags.sql',
+  '032_handheld_devices_platform.sql',
+  '033_asset_code.sql',
 ];
 
 /** MySQL errors that are safe to skip when re-running migrations. */
