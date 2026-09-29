@@ -601,6 +601,11 @@ async function findExistingAsset(item, action) {
     const [rows] = await db.query(`SELECT ${cols} FROM assets WHERE id = ?`, [numericId]);
     if (rows.length) return rows[0];
   }
+  const assetCode = String(item.assetCode ?? '').trim();
+  if (assetCode) {
+    const [rows] = await db.query(`SELECT ${cols} FROM assets WHERE asset_code = ? LIMIT 1`, [assetCode]);
+    if (rows.length) return rows[0];
+  }
   const serial = String(item.serial ?? '').trim();
   if (serial) {
     const [rows] = await db.query(`SELECT ${cols} FROM assets WHERE asset_serial = ? LIMIT 1`, [serial]);
@@ -628,7 +633,7 @@ function readSyncFields(item) {
 
 async function createSyncedAsset(req, item, f, attrCache) {
   const missing = [];
-  if (!f.serial) missing.push('serial');
+  if (!f.assetCode && !f.serial) missing.push('assetCode');
   if (!f.name) missing.push('name');
   if (!f.assetTypeId) missing.push('assetTypeId');
   if (!f.locationId) missing.push('locationId');
@@ -647,7 +652,7 @@ async function createSyncedAsset(req, item, f, attrCache) {
          status, description, asset_inventory_status, image_url, is_custom_image)
        VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`,
       [
-        assetCode, f.rfid, f.serial, f.name, f.assetTypeId, f.locationId,
+        assetCode, f.rfid, f.serial || null, f.name, f.assetTypeId, f.locationId,
         f.description || null, f.invStatus || 'in_inventory', imageUrl, isCustom,
       ]
     );
@@ -679,7 +684,7 @@ async function updateSyncedAsset(req, item, f, existing, attrCache) {
 
   const next = {
     assetCode: f.assetCode || existing.asset_code,
-    serial: f.serial || existing.asset_serial,
+    serial: f.serial || existing.asset_serial || null,
     name: f.name || existing.name,
     assetTypeId: f.assetTypeId || existing.asset_type_id,
     locationId: f.locationId || existing.current_location_id,
@@ -802,8 +807,8 @@ router.post('/register', async (req, res, next) => {
 /**
  * POST /api/mobile/sync
  * Android dashboard sync: applies pending assets, returns the sync report.
- * clientAction CREATE inserts (or updates when the serial already exists);
- * anything else updates the asset matched by numeric id, then by serial.
+ * clientAction CREATE inserts (or updates when the assetCode / serial already exists);
+ * anything else updates the asset matched by numeric id, then assetCode, then serial.
  */
 router.post('/sync', async (req, res, next) => {
   try {
@@ -911,7 +916,7 @@ router.post('/assets', requireModify('asset'), async (req, res, next) => {
     await audit.log(
       'Asset',
       'Added',
-      `Asset "${saved.name}" (Serial: ${saved.serial}) was added from handheld`,
+      `Asset "${saved.name}" (Serial: ${saved.serial || 'N/A'}) was added from handheld`,
       req.auditUser,
       req.auditUserId
     );

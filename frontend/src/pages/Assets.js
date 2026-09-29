@@ -370,7 +370,6 @@ function AddAssetModal({ types, locations, locationTree, tagTypes, vendors, onCl
   const validate = () => {
     const e = {};
     if (!form.asset_code.trim()) e.asset_code = 'Asset ID is required';
-    if (!form.asset_serial.trim()) e.asset_serial = 'Asset Serial is required';
     if (!form.name.trim()) e.name = 'Asset Name is required';
     if (!form.current_location_id) e.current_location_id = 'Location is required';
     if (!form.asset_type_id) e.asset_type_id = 'Asset Type is required';
@@ -429,10 +428,9 @@ function AddAssetModal({ types, locations, locationTree, tagTypes, vendors, onCl
             </div>
           </div>
           <div className="form-row">
-            <label>Asset Serial <span className="required">*</span></label>
+            <label>Asset Serial</label>
             <div className="field-wrap">
-              <input value={form.asset_serial} onChange={e => setForm({ ...form, asset_serial: e.target.value })} placeholder="Unique serial number" />
-              {errors.asset_serial && <span className="field-error">{errors.asset_serial}</span>}
+              <input value={form.asset_serial} onChange={e => setForm({ ...form, asset_serial: e.target.value })} placeholder="Unique serial number (optional)" />
             </div>
           </div>
           <div className="form-row">
@@ -719,7 +717,6 @@ function AssetDetail({ asset, types, locations, locationTree, tagTypes, vendors,
     if (!canModify) { showToast('You do not have permission to modify assets', 'error'); return; }
     const e = {};
     if (!editForm.asset_code.trim()) e.asset_code = 'Asset ID is required';
-    if (!editForm.asset_serial.trim()) e.asset_serial = 'Asset Serial is required';
     if (!editForm.name.trim()) e.name = 'Asset Name is required';
     if (!editForm.current_location_id) e.current_location_id = 'Location is required';
     if (!editForm.asset_type_id) e.asset_type_id = 'Asset Type is required';
@@ -998,9 +995,9 @@ function AssetDetail({ asset, types, locations, locationTree, tagTypes, vendors,
                 </div>
               </div>
               <div className="form-row">
-                <label>Asset Serial <span className="required">*</span></label>
+                <label>Asset Serial</label>
                 <div className="field-wrap">
-                  <input value={editForm.asset_serial} onChange={e => setEditForm({ ...editForm, asset_serial: e.target.value })} placeholder="Unique serial number" />
+                  <input value={editForm.asset_serial} onChange={e => setEditForm({ ...editForm, asset_serial: e.target.value })} placeholder="Unique serial number (optional)" />
                 </div>
               </div>
               <div className="form-row">

@@ -101,7 +101,7 @@ async function batchInsertAssets(conn, rows) {
   const placeholders = rows.map(() => '(?,?,?,?,?,?,?,?,?,?)').join(',');
   const vals = rows.flatMap((row) => [
     row.asset_code,
-    row.asset_serial,
+    row.asset_serial || null,
     row.name,
     row.rfid_tag || null,
     row.tag_type_id || null,
@@ -121,10 +121,11 @@ async function batchInsertAssets(conn, rows) {
 
 async function batchUpdateAssets(conn, rows) {
   if (!rows.length) return;
-  const placeholders = rows.map(() => '(?,?,?,?,?,?,?,?,?,?)').join(',');
+  const placeholders = rows.map(() => '(?,?,?,?,?,?,?,?,?,?,?)').join(',');
   const vals = rows.flatMap((row) => [
     row._existingId,
     row.asset_code,
+    row.asset_serial || null,
     row.name,
     row.rfid_tag || null,
     row.tag_type_id || null,
@@ -135,10 +136,11 @@ async function batchUpdateAssets(conn, rows) {
     row.description || null,
   ]);
   await conn.query(
-    `INSERT INTO assets (id, asset_code, name, rfid_tag, tag_type_id, vendor_id, asset_type_id, current_location_id, status, description)
+    `INSERT INTO assets (id, asset_code, asset_serial, name, rfid_tag, tag_type_id, vendor_id, asset_type_id, current_location_id, status, description)
      VALUES ${placeholders}
      ON DUPLICATE KEY UPDATE
        asset_code = VALUES(asset_code),
+       asset_serial = COALESCE(VALUES(asset_serial), asset_serial),
        name = VALUES(name),
        rfid_tag = VALUES(rfid_tag),
        tag_type_id = VALUES(tag_type_id),
@@ -222,7 +224,7 @@ async function executeAssetChunk(conn, rows, attrState) {
     for (const batch of chunkArray(inserts, 200)) {
       const linked = await batchInsertAssets(conn, batch);
       inserted += linked.length;
-      const idBySerial = new Map(linked.map(({ row, assetId }) => [row.asset_serial, assetId]));
+      const idByAssetCode = new Map(linked.map(({ row, assetId }) => [row.asset_code, assetId]));
       const placementMovements = [];
       const rfidMovements = [];
       for (const { assetId, row } of linked) {
@@ -233,7 +235,7 @@ async function executeAssetChunk(conn, rows, attrState) {
       }
       await batchInsertMovements(conn, placementMovements);
       await batchInsertMovements(conn, rfidMovements);
-      const attrPairs = collectAttributePairs(batch, attrState, (row) => idBySerial.get(row.asset_serial));
+      const attrPairs = collectAttributePairs(batch, attrState, (row) => idByAssetCode.get(row.asset_code));
       await bulkUpsertAttributeValues(conn, attrPairs);
     }
   }

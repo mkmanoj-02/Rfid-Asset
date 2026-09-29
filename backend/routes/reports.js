@@ -2,7 +2,8 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { RFID_TAG_MOVEMENT_NOTE } = require('../lib/rfidMovements');
-const { scopeAssetWhere } = require('../lib/userAuthz');
+const { scopeAssetWhere, filterEmbeddedAssetAttributes } = require('../lib/userAuthz');
+const { attachAssetAttributeValues } = require('../services/assetQueryService');
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -370,6 +371,256 @@ router.get('/most-active-users', async (req, res) => {
     data: rows,
     assets: [],
   });
+});
+
+/* ─── Overall report (filterable asset list) ─────────────────── */
+
+const OVERALL_LAST_SEEN = '(SELECT MAX(mh.moved_at) FROM movement_history mh WHERE mh.asset_id = a.id)';
+
+const OVERALL_DATE_FIELDS = {
+  created: 'a.created_at',
+  updated: 'a.updated_at',
+  lastseen: OVERALL_LAST_SEEN,
+};
+
+const OVERALL_SORT_MAP = {
+  name: 'a.name',
+  asset_code: 'a.asset_code',
+  asset_serial: 'a.asset_serial',
+  asset_type_name: 'at.name',
+  location_name: 'l.name',
+  tag_type_name: 'tt.name',
+  asset_inventory_status: 'a.asset_inventory_status',
+  created_at: 'a.created_at',
+  lastseen: OVERALL_LAST_SEEN,
+};
+
+const OVERALL_PRESETS = {
+  missing: "a.asset_inventory_status = 'missing'",
+  not_seen_30: `(${OVERALL_LAST_SEEN} IS NULL OR ${OVERALL_LAST_SEEN} < DATE_SUB(NOW(), INTERVAL 30 DAY))`,
+  untagged: "(a.rfid_tag IS NULL OR TRIM(a.rfid_tag) = '')",
+  this_month: "a.created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')",
+};
+
+const OVERALL_INVENTORY_STATUSES = ['in_inventory', 'missing', 'not_in_inventory'];
+const OVERALL_EXPORT_MAX = 20000;
+
+const NUMERIC_VALUE_SQL = "TRIM(aav.value) REGEXP '^-?[0-9]+(\\\\.[0-9]+)?$'";
+const NUMBER_SQL = 'CAST(TRIM(aav.value) AS DECIMAL(18,4))';
+const DATE_VALUE_SQL = "TRIM(aav.value) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}'";
+const DATE_SQL = "STR_TO_DATE(LEFT(TRIM(aav.value), 10), '%Y-%m-%d')";
+
+function isBlank(v) {
+  return v === undefined || v === null || String(v).trim() === '';
+}
+
+function toFiniteNumber(v) {
+  if (isBlank(v)) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function toDateOnly(v) {
+  if (isBlank(v)) return null;
+  const s = String(v).trim().split('T')[0];
+  return DATE_ONLY.test(s) ? s : null;
+}
+
+/**
+ * One advanced-filter row → SQL predicate on `aav.value` (inside EXISTS) + params.
+ * @returns {{ sql: string, params: unknown[] } | null} null when the row is incomplete.
+ */
+function buildAttrPredicate(f) {
+  const type = String(f.attr_type || 'string');
+  const op = String(f.op || '');
+
+  if (type === 'double') {
+    const a = toFiniteNumber(f.value);
+    if (op === 'between') {
+      const b = toFiniteNumber(f.value2);
+      if (a == null || b == null) return null;
+      return { sql: `${NUMERIC_VALUE_SQL} AND ${NUMBER_SQL} BETWEEN ? AND ?`, params: [Math.min(a, b), Math.max(a, b)] };
+    }
+    const cmp = { eq: '=', gt: '>', lt: '<' }[op];
+    if (!cmp || a == null) return null;
+    return { sql: `${NUMERIC_VALUE_SQL} AND ${NUMBER_SQL} ${cmp} ?`, params: [a] };
+  }
+
+  if (type === 'date') {
+    const a = toDateOnly(f.value);
+    if (op === 'between') {
+      const b = toDateOnly(f.value2);
+      if (!a || !b) return null;
+      const [lo, hi] = a <= b ? [a, b] : [b, a];
+      return { sql: `${DATE_VALUE_SQL} AND ${DATE_SQL} BETWEEN ? AND ?`, params: [lo, hi] };
+    }
+    const cmp = { on: '=', before: '<', after: '>' }[op];
+    if (!cmp || !a) return null;
+    return { sql: `${DATE_VALUE_SQL} AND ${DATE_SQL} ${cmp} ?`, params: [a] };
+  }
+
+  if (type === 'list') {
+    const values = (Array.isArray(f.values) ? f.values : [])
+      .map((v) => String(v ?? '').trim().toLowerCase())
+      .filter(Boolean);
+    if (op !== 'in' || !values.length) return null;
+    return { sql: `LOWER(TRIM(aav.value)) IN (${values.map(() => '?').join(',')})`, params: values };
+  }
+
+  if (op === 'empty') return { sql: "(aav.value IS NULL OR TRIM(aav.value) = '')", params: [] };
+  if (op === 'not_empty') return { sql: "(aav.value IS NOT NULL AND TRIM(aav.value) <> '')", params: [] };
+  if (isBlank(f.value)) return null;
+  const v = String(f.value).trim();
+  if (op === 'equals') return { sql: 'LOWER(TRIM(aav.value)) = LOWER(?)', params: [v] };
+  if (op === 'contains') return { sql: 'aav.value LIKE ?', params: [`%${v}%`] };
+  return null;
+}
+
+function buildAttrCondition(f) {
+  const name = String(f?.name || '').trim();
+  if (!name) return null;
+  const pred = buildAttrPredicate(f);
+  if (!pred) return null;
+  const exists = `EXISTS (
+    SELECT 1 FROM asset_attribute_values aav
+    JOIN asset_type_attributes ata ON aav.attribute_id = ata.id
+    WHERE aav.asset_id = a.id AND LOWER(TRIM(ata.name)) = LOWER(?) AND ${pred.sql}
+  )`;
+  // "is empty" also matches assets that have no row for the attribute at all.
+  if (String(f.attr_type || 'string') === 'string' && f.op === 'empty') {
+    return {
+      sql: `(${exists} OR NOT EXISTS (
+        SELECT 1 FROM asset_attribute_values aav
+        JOIN asset_type_attributes ata ON aav.attribute_id = ata.id
+        WHERE aav.asset_id = a.id AND LOWER(TRIM(ata.name)) = LOWER(?)
+      ))`,
+      params: [name, ...pred.params, name],
+    };
+  }
+  return { sql: exists, params: [name, ...pred.params] };
+}
+
+/** @returns {{ ok: true, conditions: string[], params: unknown[] } | { ok: false, message: string }} */
+function buildOverallConditions(body) {
+  const conditions = [];
+  const params = [];
+
+  const dateField = String(body.date_field || 'created');
+  const dateCol = OVERALL_DATE_FIELDS[dateField];
+  if (!dateCol) return { ok: false, message: 'date_field must be created, updated or lastseen' };
+  const from = isBlank(body.from) ? null : toDateOnly(body.from);
+  const to = isBlank(body.to) ? null : toDateOnly(body.to);
+  if (!isBlank(body.from) && !from) return { ok: false, message: 'from must be YYYY-MM-DD' };
+  if (!isBlank(body.to) && !to) return { ok: false, message: 'to must be YYYY-MM-DD' };
+  if (from && to && from > to) return { ok: false, message: 'from must be on or before to' };
+  if (from) { conditions.push(`${dateCol} >= ?`); params.push(from); }
+  if (to) { conditions.push(`${dateCol} < DATE_ADD(?, INTERVAL 1 DAY)`); params.push(to); }
+
+  const search = String(body.search || '').trim();
+  if (search) {
+    const s = `%${search}%`;
+    conditions.push('(a.asset_code LIKE ? OR a.asset_serial LIKE ? OR a.rfid_tag LIKE ? OR a.name LIKE ?)');
+    params.push(s, s, s, s);
+  }
+
+  const presets = Array.isArray(body.presets) ? body.presets : [];
+  for (const p of presets) {
+    if (OVERALL_PRESETS[p]) conditions.push(OVERALL_PRESETS[p]);
+  }
+
+  const idFilters = [
+    ['asset_type_id', 'a.asset_type_id'],
+    ['location_id', 'a.current_location_id'],
+    ['tag_type_id', 'a.tag_type_id'],
+    ['vendor_id', 'a.vendor_id'],
+  ];
+  for (const [key, col] of idFilters) {
+    if (isBlank(body[key])) continue;
+    const id = Number(body[key]);
+    if (!Number.isInteger(id)) return { ok: false, message: `${key} must be an integer` };
+    conditions.push(`${col} = ?`);
+    params.push(id);
+  }
+
+  if (!isBlank(body.asset_inventory_status)) {
+    const st = String(body.asset_inventory_status).trim();
+    if (!OVERALL_INVENTORY_STATUSES.includes(st)) {
+      return { ok: false, message: `asset_inventory_status must be one of ${OVERALL_INVENTORY_STATUSES.join(', ')}` };
+    }
+    conditions.push('a.asset_inventory_status = ?');
+    params.push(st);
+  }
+
+  const attrFilters = Array.isArray(body.attr_filters) ? body.attr_filters : [];
+  const attrParts = attrFilters.map(buildAttrCondition).filter(Boolean);
+  if (attrParts.length) {
+    const joiner = body.attr_match === 'any' ? ' OR ' : ' AND ';
+    conditions.push(`(${attrParts.map((p) => p.sql).join(joiner)})`);
+    for (const p of attrParts) params.push(...p.params);
+  }
+
+  return { ok: true, conditions, params };
+}
+
+router.post('/overall', async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const built = buildOverallConditions(body);
+    if (!built.ok) return res.status(400).json({ message: built.message });
+
+    const scope = scopeAssetWhere(req.authz, 'a', built.conditions, built.params);
+    const baseFrom = `FROM assets a
+      LEFT JOIN asset_types at ON a.asset_type_id = at.id
+      LEFT JOIN locations l ON a.current_location_id = l.id
+      LEFT JOIN tag_types tt ON a.tag_type_id = tt.id
+      LEFT JOIN vendors v ON a.vendor_id = v.id
+      ${scope.sql}`;
+
+    const [[summaryRow]] = await db.query(
+      `SELECT COUNT(*) AS total,
+        SUM(a.asset_inventory_status = 'in_inventory') AS in_inventory,
+        SUM(a.asset_inventory_status = 'missing') AS missing
+       ${baseFrom}`,
+      scope.params
+    );
+    const summary = {
+      total: Number(summaryRow.total || 0),
+      in_inventory: Number(summaryRow.in_inventory || 0),
+      missing: Number(summaryRow.missing || 0),
+    };
+
+    const sortCol = OVERALL_SORT_MAP[String(body.sort || '').trim()] || 'a.created_at';
+    const sortDir = String(body.sort_dir || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+    const isExport = Boolean(body.export);
+    const pageSize = isExport ? OVERALL_EXPORT_MAX : Math.min(500, Math.max(1, parseInt(body.limit, 10) || 25));
+    const pageNum = isExport ? 1 : Math.max(1, parseInt(body.page, 10) || 1);
+
+    const [rows] = await db.query(
+      `SELECT a.*, at.name AS asset_type_name, l.name AS location_name,
+        tt.name AS tag_type_name, v.name AS vendor_name, ${OVERALL_LAST_SEEN} AS lastseen
+       ${baseFrom}
+       ORDER BY ${sortCol} ${sortDir}, a.id DESC
+       LIMIT ? OFFSET ?`,
+      [...scope.params, pageSize, (pageNum - 1) * pageSize]
+    );
+
+    await attachAssetAttributeValues(rows);
+    filterEmbeddedAssetAttributes(rows, req.authz);
+
+    res.json({
+      data: rows,
+      summary,
+      truncated: isExport && summary.total > OVERALL_EXPORT_MAX,
+      pagination: {
+        total: summary.total,
+        page: pageNum,
+        limit: pageSize,
+        totalPages: Math.max(1, Math.ceil(summary.total / pageSize)),
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 module.exports = router;

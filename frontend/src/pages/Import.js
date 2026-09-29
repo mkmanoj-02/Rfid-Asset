@@ -67,7 +67,7 @@ const SAMPLE_CONFIG = {
   assets: {
     headers: [
       { label: 'Asset ID', required: true },
-      { label: 'Asset Serial', required: true },
+      { label: 'Asset Serial', required: false },
       { label: 'Asset Name', required: true },
       { label: 'RFID', required: false },
       { label: 'Asset Type', required: true },
@@ -726,7 +726,7 @@ function ImportWizard({ title, fields, endpoint }) {
 // ── Field definitions (aligned with Add Asset form) ─────────────
 const ASSET_FIELDS = [
   { key: 'asset_code', label: 'Asset ID', required: true },
-  { key: 'asset_serial', label: 'Asset Serial', required: true },
+  { key: 'asset_serial', label: 'Asset Serial' },
   { key: 'name', label: 'Asset Name', required: true },
   { key: 'rfid_tag', label: 'RFID' },
   { key: 'asset_type', label: 'Asset Type', required: true },

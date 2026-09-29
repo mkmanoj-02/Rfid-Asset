@@ -25,6 +25,7 @@ const {
 } = require('../lib/userAuthz');
 const { requireModify, requireDelete } = require('../middleware/requireAuthz');
 const { withTransaction } = require('../lib/importHelpers');
+const { attachAssetAttributeValues } = require('../services/assetQueryService');
 const fs = require('fs').promises;
 
 const ASSET_INVENTORY_STATUSES = ['in_inventory', 'missing', 'not_in_inventory'];
@@ -40,7 +41,7 @@ async function consumeUnassignedTag(tagValue, queryFn = db) {
   }
 }
 
-function trimAssetCode(val) {
+function trimField(val) {
   return val == null ? '' : String(val).trim();
 }
 
@@ -73,49 +74,6 @@ function parseSinceQuery(since) {
   const d = new Date(String(since));
   if (Number.isNaN(d.getTime())) return { error: 'Invalid since; use ISO 8601 datetime' };
   return { date: d };
-}
-
-async function loadListOptionsByAttributeIds(attributeIds) {
-  const map = new Map();
-  if (!attributeIds.length) return map;
-  const ph = attributeIds.map(() => '?').join(',');
-  const [opts] = await db.query(
-    `SELECT * FROM attribute_list_options WHERE attribute_id IN (${ph}) ORDER BY attribute_id, sort_order, id`,
-    attributeIds
-  );
-  for (const o of opts) {
-    if (!map.has(o.attribute_id)) map.set(o.attribute_id, []);
-    map.get(o.attribute_id).push(o);
-  }
-  return map;
-}
-
-/** Adds `attributes` to each row (same shape as GET /api/assets/:id/attributes). */
-async function attachAssetAttributeValues(assetRows) {
-  if (!assetRows.length) return;
-  const ids = [...new Set(assetRows.map((r) => r.id).filter((id) => id != null))];
-  if (!ids.length) return;
-  const ph = ids.map(() => '?').join(',');
-  const [values] = await db.query(
-    `SELECT aav.*, ata.name, ata.attr_type
-     FROM asset_attribute_values aav
-     JOIN asset_type_attributes ata ON aav.attribute_id = ata.id
-     WHERE aav.asset_id IN (${ph})
-     ORDER BY ata.sort_order ASC, ata.id ASC`,
-    ids
-  );
-  const listAttrIds = [...new Set(values.filter((v) => v.attr_type === 'list').map((v) => v.attribute_id))];
-  const optionsByAttrId = await loadListOptionsByAttributeIds(listAttrIds);
-  const byAsset = new Map(ids.map((id) => [id, []]));
-  for (const row of values) {
-    const entry = { ...row };
-    entry.list_options =
-      row.attr_type === 'list' ? optionsByAttrId.get(row.attribute_id) || [] : [];
-    byAsset.get(row.asset_id).push(entry);
-  }
-  for (const a of assetRows) {
-    a.attributes = byAsset.get(a.id) || [];
-  }
 }
 
 router.get('/', async (req, res, next) => {
@@ -420,7 +378,7 @@ router.put('/:id/attributes', requireModify('asset'), async (req, res, next) => 
 router.post('/', requireModify('asset'), optionalImageUpload('assets'), async (req, res, next) => {
   try {
   const { rfid_tag, tag_type_id, vendor_id, asset_serial, name, asset_type_id, current_location_id, status, description, asset_inventory_status } = req.body;
-  const assetCode = trimAssetCode(req.body.asset_code);
+  const assetCode = trimField(req.body.asset_code);
 
   const payloadErr = assertAssetPayload(req.authz, res, { asset_type_id, current_location_id });
   if (payloadErr) return payloadErr;
@@ -429,7 +387,6 @@ router.post('/', requireModify('asset'), optionalImageUpload('assets'), async (r
   const errors = [];
   if (!assetCode) errors.push('Asset ID is required');
   if (!name || !name.toString().trim()) errors.push('Asset name is required');
-  if (!asset_serial || !asset_serial.toString().trim()) errors.push('Asset serial number is required');
   if (!asset_type_id) errors.push('Asset type is required');
   if (!current_location_id) errors.push('Location is required');
   if (!status || !status.toString().trim()) errors.push('Status is required');
@@ -467,7 +424,7 @@ router.post('/', requireModify('asset'), optionalImageUpload('assets'), async (r
           current_location_id, status, description, asset_inventory_status, image_url, is_custom_image)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          assetCode, rfid_tag || null, tag_type_id || null, vendor_id || null, asset_serial, name, asset_type_id,
+          assetCode, rfid_tag || null, tag_type_id || null, vendor_id || null, trimField(asset_serial) || null, name, asset_type_id,
           locationId, status || 'active', description || null, invStatus, imageUrl, isCustom,
         ]
       );
@@ -522,7 +479,7 @@ router.put('/:id', requireModify('asset'), optionalImageUpload('assets'), async 
 
   const { rfid_tag, tag_type_id, vendor_id, asset_serial, name, asset_type_id, current_location_id, status, description, asset_inventory_status } = req.body;
   const assetCodeProvided = req.body.asset_code !== undefined;
-  const assetCode = trimAssetCode(req.body.asset_code);
+  const assetCode = trimField(req.body.asset_code);
 
   const payloadErr = assertAssetPayload(req.authz, res, { asset_type_id, current_location_id });
   if (payloadErr) return payloadErr;
@@ -531,7 +488,6 @@ router.put('/:id', requireModify('asset'), optionalImageUpload('assets'), async 
   const editErrors = [];
   if (assetCodeProvided && !assetCode) editErrors.push('Asset ID is required');
   if (!name || !name.toString().trim()) editErrors.push('Asset name is required');
-  if (!asset_serial || !asset_serial.toString().trim()) editErrors.push('Asset serial number is required');
   if (!asset_type_id) editErrors.push('Asset type is required');
   if (!current_location_id) editErrors.push('Location is required');
   if (!status || !status.toString().trim()) editErrors.push('Status is required');
@@ -565,7 +521,7 @@ router.put('/:id', requireModify('asset'), optionalImageUpload('assets'), async 
       asset_type_id = ?, current_location_id = ?, status = ?, description = ?, asset_inventory_status = ?,
       image_url = ?, is_custom_image = ? WHERE id = ?`,
     [
-      assetCode || existing[0].asset_code, rfid_tag || null, tag_type_id || null, vendor_id || null, asset_serial, name, asset_type_id,
+      assetCode || existing[0].asset_code, rfid_tag || null, tag_type_id || null, vendor_id || null, trimField(asset_serial) || null, name, asset_type_id,
       current_location_id || null, status, description || null, invStatus,
       imagePatch.imageUrl, imagePatch.isCustom, id,
     ]

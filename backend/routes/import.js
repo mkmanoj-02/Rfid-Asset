@@ -143,7 +143,6 @@ function validateAssetImportRow(row, ctx) {
   const name = trimImportCell(row.name);
   const rfidTag = normalizeRfidTag(row.rfid_tag);
   if (!assetCode) errors.push('Asset ID is required');
-  if (!serial) errors.push('Asset Serial is required');
   if (!name) errors.push('Asset Name is required');
   validateOptionalRfidTag(rfidTag, errors);
 
@@ -184,14 +183,12 @@ function validateAssetImportRow(row, ctx) {
     else status = normalized;
   }
 
-  const existingMatch = serial ? serialMap.get(serial) : null;
+  const codeOwner = assetCode ? assetCodeMap.get(assetCode.toLowerCase()) || null : null;
+  const serialOwner = serial ? serialMap.get(serial) || null : null;
+  const existingMatch = codeOwner || serialOwner;
 
-  if (assetCode) {
-    const codeOwner = assetCodeMap.get(assetCode.toLowerCase());
-    if (codeOwner && codeOwner.id !== (existingMatch ? existingMatch.id : null)) {
-      const ref = codeOwner.asset_serial ? ` (serial: ${codeOwner.asset_serial})` : '';
-      errors.push(`Asset ID is already used by another asset${ref}`);
-    }
+  if (serialOwner && existingMatch && serialOwner.id !== existingMatch.id) {
+    errors.push(`Asset Serial is already used by another asset (Asset ID: ${serialOwner.asset_code})`);
   }
 
   if (rfidTag && isValidRfidTag(rfidTag)) {
@@ -199,7 +196,7 @@ function validateAssetImportRow(row, ctx) {
     if (rfidOwner) {
       const assetId = existingMatch ? existingMatch.id : null;
       if (assetId !== rfidOwner.id) {
-        const ref = rfidOwner.asset_serial ? ` (serial: ${rfidOwner.asset_serial})` : '';
+        const ref = rfidOwner.asset_code ? ` (Asset ID: ${rfidOwner.asset_code})` : '';
         errors.push(`RFID tag is already assigned to another asset${ref}`);
       }
     }
