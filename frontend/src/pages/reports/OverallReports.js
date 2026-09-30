@@ -57,11 +57,11 @@ const DEFAULT_FILTERS = {
   to: '',
   search: '',
   presets: [],
-  asset_type_id: '',
-  location_id: '',
-  tag_type_id: '',
-  vendor_id: '',
-  asset_inventory_status: '',
+  asset_type_id: [],
+  location_id: [],
+  tag_type_id: [],
+  vendor_id: [],
+  asset_inventory_status: [],
   attr_match: 'all',
   attr_filters: [],
 };
@@ -94,13 +94,25 @@ const labelStyle = { fontSize: 11.5, color: T.muted, fontWeight: 600, marginBott
 let conditionSeq = 0;
 const newConditionId = () => `c${Date.now()}_${conditionSeq++}`;
 
+const MULTI_FILTER_KEYS = ['asset_type_id', 'location_id', 'tag_type_id', 'vendor_id', 'asset_inventory_status'];
+
+/** Older saved state stored these filters as a single string. */
+function normalizeFilters(saved) {
+  const f = { ...DEFAULT_FILTERS, ...(saved || {}) };
+  MULTI_FILTER_KEYS.forEach((k) => {
+    const v = f[k];
+    f[k] = Array.isArray(v) ? v.map(String) : (v == null || v === '' ? [] : [String(v)]);
+  });
+  return f;
+}
+
 function loadSavedState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     return {
-      filters: { ...DEFAULT_FILTERS, ...(parsed.filters || {}) },
+      filters: normalizeFilters(parsed.filters),
       attrColumns: Array.isArray(parsed.attrColumns) ? parsed.attrColumns.slice(0, MAX_ATTR_COLUMNS) : [],
       pageSize: PAGE_SIZES.includes(parsed.pageSize) ? parsed.pageSize : PAGE_SIZES[0],
     };
@@ -161,8 +173,8 @@ function countActiveFilters(f) {
   if (f.from || f.to) n += 1;
   if (f.search.trim()) n += 1;
   n += f.presets.length;
-  ['asset_type_id', 'location_id', 'tag_type_id', 'vendor_id', 'asset_inventory_status'].forEach((k) => {
-    if (f[k]) n += 1;
+  MULTI_FILTER_KEYS.forEach((k) => {
+    if (f[k].length) n += 1;
   });
   n += f.attr_filters.filter((c) => c.name).length;
   return n;
@@ -235,14 +247,90 @@ function Chip({ active, onClick, children }) {
   );
 }
 
-function LookupSelect({ label, value, options, onChange, getLabel = (o) => o.name }) {
+function MultiSelect({ label, value, options, onChange, getLabel = (o) => o.name }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+
+  const items = options.map((o) => ({ id: String(o.id ?? o.value), label: getLabel(o) }));
+  const q = query.trim().toLowerCase();
+  const visible = q ? items.filter((i) => i.label.toLowerCase().includes(q)) : items;
+  const selected = new Set(value);
+
+  const toggle = (id) => {
+    onChange(selected.has(id) ? value.filter((v) => v !== id) : [...value, id]);
+  };
+  const selectVisible = () => onChange([...new Set([...value, ...visible.map((i) => i.id)])]);
+
+  let summary = 'All';
+  if (value.length === 1) summary = items.find((i) => i.id === value[0])?.label || '1 selected';
+  else if (value.length > 1) summary = `${value.length} selected`;
+
+  const linkBtn = {
+    background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+    fontSize: 11.5, fontWeight: 600, color: T.blue,
+  };
+
   return (
-    <div style={{ flex: '1 1 170px', minWidth: 150 }}>
+    <div ref={ref} style={{ flex: '1 1 170px', minWidth: 150, position: 'relative' }}>
       <div style={labelStyle}>{label}</div>
-      <select value={value} onChange={(e) => onChange(e.target.value)} style={{ ...inputStyle, width: '100%' }}>
-        <option value="">All</option>
-        {options.map((o) => <option key={o.id ?? o.value} value={o.id ?? o.value}>{getLabel(o)}</option>)}
-      </select>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          ...inputStyle, width: '100%', textAlign: 'left', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6,
+          borderColor: value.length ? T.blue : T.border,
+          background: value.length ? T.blueL : '#fff',
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: value.length ? T.blue : T.text }}>
+          {summary}
+        </span>
+        <span style={{ color: T.muted, fontSize: 10 }}>▾</span>
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', left: 0, top: 'calc(100% + 4px)', zIndex: 30, minWidth: '100%', width: 260,
+          background: '#fff', border: `1px solid ${T.border}`, borderRadius: 9, boxShadow: T.shadowH, padding: 8,
+        }}>
+          {items.length > 8 && (
+            <input
+              type="search"
+              autoFocus
+              value={query}
+              placeholder={`Search ${label.toLowerCase()}…`}
+              onChange={(e) => setQuery(e.target.value)}
+              style={{ ...inputStyle, width: '100%', boxSizing: 'border-box', marginBottom: 6 }}
+            />
+          )}
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 4px 6px' }}>
+            <button type="button" style={linkBtn} onClick={selectVisible} disabled={!visible.length}>Select all</button>
+            <button type="button" style={{ ...linkBtn, color: T.muted }} onClick={() => onChange([])} disabled={!value.length}>
+              Clear
+            </button>
+          </div>
+          <div style={{ maxHeight: 240, overflowY: 'auto' }}>
+            {visible.length === 0 && <div style={{ fontSize: 12, color: T.faint, padding: 4 }}>No matches</div>}
+            {visible.map((i) => (
+              <label key={i.id} style={{
+                display: 'flex', alignItems: 'center', gap: 8, padding: '4px 4px',
+                fontSize: 12.5, color: T.text, cursor: 'pointer', borderRadius: 5,
+              }}>
+                <input type="checkbox" checked={selected.has(i.id)} onChange={() => toggle(i.id)} />
+                {i.label}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -267,17 +355,17 @@ function RecommendedFilters({ filters, onChange, lookups }) {
         ))}
       </div>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 14 }}>
-        <LookupSelect label="Asset type" value={filters.asset_type_id} options={lookups.assetTypes}
+        <MultiSelect label="Asset type" value={filters.asset_type_id} options={lookups.assetTypes}
           onChange={(v) => onChange({ asset_type_id: v })}
           getLabel={(o) => (o.parent_name ? `${o.parent_name} / ${o.name}` : o.name)} />
-        <LookupSelect label="Location" value={filters.location_id} options={lookups.locations}
+        <MultiSelect label="Location" value={filters.location_id} options={lookups.locations}
           onChange={(v) => onChange({ location_id: v })}
           getLabel={(o) => (o.parent_name ? `${o.parent_name} / ${o.name}` : o.name)} />
-        <LookupSelect label="Tag type" value={filters.tag_type_id} options={lookups.tagTypes}
+        <MultiSelect label="Tag type" value={filters.tag_type_id} options={lookups.tagTypes}
           onChange={(v) => onChange({ tag_type_id: v })} />
-        <LookupSelect label="Vendor" value={filters.vendor_id} options={lookups.vendors}
+        <MultiSelect label="Vendor" value={filters.vendor_id} options={lookups.vendors}
           onChange={(v) => onChange({ vendor_id: v })} />
-        <LookupSelect label="Inventory status" value={filters.asset_inventory_status} options={INVENTORY_STATUSES}
+        <MultiSelect label="Inventory status" value={filters.asset_inventory_status} options={INVENTORY_STATUSES}
           onChange={(v) => onChange({ asset_inventory_status: v })} getLabel={(o) => o.label} />
       </div>
     </div>
@@ -572,7 +660,7 @@ function OverallResultsTable({
   );
 }
 
-/* ─── Overall Reports tab ────────────────────────────────────── */
+/* ─── Custom Reports tab ─────────────────────────────────────── */
 export default function OverallReports() {
   const saved = useRef(loadSavedState()).current;
   const [filters, setFilters] = useState(saved?.filters || DEFAULT_FILTERS);
@@ -635,7 +723,7 @@ export default function OverallReports() {
         setTotalPages(body.pagination?.totalPages || 1);
       })
       .catch((e) => {
-        if (seq === requestSeq.current) toastApiFailure(e, 'Reports · Overall');
+        if (seq === requestSeq.current) toastApiFailure(e, 'Reports · Custom');
       })
       .finally(() => {
         if (seq === requestSeq.current) setLoading(false);
@@ -693,13 +781,13 @@ export default function OverallReports() {
         return out;
       });
       const stamp = new Date().toISOString().split('T')[0];
-      if (kind === 'excel') exportExcel(exportColumns, exportRows, `overall-report-${stamp}`);
-      else exportPDF(exportColumns, exportRows, `Overall Report (${stamp})`, `overall-report-${stamp}`);
+      if (kind === 'excel') exportExcel(exportColumns, exportRows, `custom-report-${stamp}`);
+      else exportPDF(exportColumns, exportRows, `Custom Report (${stamp})`, `custom-report-${stamp}`);
       if (body.truncated) {
         setNotice(`Export limited to the first ${data.length} of ${body.summary?.total} assets. Narrow the filters to export the rest.`);
       }
     } catch (e) {
-      toastApiFailure(e, 'Reports · Overall export');
+      toastApiFailure(e, 'Reports · Custom export');
     } finally {
       setExporting(false);
     }

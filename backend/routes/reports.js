@@ -414,6 +414,12 @@ function isBlank(v) {
   return v === undefined || v === null || String(v).trim() === '';
 }
 
+/** Accepts a single value or an array; returns trimmed, non-empty, de-duplicated strings. */
+function toValueList(v) {
+  const list = Array.isArray(v) ? v : [v];
+  return [...new Set(list.filter((x) => !isBlank(x)).map((x) => String(x).trim()))];
+}
+
 function toFiniteNumber(v) {
   if (isBlank(v)) return null;
   const n = Number(v);
@@ -535,20 +541,21 @@ function buildOverallConditions(body) {
     ['vendor_id', 'a.vendor_id'],
   ];
   for (const [key, col] of idFilters) {
-    if (isBlank(body[key])) continue;
-    const id = Number(body[key]);
-    if (!Number.isInteger(id)) return { ok: false, message: `${key} must be an integer` };
-    conditions.push(`${col} = ?`);
-    params.push(id);
+    const raw = toValueList(body[key]);
+    if (!raw.length) continue;
+    const ids = raw.map(Number);
+    if (ids.some((id) => !Number.isInteger(id))) return { ok: false, message: `${key} must contain integers` };
+    conditions.push(`${col} IN (${ids.map(() => '?').join(',')})`);
+    params.push(...ids);
   }
 
-  if (!isBlank(body.asset_inventory_status)) {
-    const st = String(body.asset_inventory_status).trim();
-    if (!OVERALL_INVENTORY_STATUSES.includes(st)) {
+  const statuses = toValueList(body.asset_inventory_status);
+  if (statuses.length) {
+    if (statuses.some((st) => !OVERALL_INVENTORY_STATUSES.includes(st))) {
       return { ok: false, message: `asset_inventory_status must be one of ${OVERALL_INVENTORY_STATUSES.join(', ')}` };
     }
-    conditions.push('a.asset_inventory_status = ?');
-    params.push(st);
+    conditions.push(`a.asset_inventory_status IN (${statuses.map(() => '?').join(',')})`);
+    params.push(...statuses);
   }
 
   const attrFilters = Array.isArray(body.attr_filters) ? body.attr_filters : [];

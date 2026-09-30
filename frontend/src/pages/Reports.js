@@ -628,7 +628,7 @@ export default function Reports() {
         </TabBtn>
         <TabBtn active={tab === 'overall'} onClick={() => setTab('overall')}>
           <ReportTabIconOverall />
-          Overall Reports
+          Custom Reports
         </TabBtn>
       </div>
 
