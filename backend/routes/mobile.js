@@ -673,7 +673,10 @@ async function createSyncedAsset(req, item, f, attrCache) {
       await insertRfidTagMovement(conn, id, f.locationId);
       await conn.query('DELETE FROM unassigned_tags WHERE tag_value = ?', [f.rfid]);
     }
-    return { id, serial: f.serial, name: f.name, created: true };
+    return {
+      id, serial: f.serial, name: f.name, created: true,
+      newlyTagged: shouldLogRfidTagMovement(null, f.rfid),
+    };
   });
 }
 
@@ -738,7 +741,10 @@ async function updateSyncedAsset(req, item, f, existing, attrCache) {
     }
   });
 
-  return { id: existing.id, serial: next.serial, name: next.name, created: false };
+  return {
+    id: existing.id, serial: next.serial, name: next.name, created: false,
+    newlyTagged: shouldLogRfidTagMovement(existing.rfid_tag, next.rfid),
+  };
 }
 
 /**
@@ -819,18 +825,10 @@ router.post('/sync', async (req, res, next) => {
     const assets = req.body?.assets;
 
     if (assets === undefined || assets === null || (Array.isArray(assets) && !assets.length)) {
-      const scoped = scopeAssetWhere(req.authz, 'a');
-      const [[totals]] = await db.query(
-        `SELECT
-           COALESCE(SUM(a.rfid_tag IS NOT NULL AND TRIM(a.rfid_tag) <> '' AND a.asset_inventory_status = 'in_inventory'), 0) AS inventoried,
-           COALESCE(SUM(a.rfid_tag IS NOT NULL AND TRIM(a.rfid_tag) <> '' AND a.asset_inventory_status <> 'in_inventory'), 0) AS missing
-         FROM assets a
-         ${scoped.sql}`,
-        scoped.params
-      );
       return res.json({
-        inventoriedCount: Number(totals.inventoried),
-        missingCount: Number(totals.missing),
+        inventoriedCount: 0,
+        missingCount: 0,
+        newlyTaggedCount: 0,
         newlyTaggedAssets: [],
         errors: [],
       });
@@ -867,9 +865,9 @@ router.post('/sync', async (req, res, next) => {
 
         if (saved.created) createdCount += 1;
         else updatedCount += 1;
-        if (fields.status === 'INVENTORIED') inventoriedCount += 1;
-        else if (fields.status === 'MISSING') missingCount += 1;
-        if (item.newlyTagged === true) {
+        inventoriedCount += 1;
+        if (fields.status === 'MISSING') missingCount += 1;
+        if (saved.newlyTagged) {
           newlyTaggedAssets.push({ id: clientId, serverId: saved.id, serial: saved.serial, name: saved.name });
         }
       } catch (err) {
@@ -895,7 +893,13 @@ router.post('/sync', async (req, res, next) => {
       );
     }
 
-    res.json({ inventoriedCount, missingCount, newlyTaggedAssets, errors });
+    res.json({
+      inventoriedCount,
+      missingCount,
+      newlyTaggedCount: newlyTaggedAssets.length,
+      newlyTaggedAssets,
+      errors,
+    });
   } catch (err) {
     next(err);
   }
