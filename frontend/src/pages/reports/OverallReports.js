@@ -67,8 +67,7 @@ const DEFAULT_FILTERS = {
 };
 
 const BASE_COLUMNS = [
-  { key: 'asset_code', header: 'Asset ID', sort: 'asset_code' },
-  { key: 'asset_serial', header: 'Serial', sort: 'asset_serial' },
+  { key: 'asset_code', header: 'Asset ID / Asset Serial', sort: 'asset_code' },
   { key: 'name', header: 'Name', sort: 'name' },
   { key: 'asset_type_name', header: 'Type', sort: 'asset_type_name' },
   { key: 'location_name', header: 'Location', sort: 'location_name' },
@@ -146,7 +145,6 @@ function toDisplayRow(row, index) {
     ...row,
     s_no: index + 1,
     asset_code: row.asset_code || '—',
-    asset_serial: row.asset_serial || '—',
     name: row.name || '—',
     asset_type_name: row.asset_type_name || '—',
     location_name: row.location_name || '—',
@@ -205,7 +203,7 @@ function OverallFilterBar({ filters, onChange, onApply, onReset }) {
         <input
           type="search"
           value={filters.search}
-          placeholder="Asset ID, serial, RFID tag or name"
+          placeholder="Asset ID / serial, RFID tag or name"
           onChange={(e) => onChange({ search: e.target.value })}
           style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }}
         />

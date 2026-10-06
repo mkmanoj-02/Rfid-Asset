@@ -160,8 +160,8 @@ export default function Dashboard() {
     savePins(next);
   };
 
-  const missing      = data ? (data.rfid_breakdown?.untagged || 0) : 0;
-  const scannedToday = data?.recent_movements?.length || 0;
+  const untagged = data ? (data.rfid_breakdown?.untagged || 0) : 0;
+  const missing  = data?.missing_inventory ?? 0;
 
   const locationSearchNorm = locationSearch.trim().toLowerCase();
   const filteredLocations = useMemo(
@@ -322,8 +322,8 @@ export default function Dashboard() {
             <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12, color: '#1a1f36' }}>Inventory Summary</div>
             {[
               { label: 'Total Inventory', value: dashboardLoading ? '...' : (data?.total_assets ?? '—'), color: '#1a1f36' },
+              { label: 'Untagged Inventory', value: dashboardLoading ? '...' : untagged, color: '#d97706' },
               { label: 'Missing Inventory', value: dashboardLoading ? '...' : missing, color: '#e53e3e' },
-              { label: 'Scanned Today', value: dashboardLoading ? '...' : scannedToday, color: '#276749' },
               { label: 'Asset Types', value: dashboardLoading ? '...' : (data?.total_types ?? '—'), color: '#5a67d8' },
             ].map(({ label, value, color }) => (
               <div key={label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '5px 0', borderBottom: '1px solid #f7f8fc' }}>

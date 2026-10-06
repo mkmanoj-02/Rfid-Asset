@@ -13,6 +13,15 @@ const {
 } = require('../controllers/locationImages');
 const { assertLocationAccess } = require('../lib/userAuthz');
 const { requireModify, requireDelete } = require('../middleware/requireAuthz');
+const {
+  normalizeName,
+  nameKey,
+  stripParentPrefix,
+  planLocationName,
+  loadLocationRows,
+  loadParent,
+  withLocationNameLock,
+} = require('../services/locationNameService');
 
 function allowedLocationIds(req) {
   return req.authz?.locationIds ?? null;
@@ -74,100 +83,148 @@ router.get('/:id', async (req, res) => {
   res.json(rows[0]);
 });
 
+async function discardUpload(req) {
+  if (req.file?.path) {
+    try { await require('fs').promises.unlink(req.file.path); } catch {}
+  }
+}
+
+function parseParentId(value) {
+  return value === undefined || value === null || value === '' ? null : value;
+}
+
+/** 409 asking the client to confirm saving under the generated "parent_child" name. */
+function nameConfirmResponse(res, plan) {
+  return res.status(409).json({
+    code: 'LOCATION_NAME_CONFIRM',
+    message: `The name "${plan.originalName}" already exists. We can save it as "${plan.name}".`,
+    original_name: plan.originalName,
+    suggested_name: plan.name,
+  });
+}
+
 router.post('/', requireModify('location'), optionalImageUpload('locations'), async (req, res, next) => {
   try {
-  const { name, description, parent_id } = req.body;
-  if (!name || !String(name).trim()) {
-    if (req.file?.path) {
-      try { await require('fs').promises.unlink(req.file.path); } catch {}
+    const { description } = req.body;
+    const pid = parseParentId(req.body.parent_id);
+    if (!normalizeName(req.body.name)) {
+      await discardUpload(req);
+      return res.status(400).json({ message: 'Location name is required' });
     }
-    return res.status(400).json({ message: 'Location name is required' });
-  }
-  const pid = parent_id === undefined || parent_id === null || parent_id === '' ? null : parent_id;
-  const [existing] = await db.query(
-    `SELECT id 
-     FROM locations 
-     WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))
-     AND (
-       (parent_id IS NULL AND ? IS NULL)
-       OR parent_id = ?
-     )`,
-    [name, pid, pid]
-  );
-  if (existing.length) {
-    return res.status(400).json({
-      message: pid
-        ? `Child location "${name}" already exists under this parent`
-        : `Parent location "${name}" already exists`,
-    });
-  }
-  const imageUrl = imageUrlFromUpload(req.file);
+    const confirmed = truthyFormFlag(req.body.confirm_generated_name);
 
-  const [result] = await db.query(
-    'INSERT INTO locations (name, description, parent_id, location_type_id, image_url) VALUES (?, ?, ?, ?, ?)',
-    [name, description || null, parent_id || null, req.body.location_type_id || null, imageUrl]
-  );
-  await audit.log('Location', 'Added', `Location "${name}" was created`, req.auditUser, req.auditUserId);
-  res.status(201).json({
-    id: result.insertId,
-    name,
-    description,
-    parent_id: parent_id || null,
-    image_url: imageUrl,
-  });
-  } catch (err) { next(err); }
+    const outcome = await withLocationNameLock(db, async (conn) => {
+      const parent = await loadParent(conn, pid);
+      if (pid != null && !parent) return { status: 400, body: { message: 'Parent location not found' } };
+
+      const plan = planLocationName(await loadLocationRows(conn), { name: req.body.name, parent });
+      if (plan.error) return { status: plan.status, body: { message: plan.error } };
+      if (plan.generated && !confirmed) return { confirm: plan };
+
+      const imageUrl = imageUrlFromUpload(req.file);
+      const [result] = await conn.query(
+        'INSERT INTO locations (name, description, parent_id, location_type_id, image_url) VALUES (?, ?, ?, ?, ?)',
+        [plan.name, description || null, pid, req.body.location_type_id || null, imageUrl]
+      );
+      return { plan, imageUrl, id: result.insertId };
+    });
+
+    if (outcome.confirm) {
+      await discardUpload(req);
+      return nameConfirmResponse(res, outcome.confirm);
+    }
+    if (outcome.status) {
+      await discardUpload(req);
+      return res.status(outcome.status).json(outcome.body);
+    }
+
+    req.file = null;
+    await audit.log('Location', 'Added', `Location "${outcome.plan.name}" was created`, req.auditUser, req.auditUserId);
+    res.status(201).json({
+      id: outcome.id,
+      name: outcome.plan.name,
+      description,
+      parent_id: pid,
+      image_url: outcome.imageUrl,
+    });
+  } catch (err) {
+    await discardUpload(req);
+    next(err);
+  }
 });
 
 router.put('/:id', requireModify('location'), optionalImageUpload('locations'), async (req, res, next) => {
   try {
-  const locErr = assertLocationAccess(req.authz, res, req.params.id);
-  if (locErr) return locErr;
-
-  const { name, description, parent_id } = req.body;
-  const pid = parent_id === undefined || parent_id === null || parent_id === '' ? null : parent_id;
-  const [existing] = await db.query(
-    `SELECT id 
-     FROM locations 
-     WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))
-     AND (
-       (parent_id IS NULL AND ? IS NULL)
-       OR parent_id = ?
-     )
-     AND id != ?`,
-    [name, pid, pid, req.params.id]
-  );
-  if (existing.length) {
-    if (req.file?.path) {
-      try { await require('fs').promises.unlink(req.file.path); } catch {}
+    const locErr = assertLocationAccess(req.authz, res, req.params.id);
+    if (locErr) {
+      await discardUpload(req);
+      return locErr;
     }
-    return res.status(400).json({
-      message: pid
-        ? `Child location "${name}" already exists under this parent`
-        : `Parent location "${name}" already exists`,
+
+    const { description } = req.body;
+    const pid = parseParentId(req.body.parent_id);
+    if (!normalizeName(req.body.name)) {
+      await discardUpload(req);
+      return res.status(400).json({ message: 'Location name is required' });
+    }
+    const confirmed = truthyFormFlag(req.body.confirm_generated_name);
+
+    const outcome = await withLocationNameLock(db, async (conn) => {
+      const [[current]] = await conn.query(
+        'SELECT id, name, parent_id, image_url FROM locations WHERE id = ?',
+        [req.params.id]
+      );
+      if (!current) return { status: 404, body: { message: 'Not found' } };
+
+      const parent = await loadParent(conn, pid);
+      if (pid != null && !parent) return { status: 400, body: { message: 'Parent location not found' } };
+      if (parent && Number(parent.id) === Number(current.id)) {
+        return { status: 400, body: { message: 'A location cannot be its own parent' } };
+      }
+
+      let requestedName = req.body.name;
+      if (current.parent_id != null && Number(current.parent_id) !== Number(pid)) {
+        const oldParent = await loadParent(conn, current.parent_id);
+        requestedName = stripParentPrefix(requestedName, oldParent?.name);
+      }
+
+      const plan = planLocationName(await loadLocationRows(conn), {
+        name: requestedName,
+        parent,
+        excludeId: current.id,
+      });
+      if (plan.error) return { status: plan.status, body: { message: plan.error } };
+      const unchangedName = nameKey(plan.name) === nameKey(current.name);
+      if (plan.generated && !unchangedName && !confirmed) return { confirm: plan };
+
+      const imageUrl = await resolveLocationImageOnUpdate(
+        current.image_url,
+        req.file,
+        truthyFormFlag(req.body.remove_image)
+      );
+      await conn.query(
+        'UPDATE locations SET name = ?, description = ?, parent_id = ?, location_type_id = ?, image_url = ? WHERE id = ?',
+        [plan.name, description || null, pid, req.body.location_type_id || null, imageUrl, current.id]
+      );
+      return { plan, imageUrl };
     });
-  }
 
-  const [[locRow]] = await db.query('SELECT image_url FROM locations WHERE id = ?', [req.params.id]);
-  if (!locRow) {
-    if (req.file?.path) {
-      try { await require('fs').promises.unlink(req.file.path); } catch {}
+    if (outcome.confirm) {
+      await discardUpload(req);
+      return nameConfirmResponse(res, outcome.confirm);
     }
-    return res.status(404).json({ message: 'Not found' });
+    if (outcome.status) {
+      await discardUpload(req);
+      return res.status(outcome.status).json(outcome.body);
+    }
+
+    req.file = null;
+    await audit.log('Location', 'Modified', `Location "${outcome.plan.name}" was updated`, req.auditUser, req.auditUserId);
+    res.json({ message: 'Updated', name: outcome.plan.name, image_url: outcome.imageUrl });
+  } catch (err) {
+    await discardUpload(req);
+    next(err);
   }
-
-  const imageUrl = await resolveLocationImageOnUpdate(
-    locRow.image_url,
-    req.file,
-    truthyFormFlag(req.body.remove_image)
-  );
-
-  await db.query(
-    'UPDATE locations SET name = ?, description = ?, parent_id = ?, location_type_id = ?, image_url = ? WHERE id = ?',
-    [name, description || null, parent_id || null, req.body.location_type_id || null, imageUrl, req.params.id]
-  );
-  await audit.log('Location', 'Modified', `Location "${name}" was updated`, req.auditUser, req.auditUserId);
-  res.json({ message: 'Updated', image_url: imageUrl });
-  } catch (err) { next(err); }
 });
 
 router.delete('/bulk', requireDelete('location'), async (req, res, next) => {

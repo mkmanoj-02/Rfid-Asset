@@ -85,6 +85,7 @@ router.get('/', async (req, res) => {
   let recentMovements;
   let tagged;
   let untagged;
+  let missing;
   let monthlyDistribution;
   let locationDistribution;
 
@@ -206,6 +207,13 @@ router.get('/', async (req, res) => {
     );
     untagged = ut.untagged;
 
+    const missingWhere = combineWhere([assetWhere.sql, "a.asset_inventory_status = 'missing'"]);
+    const [[ms]] = await db.query(
+      `SELECT COUNT(*) AS missing FROM assets a WHERE ${missingWhere}`,
+      assetWhere.params
+    );
+    missing = ms.missing;
+
     const monthWhere = combineWhere([yearSql, assetWhere.sql]);
     const [monthRows] = await db.query(
       `SELECT MONTH(a.created_at) AS month, COUNT(*) AS count
@@ -277,6 +285,10 @@ router.get('/', async (req, res) => {
       "SELECT COUNT(*) AS untagged FROM assets WHERE rfid_tag IS NULL OR rfid_tag = ''"
     );
     untagged = ut;
+    const [[{ missing: ms }]] = await db.query(
+      "SELECT COUNT(*) AS missing FROM assets WHERE asset_inventory_status = 'missing'"
+    );
+    missing = ms;
 
     const [monthRows] = await db.query(
       `SELECT MONTH(a.created_at) AS month, COUNT(*) AS count
@@ -317,6 +329,7 @@ router.get('/', async (req, res) => {
     assets_by_location: assetsByLocation,
     recent_movements: recentMovements,
     rfid_breakdown: { tagged, untagged },
+    missing_inventory: Number(missing),
     monthlyDistribution,
     locationDistribution,
   };

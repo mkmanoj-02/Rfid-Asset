@@ -52,7 +52,8 @@ async function getLocationDashboardDetail(locationId, assetScope = null) {
        COUNT(*) AS asset_count,
        SUM(CASE WHEN a.status = 'active' THEN 1 ELSE 0 END) AS active_assets,
        SUM(CASE WHEN a.status = 'maintenance' THEN 1 ELSE 0 END) AS maintenance_assets,
-       SUM(CASE WHEN a.status = 'inactive' THEN 1 ELSE 0 END) AS inactive_assets
+       SUM(CASE WHEN a.status = 'inactive' THEN 1 ELSE 0 END) AS inactive_assets,
+       SUM(CASE WHEN a.asset_inventory_status = 'missing' THEN 1 ELSE 0 END) AS missing_assets
      FROM assets a
      WHERE a.current_location_id = ?${assetJoinFilter}`,
     [id, ...assetFilterParams]
@@ -94,7 +95,7 @@ async function getLocationDashboardDetail(locationId, assetScope = null) {
     : [id, id];
 
   const [recentTx] = await db.query(
-    `SELECT mh.moved_at, a.name AS asset_name, a.asset_serial,
+    `SELECT mh.moved_at, a.name AS asset_name, a.asset_code,
       fl.name AS from_loc, tl.name AS to_loc
      FROM movement_history mh
      JOIN assets a ON mh.asset_id = a.id
@@ -123,6 +124,7 @@ async function getLocationDashboardDetail(locationId, assetScope = null) {
     active_assets: Number(assetStats.active_assets) || 0,
     maintenance_assets: Number(assetStats.maintenance_assets) || 0,
     inactive_assets: Number(assetStats.inactive_assets) || 0,
+    missing_assets: Number(assetStats.missing_assets) || 0,
     child_locations_count: Number(child_locations_count) || 0,
     sub_locations: subLocs,
     assets_by_type: byType,
@@ -131,7 +133,7 @@ async function getLocationDashboardDetail(locationId, assetScope = null) {
     // Legacy fields for older clients
     loc,
     total: Number(assetStats.asset_count) || 0,
-    missing: Number(assetStats.inactive_assets) || 0,
+    missing: Number(assetStats.missing_assets) || 0,
     subLocs,
     byType,
     recentTx,

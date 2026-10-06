@@ -50,7 +50,7 @@ function buildMovementClauses(authz, { asset_id, search } = {}) {
     const s = `%${searchTerm}%`;
 
     clauses.push({
-      sql: `(a.name LIKE ? OR a.rfid_tag LIKE ? OR a.asset_serial LIKE ? OR fl.name LIKE ? OR tl.name LIKE ? OR mh.notes LIKE ?)`,
+      sql: `(a.name LIKE ? OR a.rfid_tag LIKE ? OR a.asset_code LIKE ? OR fl.name LIKE ? OR tl.name LIKE ? OR mh.notes LIKE ?)`,
 
       params: [s, s, s, s, s, s],
     });

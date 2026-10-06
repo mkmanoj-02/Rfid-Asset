@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { MapPin } from 'lucide-react';
 import {
   getLocationTree, getLocations, createLocationMultipart, updateLocationMultipart, updateLocation, deleteLocation,
-  getLocationTypes, createLocationType, updateLocationType, deleteLocationType,
+  isLocationNameConfirm, getLocationTypes, createLocationType, updateLocationType, deleteLocationType,
 } from '../api';
 import { useToast } from '../Toast';
 import { toastApiFailure } from '../apiErrorHandling';
@@ -83,6 +83,18 @@ function LocationImage({ imageUrl, name }) {
   );
 }
 
+function nameConfirmDialog(err, onConfirm) {
+  const data = err.response.data;
+  return {
+    title: 'Location name already exists',
+    message: data.message || `The name "${data.original_name}" already exists. We can save it as "${data.suggested_name}".`,
+    subMessage: `It will be saved as "${data.suggested_name}". The parent-child structure is not changed.`,
+    confirmLabel: 'Confirm & Save',
+    confirmStyle: 'primary',
+    onConfirm,
+  };
+}
+
 function LocationPageEmpty({ icon, title, hint }) {
   return (
     <div className="empty-state" role="status">
@@ -160,23 +172,31 @@ function ManageLocations() {
     ? resolveImageUrl(editingItem.image_url)
     : null;
 
-  const save = async () => {
+  const save = async (confirmGeneratedName = false) => {
     if (!form.name?.trim()) {
       showToast('Location name is required', 'error');
       return;
     }
     setSaving(true);
     try {
+      let savedName;
       if (editing) {
-        await updateLocationMultipart(editing, form, imageFile, { removeImage });
-        showToast('Location updated', 'success');
+        const { data } = await updateLocationMultipart(editing, form, imageFile, { removeImage, confirmGeneratedName });
+        savedName = data?.name;
       } else {
-        await createLocationMultipart(form, imageFile);
-        showToast('Location added', 'success');
+        const { data } = await createLocationMultipart(form, imageFile, { confirmGeneratedName });
+        savedName = data?.name;
       }
+      const renamed = savedName && savedName !== form.name.trim();
+      const verb = editing ? 'updated' : 'added';
+      showToast(renamed ? `Location ${verb} as "${savedName}"` : `Location ${verb}`, 'success');
       setModal(false);
       load();
     } catch (e) {
+      if (isLocationNameConfirm(e)) {
+        setConfirmDialog(nameConfirmDialog(e, () => save(true)));
+        return;
+      }
       showToast(e.response?.data?.message || 'Save failed', 'error');
     } finally {
       setSaving(false);
@@ -351,7 +371,7 @@ function ManageLocations() {
             </div>
             <div className="modal-actions">
               <button className="btn btn-secondary" onClick={() => setModal(false)} disabled={saving}>Cancel</button>
-              <button className="btn btn-primary" onClick={save} disabled={saving}>
+              <button className="btn btn-primary" onClick={() => save()} disabled={saving}>
                 {saving ? 'Saving…' : 'Save'}
               </button>
             </div>
@@ -605,6 +625,7 @@ function ReorganizeLocations() {
   const [locPickerSnapshot, setLocPickerSnapshot] = useState([]);
   const [parentPickerOpen, setParentPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState(null);
   const { showToast } = useToast();
 
   const load = () => getLocations().then(r => setFlatList(r.data)).catch((e) => toastApiFailure(e, 'Locations'));
@@ -620,17 +641,31 @@ function ReorganizeLocations() {
   const update = async () => {
     if (!selectedLocations.length) { toastApiFailure('Please select at least one location.', 'Reorganize'); return; }
     setSaving(true);
+    let moved = 0;
     try {
       for (const loc of selectedLocations) {
-        await updateLocation(loc.id, { ...loc, parent_id: newParentId || null });
+        const body = { ...loc, parent_id: newParentId || null };
+        try {
+          await updateLocation(loc.id, body);
+          moved++;
+        } catch (e) {
+          if (!isLocationNameConfirm(e)) throw e;
+          const confirmed = await new Promise((resolve) => {
+            setConfirmDialog({ ...nameConfirmDialog(e, () => resolve(true)), onCancel: () => resolve(false) });
+          });
+          if (confirmed) {
+            await updateLocation(loc.id, { ...body, confirm_generated_name: true });
+            moved++;
+          }
+        }
       }
-      showToast(`${selectedLocations.length} location(s) moved successfully.`, 'success');
+      if (moved) showToast(`${moved} location(s) moved successfully.`, 'success');
       setSelectedLocations([]);
       setNewParentId('');
-      load();
     } catch (e) {
       toastApiFailure(e, 'Reorganize');
     }
+    load();
     setSaving(false);
   };
 
@@ -746,6 +781,18 @@ function ReorganizeLocations() {
             </div>
           </div>
         </div>
+      )}
+
+      {confirmDialog && (
+        <ConfirmModal
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          subMessage={confirmDialog.subMessage}
+          confirmLabel={confirmDialog.confirmLabel}
+          confirmStyle={confirmDialog.confirmStyle}
+          onConfirm={() => { confirmDialog.onConfirm(); setConfirmDialog(null); }}
+          onCancel={() => { confirmDialog.onCancel?.(); setConfirmDialog(null); }}
+        />
       )}
     </div>
   );

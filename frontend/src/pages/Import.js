@@ -5,8 +5,11 @@ import { toastApiFailure } from '../apiErrorHandling';
 import { useToast } from '../Toast';
 
 const RFID_DUP_FILE_MSG = 'Duplicate RFID tag in import file';
-const SERIAL_DUP_FILE_MSG = 'Duplicate asset serial in import file';
-const ASSET_CODE_DUP_FILE_MSG = 'Duplicate Asset ID in import file';
+const ASSET_CODE_DUP_FILE_MSG = 'Duplicate Asset ID / Asset Serial in import file';
+
+function normalizeHeader(h) {
+  return String(h).toLowerCase().replace(/\s+/g, '');
+}
 
 function appendImportPreviewError(row, message) {
   if (!row._errors) row._errors = [];
@@ -30,7 +33,6 @@ function isImportPreviewImportableRow(row) {
 
 function markImportFileDuplicates(rows) {
   const rfidSeen = new Map();
-  const serialSeen = new Map();
   const codeSeen = new Map();
   rows.forEach((row, index) => {
     const code = row.asset_code != null ? String(row.asset_code).trim().toLowerCase() : '';
@@ -51,23 +53,13 @@ function markImportFileDuplicates(rows) {
         rfidSeen.set(rfid, index);
       }
     }
-    const serial = row.asset_serial != null ? String(row.asset_serial).trim() : '';
-    if (serial) {
-      if (serialSeen.has(serial)) {
-        appendImportPreviewError(row, SERIAL_DUP_FILE_MSG);
-        appendImportPreviewError(rows[serialSeen.get(serial)], SERIAL_DUP_FILE_MSG);
-      } else {
-        serialSeen.set(serial, index);
-      }
-    }
   });
 }
 
 const SAMPLE_CONFIG = {
   assets: {
     headers: [
-      { label: 'Asset ID', required: true },
-      { label: 'Asset Serial', required: false },
+      { label: 'Asset ID / Asset Serial', required: true },
       { label: 'Asset Name', required: true },
       { label: 'RFID', required: false },
       { label: 'Asset Type', required: true },
@@ -79,7 +71,7 @@ const SAMPLE_CONFIG = {
       { label: 'Attribute1', required: false },
       { label: 'Attribute2', required: false },
     ],
-    exampleRow: ['AST-001', 'SN-10001', 'Office Laptop 01', 'E280-001', 'Laptop', 'RFID', 'Acme Supplies', 'Main Warehouse', 'active', 'Sample row', 'Value 1', 'Value 2'],
+    exampleRow: ['SN-10001', 'Office Laptop 01', 'E280-001', 'Laptop', 'RFID', 'Acme Supplies', 'Main Warehouse', 'active', 'Sample row', 'Value 1', 'Value 2'],
   },
   'asset-types': {
     headers: [
@@ -341,7 +333,10 @@ function PreviewTable({ rows, columns, attrCols, fieldLabels }) {
             <td><StatusBadge status={row._status} /></td>
             {columns.map((c) => <td key={c} style={{ fontSize: 13 }}>{row[c] ?? ''}</td>)}
             {attrCols.map((c) => <td key={c} style={{ fontSize: 13 }}>{row.attributes?.[c] || ''}</td>)}
-            <td style={{ fontSize: 12, color: '#e53e3e' }}>{(row._errors || []).join('; ')}</td>
+            <td style={{ fontSize: 12 }}>
+              {(row._errors || []).length > 0 && <div style={{ color: '#e53e3e' }}>{row._errors.join('; ')}</div>}
+              {(row._notes || []).length > 0 && <div style={{ color: '#b45309' }}>{row._notes.join('; ')}</div>}
+            </td>
           </tr>
         ))}
       </tbody>
@@ -388,7 +383,8 @@ function ImportWizard({ title, fields, endpoint }) {
         if (saved.mapping?.[f.key] && headers.includes(saved.mapping[f.key])) {
           auto[f.key] = saved.mapping[f.key];
         } else {
-          const match = headers.find(h => h.toLowerCase().replace(/\s+/g, '') === f.label.toLowerCase().replace(/\s+/g, ''));
+          const labels = [f.label, ...(f.aliases || [])].map(normalizeHeader);
+          const match = headers.find(h => labels.includes(normalizeHeader(h)));
           if (match) auto[f.key] = match;
         }
       });
@@ -725,8 +721,7 @@ function ImportWizard({ title, fields, endpoint }) {
 
 // ── Field definitions (aligned with Add Asset form) ─────────────
 const ASSET_FIELDS = [
-  { key: 'asset_code', label: 'Asset ID', required: true },
-  { key: 'asset_serial', label: 'Asset Serial' },
+  { key: 'asset_code', label: 'Asset ID / Asset Serial', required: true, aliases: ['Asset ID'] },
   { key: 'name', label: 'Asset Name', required: true },
   { key: 'rfid_tag', label: 'RFID' },
   { key: 'asset_type', label: 'Asset Type', required: true },

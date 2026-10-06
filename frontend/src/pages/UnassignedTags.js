@@ -58,7 +58,7 @@ function AssignTagModal({ tag, onClose, onAssigned }) {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search asset name or serial..."
+          placeholder="Search asset name or asset ID / serial..."
           autoFocus
           style={{
             width: '100%', padding: '7px 10px', marginBottom: 12,
@@ -80,7 +80,7 @@ function AssignTagModal({ tag, onClose, onAssigned }) {
               <div>
                 <div style={{ fontWeight: 500 }}>{a.name}</div>
                 <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
-                  {a.asset_serial ? `Serial: ${a.asset_serial}` : 'No serial'}
+                  {a.asset_code ? `Asset ID / Serial: ${a.asset_code}` : 'No asset ID'}
                   {a.location_name ? ` · ${a.location_name}` : ''}
                 </div>
               </div>

@@ -29,8 +29,7 @@ function reportAssetsPayload(body) {
 /** Shared column defs — same headers for Excel and PDF. */
 const REPORT_ASSET_EXPORT_COLUMNS = [
   { header: 'S.No', key: 's_no' },
-  { header: 'Asset ID', key: 'asset_id' },
-  { header: 'Asset Serial', key: 'asset_serial' },
+  { header: 'Asset ID / Asset Serial', key: 'asset_code' },
   { header: 'Asset Name', key: 'asset_name' },
   { header: 'Tag Type', key: 'tag_type_name' },
   { header: 'Location', key: 'location' },
@@ -64,7 +63,7 @@ function formatAssetRowsForExport(assets) {
   return assets.map((a, index) => ({
     ...a,
     s_no: index + 1,
-    asset_serial: (a?.asset_serial || a?.asset_code || '').toString().trim() || '—',
+    asset_code: (a?.asset_code || '').toString().trim() || '—',
     tag_type_name: (a?.tag_type_name || a?.asset_type || '').toString().trim() || '—',
     created_at: formatExportDate(a?.created_at),
     last_movement_at: formatExportDate(a?.last_movement_at),

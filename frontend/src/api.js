@@ -9,7 +9,7 @@ import {
 
 /** API origin — used by axios and all upload image URLs. Local: set REACT_APP_API_BASE_URL=http://localhost:5004 in .env */
 // export const API_BASE_URL = (
-//   process.env.REACT_APP_API_BASE_URL || "https://kasaasset.2cqr.in"
+//   process.env.REACT_APP_API_BASE_URL || "https://testrfidasset.2cqr.in"
 // ).replace(/\/+$/, "");
 
 export const API_BASE_URL = (
@@ -173,7 +173,11 @@ export const getLocationTree = () => api.get("/locations/tree");
 export const getDashboardLocation = (id) =>
   api.get(`/dashboard/location/${id}`);
 
-export function buildLocationFormData(fields, imageFile, { removeImage } = {}) {
+export function buildLocationFormData(
+  fields,
+  imageFile,
+  { removeImage, confirmGeneratedName } = {},
+) {
   const fd = new FormData();
   if (fields.name != null) fd.append("name", fields.name);
   if (fields.description != null) fd.append("description", fields.description);
@@ -183,12 +187,18 @@ export function buildLocationFormData(fields, imageFile, { removeImage } = {}) {
     fd.append("location_type_id", fields.location_type_id);
   }
   if (removeImage) fd.append("remove_image", "true");
+  if (confirmGeneratedName) fd.append("confirm_generated_name", "true");
   if (imageFile) fd.append("image", imageFile);
   return fd;
 }
 
-export const createLocationMultipart = (fields, imageFile) =>
-  api.post("/locations", buildLocationFormData(fields, imageFile));
+/** 409 from location create/update: the name exists under another parent and needs confirmation. */
+export const isLocationNameConfirm = (err) =>
+  err?.response?.status === 409 &&
+  err.response.data?.code === "LOCATION_NAME_CONFIRM";
+
+export const createLocationMultipart = (fields, imageFile, opts) =>
+  api.post("/locations", buildLocationFormData(fields, imageFile, opts));
 
 export const updateLocationMultipart = (id, fields, imageFile, opts) =>
   api.put(`/locations/${id}`, buildLocationFormData(fields, imageFile, opts));
@@ -244,7 +254,6 @@ export function buildAssetFormData(
     "rfid_tag",
     "tag_type_id",
     "vendor_id",
-    "asset_serial",
     "name",
     "asset_type_id",
     "current_location_id",
@@ -392,9 +401,6 @@ export const getReaders = () => api.get("/readers");
 export const createReader = (data) => api.post("/readers", data);
 export const updateReader = (id, data) => api.put(`/readers/${id}`, data);
 export const deleteReader = (id) => api.delete(`/readers/${id}`);
-export const getReaderLocations = () => api.get("/reader-locations");
-export const getReaderZones = () => api.get("/zones");
-
 /** Public site branding (logo, app name) — no auth required */
 export const getSiteBranding = () => authClient.get("/site-branding");
 

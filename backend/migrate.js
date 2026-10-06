@@ -1,6 +1,7 @@
 /**
  * Run all SQL migrations in backend/scripts/ in order.
  * Usage: node migrate.js
+ *        node migrate.js 034_rfid_middleware.js   (run only the named file(s))
  *        npm run migrate
  */
 require('dotenv').config();
@@ -37,13 +38,15 @@ const files = [
   '024_site_branding_theme.sql',
   '025_audit_logs_type_enum.sql',
   '026_site_branding_favicon.sql',
-  '027_reader_locations.sql',
   '028_zones.sql',
   '029_readers_floor_plan.sql',
   '030_asset_attachments.sql',
   '031_unassigned_tags.sql',
   '032_handheld_devices_platform.sql',
   '033_asset_code.sql',
+  '034_rfid_middleware.js',
+  '035_rfid_spec_cleanup.js',
+  '036_merge_asset_serial.js',
 ];
 
 /** MySQL errors that are safe to skip when re-running migrations. */
@@ -108,6 +111,11 @@ async function runFile(conn, filename) {
   if (!fs.existsSync(filePath)) {
     throw new Error(`Missing migration script: ${filename}`);
   }
+  if (filename.endsWith('.js')) {
+    const migration = require(filePath);
+    await migration.up(conn);
+    return;
+  }
   const raw = fs.readFileSync(filePath, 'utf8');
   const sql = stripUseStatements(raw);
   const statements = splitStatements(sql);
@@ -125,7 +133,13 @@ async function run() {
     await conn.query(`CREATE DATABASE IF NOT EXISTS \`${database}\``);
     await conn.query(`USE \`${database}\``);
 
-    for (const file of files) {
+    const only = process.argv.slice(2);
+    const selected = only.length ? files.filter((f) => only.includes(f)) : files;
+    if (only.length && selected.length !== only.length) {
+      throw new Error(`Unknown migration(s): ${only.filter((f) => !files.includes(f)).join(', ')}`);
+    }
+
+    for (const file of selected) {
       console.log(`\n▶ ${file}`);
       await runFile(conn, file);
       console.log(`✅ ${file}`);

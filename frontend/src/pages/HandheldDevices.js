@@ -11,8 +11,6 @@ import {
   createReader,
   updateReader,
   deleteReader,
-  getReaderLocations,
-  getReaderZones,
 } from '../api';
 import { toastApiFailure } from '../apiErrorHandling';
 import ConfirmModal from '../components/ConfirmModal';
@@ -355,8 +353,6 @@ const EMPTY_READER_FORM = {
   readerType: '',
   ipAddress: '',
   port: 2022,
-  location: '',
-  zoneType: '',
   mode: 'IN',
   antennaCount: 4,
   txPower: 30,
@@ -395,8 +391,6 @@ function StatusBadge({ status }) {
 
 function FixedReaderList() {
   const [readers, setReaders] = useState([]);
-  const [locations, setLocations] = useState([]);
-  const [zones, setZones] = useState([]);
   const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState('');
   const [modal, setModal] = useState(false);
@@ -410,7 +404,8 @@ function FixedReaderList() {
 
   const load = async () => {
     try {
-      const { data } = await getReaders();
+      const { data: body } = await getReaders();
+      const data = Array.isArray(body) ? body : body?.data?.readers || [];
       setReaders(data);
       setSelected((prev) => (prev ? data.find((r) => r.id === prev.id) || null : null));
     } catch (e) {
@@ -420,19 +415,13 @@ function FixedReaderList() {
 
   useEffect(() => {
     load();
-    Promise.all([getReaderLocations(), getReaderZones()])
-      .then(([locRes, zoneRes]) => {
-        setLocations(locRes.data || []);
-        setZones(zoneRes.data || []);
-      })
-      .catch((e) => toastApiFailure(e, 'Reader locations / zones'));
   }, []);
 
   const query = search.trim().toLowerCase();
   const filtered = useMemo(() => {
     if (!query) return readers;
     return readers.filter((r) => {
-      const hay = [r.name, r.readerType, r.ipAddress, r.location, r.zoneType, r.mode, r.connectionStatus]
+      const hay = [r.name, r.readerType, r.ipAddress, r.mode, r.connectionStatus]
         .join(' ')
         .toLowerCase();
       return hay.includes(query);
@@ -459,8 +448,6 @@ function FixedReaderList() {
       readerType: r.readerType || '',
       ipAddress: r.ipAddress || '',
       port: r.port,
-      location: r.location || '',
-      zoneType: r.zoneType || '',
       mode: r.mode || 'IN',
       antennaCount: r.antennaCount,
       txPower: r.txPower,
@@ -514,8 +501,6 @@ function FixedReaderList() {
       readerType: form.readerType,
       ipAddress: form.ipAddress.trim(),
       port: Number(form.port),
-      location: form.location,
-      zoneType: form.zoneType,
       mode: form.mode,
       antennaCount: Number(form.antennaCount),
       txPower: Number(form.txPower),
@@ -530,9 +515,10 @@ function FixedReaderList() {
         await updateReader(editing, payload);
         showToast('Reader updated', 'success');
       } else {
-        const { data } = await createReader(payload);
+        const { data: body } = await createReader(payload);
+        const created = body?.data || body;
         showToast('Reader added', 'success');
-        if (data?.id) setSelected(data);
+        if (created?.id) setSelected(created);
       }
       setModal(false);
       load();
@@ -632,15 +618,12 @@ function FixedReaderList() {
                     { label: 'Reader Type', value: selected.readerType || '—' },
                     { label: 'IP Address', value: selected.ipAddress || '—' },
                     { label: 'Port', value: String(selected.port) },
-                    { label: 'Location', value: selected.location || '—' },
-                    { label: 'Zone', value: selected.zoneType || '—' },
                     { label: 'Mode', value: selected.mode },
                     { label: 'Antenna Count', value: String(selected.antennaCount) },
                     { label: 'TX Power', value: String(selected.txPower) },
                     { label: 'Read Duration (ms)', value: String(selected.readDuration) },
                     { label: 'Item Seen', value: `${selected.itemSeen} (${selected.itemSeenEnabled ? 'Enabled' : 'Disabled'})` },
                     { label: 'Connection Status', value: <StatusBadge status={selected.connectionStatus} /> },
-                    { label: 'Placed on Floor Plan', value: selected.placed ? `Yes (x: ${selected.positionX}, y: ${selected.positionY})` : 'No' },
                     { label: 'Created', value: fmtDate(selected.createdAt) },
                     { label: 'Updated', value: fmtDate(selected.updatedAt) },
                   ]}
@@ -656,7 +639,6 @@ function FixedReaderList() {
                         <th style={{ padding: '8px 10px', borderBottom: '1px solid #e2e8f0' }}>Antenna #</th>
                         <th style={{ padding: '8px 10px', borderBottom: '1px solid #e2e8f0' }}>TX Power</th>
                         <th style={{ padding: '8px 10px', borderBottom: '1px solid #e2e8f0' }}>Enabled</th>
-                        <th style={{ padding: '8px 10px', borderBottom: '1px solid #e2e8f0' }}>Placed</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -665,7 +647,6 @@ function FixedReaderList() {
                           <td style={{ padding: '8px 10px', borderBottom: '1px solid #f1f5f9' }}>{a.number}</td>
                           <td style={{ padding: '8px 10px', borderBottom: '1px solid #f1f5f9' }}>{a.txPower}</td>
                           <td style={{ padding: '8px 10px', borderBottom: '1px solid #f1f5f9' }}>{a.enabled ? 'Yes' : 'No'}</td>
-                          <td style={{ padding: '8px 10px', borderBottom: '1px solid #f1f5f9' }}>{a.placed ? 'Yes' : 'No'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -734,20 +715,6 @@ function FixedReaderList() {
                 <label>Port</label>
                 {numInput('port', { min: 1, max: 65535 })}
                 {errors.port && <span className="field-error">{errors.port}</span>}
-              </div>
-              <div className="form-group">
-                <label>Location</label>
-                <select value={form.location} onChange={(e) => setField('location', e.target.value)}>
-                  <option value="">— None —</option>
-                  {locations.map((l) => <option key={l.id} value={l.name}>{l.name}</option>)}
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Zone</label>
-                <select value={form.zoneType} onChange={(e) => setField('zoneType', e.target.value)}>
-                  <option value="">— None —</option>
-                  {zones.map((z) => <option key={z.id} value={z.name}>{z.name}</option>)}
-                </select>
               </div>
               <div className="form-group">
                 <label>Mode</label>

@@ -59,8 +59,8 @@ function buildAlertEmail(rule, description, asset) {
   // Asset detail rows (only shown when asset info is available)
   const assetRows = asset ? `
     <tr>
-      <td style="padding:8px 0;border-bottom:1px solid #F1F5F9;color:#64748B;font-size:13px;width:140px;">Asset Serial</td>
-      <td style="padding:8px 0;border-bottom:1px solid #F1F5F9;color:#0F172A;font-size:13px;font-weight:600;">${asset.asset_serial || '—'}</td>
+      <td style="padding:8px 0;border-bottom:1px solid #F1F5F9;color:#64748B;font-size:13px;width:140px;">Asset ID / Serial</td>
+      <td style="padding:8px 0;border-bottom:1px solid #F1F5F9;color:#0F172A;font-size:13px;font-weight:600;">${asset.asset_code || '—'}</td>
     </tr>
     <tr>
       <td style="padding:8px 0;border-bottom:1px solid #F1F5F9;color:#64748B;font-size:13px;">Asset Type</td>
@@ -188,7 +188,7 @@ async function createAlert(rule, description, asset = null) {
      VALUES (?,?,?,?,?,?,?,?,?)`,
     [
       rule.id, rule.name, rule.filter_type, description,
-      asset?.id || null, asset?.asset_serial || null,
+      asset?.id || null, asset?.asset_code || null,
       asset?.asset_type_name || null, asset?.location_name || null,
       asset?.last_seen || null,
     ]
@@ -254,7 +254,7 @@ async function runRules() {
         if (rule.asset_action === 'enters' || rule.asset_action === 'exits') {
           // Detect from movement_history — movements in the last engine interval
           const [recentMoves] = await db.query(
-            `SELECT mh.*, a.id AS asset_id, a.asset_serial, a.name AS asset_name,
+            `SELECT mh.*, a.id AS asset_id, a.asset_code, a.name AS asset_name,
                a.asset_type_id, at.name AS asset_type_name,
                fl.name AS from_location_name, tl.name AS to_location_name,
                tl.id AS to_location_id, fl.id AS from_location_id_val
@@ -286,8 +286,8 @@ async function runRules() {
                 const action = rule.asset_action === 'enters' ? 'entered' : 'exited';
                 const locName = rule.asset_action === 'enters' ? move.to_location_name : move.from_location_name;
                 await createAlert(rule,
-                  `Asset "${move.asset_name}" (${move.asset_serial || move.asset_id}) ${action} location "${locName}"`,
-                  { id: move.asset_id, asset_serial: move.asset_serial, asset_type_name: move.asset_type_name, location_name: move.to_location_name }
+                  `Asset "${move.asset_name}" (${move.asset_code || move.asset_id}) ${action} location "${locName}"`,
+                  { id: move.asset_id, asset_code: move.asset_code, asset_type_name: move.asset_type_name, location_name: move.to_location_name }
                 );
               }
             }
@@ -347,7 +347,7 @@ async function runRules() {
           // is_added
           if (rule.asset_action === 'is_added') {
             const [recent] = await db.query(
-              `SELECT mh.*, a.asset_serial, a.name AS asset_name, a.id AS asset_id,
+              `SELECT mh.*, a.asset_code, a.name AS asset_name, a.id AS asset_id,
                  at.name AS asset_type_name, l.name AS location_name
                FROM movement_history mh
                JOIN assets a ON mh.asset_id = a.id
@@ -364,8 +364,8 @@ async function runRules() {
                 [rule.id, r.asset_id]
               );
               if (!existing.length) {
-                await createAlert(rule, `New asset "${r.asset_name}" (${r.asset_serial || r.asset_id}) was added`,
-                  { id: r.asset_id, asset_serial: r.asset_serial, asset_type_name: r.asset_type_name, location_name: r.location_name });
+                await createAlert(rule, `New asset "${r.asset_name}" (${r.asset_code || r.asset_id}) was added`,
+                  { id: r.asset_id, asset_code: r.asset_code, asset_type_name: r.asset_type_name, location_name: r.location_name });
               }
             }
           }
@@ -400,7 +400,7 @@ async function runRules() {
 
         // Match by attribute NAME across all asset types (same as user privilege fix)
         const [attrVals] = await db.query(
-          `SELECT aav.value, a.id AS asset_id, a.asset_serial, a.name AS asset_name,
+          `SELECT aav.value, a.id AS asset_id, a.asset_code, a.name AS asset_name,
             at.name AS asset_type_name, l.name AS location_name
            FROM asset_attribute_values aav
            JOIN asset_type_attributes ata ON aav.attribute_id = ata.id
@@ -432,8 +432,8 @@ async function runRules() {
             );
             if (!existing.length) {
               await createAlert(rule,
-                `Asset "${av.asset_name}" (${av.asset_serial || av.asset_id}): attribute "${attrDef.name}" = "${val}" matches condition (${rule.attribute_condition} "${ruleVal}")`,
-                { id: av.asset_id, asset_serial: av.asset_serial, asset_type_name: av.asset_type_name, location_name: av.location_name }
+                `Asset "${av.asset_name}" (${av.asset_code || av.asset_id}): attribute "${attrDef.name}" = "${val}" matches condition (${rule.attribute_condition} "${ruleVal}")`,
+                { id: av.asset_id, asset_code: av.asset_code, asset_type_name: av.asset_type_name, location_name: av.location_name }
               );
             }
           }
@@ -446,7 +446,7 @@ async function runRules() {
         if (!attrDef) continue;
 
         const [attrVals] = await db.query(
-          `SELECT aav.value, a.id AS asset_id, a.asset_serial, a.name AS asset_name,
+          `SELECT aav.value, a.id AS asset_id, a.asset_code, a.name AS asset_name,
             at.name AS asset_type_name, l.name AS location_name
            FROM asset_attribute_values aav
            JOIN asset_type_attributes ata ON aav.attribute_id = ata.id
@@ -489,8 +489,8 @@ async function runRules() {
                   ? `due in ${absDays} day(s) (${av.value})`
                   : `was due ${absDays} day(s) ago (${av.value})`;
                 await createAlert(rule,
-                  `Maintenance alert for "${av.asset_name}" (${av.asset_serial || av.asset_id}): "${attrDef.name}" ${timeDesc}`,
-                  { id: av.asset_id, asset_serial: av.asset_serial, asset_type_name: av.asset_type_name, location_name: av.location_name }
+                  `Maintenance alert for "${av.asset_name}" (${av.asset_code || av.asset_id}): "${attrDef.name}" ${timeDesc}`,
+                  { id: av.asset_id, asset_code: av.asset_code, asset_type_name: av.asset_type_name, location_name: av.location_name }
                 );
               }
             }

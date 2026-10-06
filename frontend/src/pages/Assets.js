@@ -329,7 +329,7 @@ function RfidPickerModal({ open, initialTab = 'reader', onClose, onSelect }) {
 function AddAssetModal({ types, locations, locationTree, tagTypes, vendors, onClose, onSaved }) {
   const { showToast } = useToast();
   const [form, setForm] = useState({
-    asset_code: '', asset_serial: '', name: '', rfid_tag: '',
+    asset_code: '', name: '', rfid_tag: '',
     tag_type_id: '', vendor_id: '',
     asset_type_id: '', current_location_id: '', status: 'active', description: ''
   });
@@ -369,7 +369,7 @@ function AddAssetModal({ types, locations, locationTree, tagTypes, vendors, onCl
 
   const validate = () => {
     const e = {};
-    if (!form.asset_code.trim()) e.asset_code = 'Asset ID is required';
+    if (!form.asset_code.trim()) e.asset_code = 'Asset ID / Asset Serial is required';
     if (!form.name.trim()) e.name = 'Asset Name is required';
     if (!form.current_location_id) e.current_location_id = 'Location is required';
     if (!form.asset_type_id) e.asset_type_id = 'Asset Type is required';
@@ -405,7 +405,7 @@ function AddAssetModal({ types, locations, locationTree, tagTypes, vendors, onCl
   };
 
   const reset = () => {
-    setForm({ asset_code: '', asset_serial: '', name: '', rfid_tag: '', tag_type_id: '', vendor_id: '', asset_type_id: '', current_location_id: '', status: 'active', description: '' });
+    setForm({ asset_code: '', name: '', rfid_tag: '', tag_type_id: '', vendor_id: '', asset_type_id: '', current_location_id: '', status: 'active', description: '' });
     setTypeAttrs([]);
     setAttrValues({});
     setCustomImageFile(null);
@@ -421,16 +421,10 @@ function AddAssetModal({ types, locations, locationTree, tagTypes, vendors, onCl
         <h2>Add Asset</h2>
         <div className="add-asset-form" onKeyDown={handleKeyDown}>
           <div className="form-row">
-            <label>Asset ID <span className="required">*</span></label>
+            <label>Asset ID / Asset Serial <span className="required">*</span></label>
             <div className="field-wrap">
-              <input value={form.asset_code} onChange={e => setForm({ ...form, asset_code: e.target.value })} placeholder="Unique asset ID" />
+              <input value={form.asset_code} onChange={e => setForm({ ...form, asset_code: e.target.value })} placeholder="Unique asset ID or serial number" />
               {errors.asset_code && <span className="field-error">{errors.asset_code}</span>}
-            </div>
-          </div>
-          <div className="form-row">
-            <label>Asset Serial</label>
-            <div className="field-wrap">
-              <input value={form.asset_serial} onChange={e => setForm({ ...form, asset_serial: e.target.value })} placeholder="Unique serial number (optional)" />
             </div>
           </div>
           <div className="form-row">
@@ -685,7 +679,6 @@ function AssetDetail({ asset, types, locations, locationTree, tagTypes, vendors,
   const [locationModal, setLocationModal] = useState(false);
   const [editForm, setEditForm] = useState({
     asset_code: asset.asset_code || '',
-    asset_serial: asset.asset_serial || '',
     rfid_tag: asset.rfid_tag,
     tag_type_id: asset.tag_type_id || '',
     vendor_id: asset.vendor_id || '',
@@ -716,7 +709,7 @@ function AssetDetail({ asset, types, locations, locationTree, tagTypes, vendors,
   const saveEdit = async () => {
     if (!canModify) { showToast('You do not have permission to modify assets', 'error'); return; }
     const e = {};
-    if (!editForm.asset_code.trim()) e.asset_code = 'Asset ID is required';
+    if (!editForm.asset_code.trim()) e.asset_code = 'Asset ID / Asset Serial is required';
     if (!editForm.name.trim()) e.name = 'Asset Name is required';
     if (!editForm.current_location_id) e.current_location_id = 'Location is required';
     if (!editForm.asset_type_id) e.asset_type_id = 'Asset Type is required';
@@ -838,8 +831,7 @@ function AssetDetail({ asset, types, locations, locationTree, tagTypes, vendors,
               onClick={() => {
                 setEditForm({
                   asset_code: asset.asset_code || '',
-                  asset_serial: asset.asset_serial || '',
-                  rfid_tag: asset.rfid_tag,
+                                rfid_tag: asset.rfid_tag,
                   tag_type_id: asset.tag_type_id || '',
                   vendor_id: asset.vendor_id || '',
                   name: asset.name,
@@ -864,8 +856,7 @@ function AssetDetail({ asset, types, locations, locationTree, tagTypes, vendors,
       <div className="detail-info-card" style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
         <AssetDetailImage asset={asset} />
         <div className="detail-fields" style={{ flex: 1, minWidth: 240 }}>
-          <div className="detail-row"><span className="detail-label">Asset ID</span><span>: {detailDisplay(asset.asset_code)}</span></div>
-          <div className="detail-row"><span className="detail-label">Asset Serial</span><span>: {detailDisplay(asset.asset_serial)}</span></div>
+          <div className="detail-row"><span className="detail-label">Asset ID / Asset Serial</span><span>: {detailDisplay(asset.asset_code)}</span></div>
           <div className="detail-row"><span className="detail-label">Asset Name</span><span>: {detailDisplay(asset.name)}</span></div>
           <div className="detail-row">
             <span className="detail-label">RFID Tag</span>
@@ -988,16 +979,10 @@ function AssetDetail({ asset, types, locations, locationTree, tagTypes, vendors,
             <h2>Edit Asset</h2>
             <div className="add-asset-form" onKeyDown={(e) => handleAssetFormEnterKey(e, editSaveRef.current)}>
               <div className="form-row">
-                <label>Asset ID <span className="required">*</span></label>
+                <label>Asset ID / Asset Serial <span className="required">*</span></label>
                 <div className="field-wrap">
-                  <input value={editForm.asset_code} onChange={e => setEditForm({ ...editForm, asset_code: e.target.value })} placeholder="Unique asset ID" />
+                  <input value={editForm.asset_code} onChange={e => setEditForm({ ...editForm, asset_code: e.target.value })} placeholder="Unique asset ID or serial number" />
                   {editErrors.asset_code && <span className="field-error">{editErrors.asset_code}</span>}
-                </div>
-              </div>
-              <div className="form-row">
-                <label>Asset Serial</label>
-                <div className="field-wrap">
-                  <input value={editForm.asset_serial} onChange={e => setEditForm({ ...editForm, asset_serial: e.target.value })} placeholder="Unique serial number (optional)" />
                 </div>
               </div>
               <div className="form-row">
@@ -1951,7 +1936,7 @@ export default function Assets() {
 
   const selectedAssets = pagedItems.filter(i => checkedIds.has(i.id));
   const hasFilters = search || filterLocation || filterType || filterInventoryStatus;
-  const tableColSpan = 12 + tableAttrColumns.length;
+  const tableColSpan = 11 + tableAttrColumns.length;
   const tableMinWidth = 1250 + tableAttrColumns.length * 132;
 
   const handleTableAttrColumnsChange = useCallback((next) => {
@@ -1977,8 +1962,7 @@ export default function Assets() {
 
   const exportBaseColumns = [
     { header: 'S.No', key: '_idx' },
-    { header: 'Asset ID', key: 'asset_code' },
-    { header: 'Asset Serial', key: 'asset_serial' },
+    { header: 'Asset ID / Asset Serial', key: 'asset_code' },
     { header: 'Asset Name', key: 'name' },
     { header: 'RFID Tag', key: 'rfid_tag' },
     { header: 'Tag Type', key: 'tag_type_name' },
@@ -1991,8 +1975,7 @@ export default function Assets() {
   const exportExcelColumns = [...exportBaseColumns, ...exportAttrColumns, ...exportTailColumns];
   const exportPDFColumns = [
     { header: 'S.No', key: '_idx' },
-    { header: 'Asset ID', key: 'asset_code' },
-    { header: 'Asset Serial', key: 'asset_serial' },
+    { header: 'Asset ID / Asset Serial', key: 'asset_code' },
     { header: 'Asset Name', key: 'name' },
     { header: 'RFID', key: 'rfid_tag' },
     { header: 'Tag Type', key: 'tag_type_name' },
@@ -2082,8 +2065,7 @@ export default function Assets() {
           <select value={sortKey} onChange={e => { setSortKey(e.target.value); setSortDir('asc'); setCurrentPage(1); }}
             style={{ padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13 }}>
             <option value="name">Asset Name</option>
-            <option value="asset_code">Asset ID</option>
-            <option value="asset_serial">Asset Serial</option>
+            <option value="asset_code">Asset ID / Asset Serial</option>
             <option value="asset_type_name">Asset Type</option>
             <option value="location_name">Location</option>
             <option value="lastseen">Last Seen Time</option>
@@ -2109,7 +2091,7 @@ export default function Assets() {
           <input
             value={search}
             onChange={e => handleSearch(e.target.value)}
-            placeholder="Search asset ID, serial, name, RFID, type, attribute..."
+            placeholder="Search asset ID / serial, name, RFID, type, attribute..."
             style={{ width: '100%', padding: '7px 10px 7px 30px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, boxSizing: 'border-box' }}
           />
         </div>
@@ -2198,8 +2180,7 @@ export default function Assets() {
                   />
                 </th>
                 <th className="assets-col-num" style={{ padding: '10px 8px' }}>S.No</th>
-                <SortTh col="asset_code" label="Asset ID" className="assets-col-flex" />
-                <SortTh col="asset_serial" label="Asset Serial" className="assets-col-flex" />
+                <SortTh col="asset_code" label="Asset ID / Asset Serial" className="assets-col-flex" />
                 <SortTh col="name" label="Asset Name" className="assets-col-flex" />
                 <th className="assets-col-flex">RFID</th>
                 <th className="assets-col-flex">Tag Type</th>
@@ -2237,7 +2218,6 @@ export default function Assets() {
                   <td className="assets-col-check" style={{ padding: '10px 12px' }}><input type="checkbox" checked={checkedIds.has(item.id)} onChange={() => toggleCheck(item.id)} /></td>
                   <td className="assets-col-num" style={{ padding: '10px 8px', color: '#9ca3af', fontSize: 12 }}>{(currentPage - 1) * pageSize + i + 1}</td>
                   <td className="assets-col-flex" title={item.asset_code || ''}>{item.asset_code || '—'}</td>
-                  <td className="assets-col-flex" title={item.asset_serial || ''}>{item.asset_serial || '—'}</td>
                   <td className="assets-col-flex" title={item.name}>
                     <span style={{ cursor: 'pointer', color: '#1565c0', fontWeight: 600 }} onClick={() => setSelected(item)}>{item.name}</span>
                   </td>

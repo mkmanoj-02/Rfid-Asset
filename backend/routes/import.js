@@ -8,7 +8,6 @@ const {
   chunkArray,
   buildNameMap,
   buildIdMap,
-  buildSerialMap,
   buildAssetCodeMap,
   buildRfidMap,
   markImportRowDuplicates,
@@ -20,6 +19,15 @@ const {
   slimAssetTypePreviewRow,
   withTransaction,
 } = require('../lib/importHelpers');
+const {
+  normalizeName,
+  nameKey,
+  generatedName,
+  stripParentPrefix,
+  planLocationName,
+  loadLocationRows,
+  withLocationNameLock,
+} = require('../services/locationNameService');
 const { findAssetTypeNameConflict } = require('../lib/assetTypeName');
 const { requireModify } = require('../middleware/requireAuthz');
 
@@ -39,12 +47,32 @@ function trimImportCell(value) {
   return String(value).trim();
 }
 
+const ASSET_SERIAL_ATTRIBUTE = 'Asset Serial';
+
+/** A separate serial column is kept as the "Asset Serial" attribute; Asset ID is the serial. */
+function foldSerialIntoAttributes(row) {
+  const serial = trimImportCell(row.asset_serial);
+  const { asset_serial: _drop, ...rest } = row;
+  if (!serial) return rest;
+  const attributes = { ...(row.attributes || {}) };
+  const hasSerialAttr = Object.keys(attributes).some(
+    (k) => k.trim().toLowerCase() === ASSET_SERIAL_ATTRIBUTE.toLowerCase()
+  );
+  if (hasSerialAttr) return rest;
+  attributes[ASSET_SERIAL_ATTRIBUTE] = serial;
+  return {
+    ...rest,
+    attributes,
+    attrTypes: { ...(row.attrTypes || {}), [ASSET_SERIAL_ATTRIBUTE]: 'string' },
+  };
+}
+
 function normalizeAssetImportRow(row) {
   if (!row || typeof row !== 'object') return row;
+  const base = foldSerialIntoAttributes(row);
   return {
-    ...row,
+    ...base,
     asset_code: trimImportCell(row.asset_code),
-    asset_serial: trimImportCell(row.asset_serial),
     name: trimImportCell(row.name),
     rfid_tag: normalizeRfidTag(row.rfid_tag),
     asset_type: trimImportCell(row.asset_type),
@@ -102,14 +130,17 @@ async function bulkInsertIgnoreNames(conn, table, names, description = null) {
 }
 
 async function bulkEnsureTypeAttributes(conn, rows, typeNameMap) {
+  const [existingAttrs] = await conn.query('SELECT asset_type_id, name FROM asset_type_attributes');
+  const existingKeys = new Set(existingAttrs.map((a) => `${a.asset_type_id}:${String(a.name).trim().toLowerCase()}`));
   const pending = new Map();
   for (const row of rows) {
     if (!row.asset_type?.trim() || !row.attrTypes) continue;
     const type = findInNameMap(row.asset_type, typeNameMap);
     if (!type) continue;
     for (const [attrName, attrType] of Object.entries(row.attrTypes)) {
-      const key = `${type.id}:${attrName.toLowerCase()}`;
-      if (!pending.has(key)) pending.set(key, { typeId: type.id, attrName, attrType: attrType || 'string' });
+      const key = `${type.id}:${attrName.trim().toLowerCase()}`;
+      if (existingKeys.has(key) || pending.has(key)) continue;
+      pending.set(key, { typeId: type.id, attrName, attrType: attrType || 'string' });
     }
   }
   const entries = [...pending.values()];
@@ -132,17 +163,15 @@ function validateAssetImportRow(row, ctx) {
     tagTypeIdMap,
     vendorNameMap,
     vendorIdMap,
-    serialMap,
     assetCodeMap,
     rfidMap,
   } = ctx;
   const errors = [];
 
   const assetCode = trimImportCell(row.asset_code);
-  const serial = trimImportCell(row.asset_serial);
   const name = trimImportCell(row.name);
   const rfidTag = normalizeRfidTag(row.rfid_tag);
-  if (!assetCode) errors.push('Asset ID is required');
+  if (!assetCode) errors.push('Asset ID / Asset Serial is required');
   if (!name) errors.push('Asset Name is required');
   validateOptionalRfidTag(rfidTag, errors);
 
@@ -183,13 +212,7 @@ function validateAssetImportRow(row, ctx) {
     else status = normalized;
   }
 
-  const codeOwner = assetCode ? assetCodeMap.get(assetCode.toLowerCase()) || null : null;
-  const serialOwner = serial ? serialMap.get(serial) || null : null;
-  const existingMatch = codeOwner || serialOwner;
-
-  if (serialOwner && existingMatch && serialOwner.id !== existingMatch.id) {
-    errors.push(`Asset Serial is already used by another asset (Asset ID: ${serialOwner.asset_code})`);
-  }
+  const existingMatch = assetCode ? assetCodeMap.get(assetCode.toLowerCase()) || null : null;
 
   if (rfidTag && isValidRfidTag(rfidTag)) {
     const rfidOwner = rfidMap.get(rfidTag);
@@ -204,7 +227,6 @@ function validateAssetImportRow(row, ctx) {
 
   return slimAssetPreviewRow({
     asset_code: assetCode || row.asset_code,
-    asset_serial: serial || row.asset_serial,
     name: name || row.name,
     rfid_tag: rfidTag || row.rfid_tag,
     asset_type: row.asset_type,
@@ -260,15 +282,30 @@ async function executeLocationsBatch(rows) {
     });
   }
 
-  for (const batch of chunkArray(inserts, 200)) {
-    await withTransaction(db, async (conn) => {
-      const placeholders = batch.map(() => '(?,?,?)').join(',');
-      const vals = batch.flatMap((row) => [row.name, row.description || null, row._parentId || null]);
-      const [result] = await conn.query(
-        `INSERT INTO locations (name, description, parent_id) VALUES ${placeholders}`,
-        vals
-      );
-      inserted += result.affectedRows || batch.length;
+  if (inserts.length) {
+    await withLocationNameLock(db, async (conn) => {
+      const existing = await loadLocationRows(conn);
+      const byId = new Map(existing.map((r) => [Number(r.id), r]));
+      for (const row of inserts) {
+        const parent = row._parentId ? byId.get(Number(row._parentId)) || null : null;
+        if (row._parentId && !parent) {
+          errors++;
+          continue;
+        }
+        const plan = planLocationName(existing, { name: row.name, parent });
+        if (plan.error) {
+          errors++;
+          continue;
+        }
+        const [result] = await conn.query(
+          'INSERT INTO locations (name, description, parent_id) VALUES (?, ?, ?)',
+          [plan.name, row.description || null, parent ? parent.id : null]
+        );
+        const created = { id: result.insertId, name: plan.name, parent_id: parent ? parent.id : null };
+        existing.push(created);
+        byId.set(Number(created.id), created);
+        inserted++;
+      }
     });
   }
 
@@ -350,12 +387,14 @@ async function executeAssetTypesBatch(rows) {
 
 router.post('/locations/preview', requireModify('location'), async (req, res) => {
   const { rows } = req.body;
-  const [existing] = await db.query('SELECT id, name FROM locations');
+  const existing = await loadLocationRows(db);
   const nameMap = buildNameMap(existing);
+  const planned = [...existing];
+  const seenInFile = new Set();
 
   const result = rows.map((row) => {
-    const name = (row.name || '').trim();
-    const parentName = (row.parent_name || '').trim();
+    const name = normalizeName(row.name);
+    const parentName = normalizeName(row.parent_name);
     const errors = [];
 
     if (!name) errors.push('Location name is required');
@@ -368,7 +407,32 @@ router.post('/locations/preview', requireModify('location'), async (req, res) =>
       else if (parentMatch.name.toLowerCase() !== parentName.toLowerCase()) parentFix = parentMatch.name;
     }
 
-    const existingMatch = findInNameMap(name, nameMap);
+    let existingMatch = null;
+    let nameFix = null;
+    if (name && !errors.length) {
+      const parentId = parentMatch ? Number(parentMatch.id) : null;
+      const base = stripParentPrefix(name, parentMatch?.name);
+      const fileKey = `${parentId ?? ''}|${nameKey(base)}`;
+      if (seenInFile.has(fileKey)) {
+        errors.push('Duplicate location under the same parent in import file');
+      } else {
+        seenInFile.add(fileKey);
+        const generated = parentMatch ? generatedName(parentMatch.name, base) : null;
+        existingMatch = existing.find(
+          (l) => (l.parent_id == null ? null : Number(l.parent_id)) === parentId
+            && (nameKey(l.name) === nameKey(base) || nameKey(l.name) === generated)
+        ) || null;
+        if (!existingMatch) {
+          const plan = planLocationName(planned, { name, parent: parentMatch });
+          if (plan.error) {
+            errors.push(plan.error);
+          } else {
+            planned.push({ id: null, name: plan.name, parent_id: parentId });
+            if (plan.generated) nameFix = plan.name;
+          }
+        }
+      }
+    }
 
     return slimLocationPreviewRow({
       name: row.name,
@@ -377,6 +441,8 @@ router.post('/locations/preview', requireModify('location'), async (req, res) =>
       _status: errors.length ? 'error' : existingMatch ? 'update' : 'insert',
       _errors: errors,
       _parentFix: parentFix,
+      _nameFix: nameFix,
+      _notes: nameFix ? [`"${name}" already exists. Will be saved as "${nameFix}".`] : [],
       _existingId: existingMatch ? existingMatch.id : null,
       _parentId: parentMatch ? parentMatch.id : null,
     });
@@ -543,7 +609,7 @@ router.post('/assets/preview', requireModify('asset'), async (req, res) => {
 });
 
 async function buildAssetImportContext() {
-  const [existingAssets] = await db.query('SELECT id, asset_code, asset_serial, rfid_tag FROM assets');
+  const [existingAssets] = await db.query('SELECT id, asset_code, rfid_tag FROM assets');
   const [assetTypes] = await db.query('SELECT id, name FROM asset_types');
   const [locations] = await db.query('SELECT id, name FROM locations');
   const [tagTypes] = await db.query('SELECT id, name FROM tag_types');
@@ -555,7 +621,6 @@ async function buildAssetImportContext() {
     tagTypeIdMap: buildIdMap(tagTypes),
     vendorNameMap: buildNameMap(vendors),
     vendorIdMap: buildIdMap(vendors),
-    serialMap: buildSerialMap(existingAssets),
     assetCodeMap: buildAssetCodeMap(existingAssets),
     rfidMap: buildRfidMap(existingAssets),
   };

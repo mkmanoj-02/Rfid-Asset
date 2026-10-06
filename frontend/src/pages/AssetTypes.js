@@ -457,12 +457,91 @@ function AssetTypeRow({
   );
 }
 
+// ── Attributes editor for the Add Asset Type modal ─────────────
+const emptyAttr = () => ({ name: '', attr_type: 'string', default_value: '', list_options: [] });
+
+function NewTypeAttributes({ value, onChange }) {
+  const [optDraft, setOptDraft] = useState({});
+  const update = (i, patch) => onChange(value.map((a, idx) => (idx === i ? { ...a, ...patch } : a)));
+  const removeAttr = (i) => {
+    onChange(value.filter((_, idx) => idx !== i));
+    setOptDraft({});
+  };
+  const addOption = (i) => {
+    const v = (optDraft[i] || '').trim();
+    if (!v) return;
+    update(i, { list_options: [...value[i].list_options, v] });
+    setOptDraft({ ...optDraft, [i]: '' });
+  };
+
+  return (
+    <div className="form-group">
+      <label>Attributes</label>
+      {value.length === 0 && (
+        <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 8px' }}>No attributes added.</p>
+      )}
+      {value.map((a, i) => (
+        <div key={i} className="attr-row editing">
+          <div style={{ display: 'flex', gap: 8, width: '100%', alignItems: 'center' }}>
+            <input
+              style={{ flex: '1 1 auto', minWidth: 120, width: 'auto' }}
+              value={a.name}
+              placeholder="Attribute name"
+              onChange={e => update(i, { name: e.target.value })}
+            />
+            <select
+              style={{ flex: '0 0 110px', width: 110 }}
+              value={a.attr_type}
+              onChange={e => update(i, { attr_type: e.target.value, default_value: '', list_options: [] })}
+            >
+              {ATTR_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <button type="button" className="btn btn-danger btn-sm" style={{ flex: '0 0 auto' }} title="Remove attribute" onClick={() => removeAttr(i)}>×</button>
+          </div>
+          {a.attr_type !== 'list' ? (
+            <input
+              type={a.attr_type === 'double' ? 'number' : a.attr_type === 'date' ? 'date' : 'text'}
+              value={a.default_value}
+              placeholder="Default value (optional)"
+              onChange={e => update(i, { default_value: e.target.value })}
+            />
+          ) : (
+            <div className="list-options-editor">
+              {a.list_options.map((o, oi) => (
+                <span key={oi} className="list-option-tag">
+                  {o}
+                  <button
+                    type="button"
+                    onClick={() => update(i, { list_options: a.list_options.filter((_, x) => x !== oi) })}
+                  >×</button>
+                </span>
+              ))}
+              <div className="list-option-input">
+                <input
+                  value={optDraft[i] || ''}
+                  placeholder="Add option..."
+                  onChange={e => setOptDraft({ ...optDraft, [i]: e.target.value })}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addOption(i); } }}
+                />
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => addOption(i)}>Add</button>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+      <button type="button" className="btn btn-secondary btn-sm" onClick={() => onChange([...value, emptyAttr()])}>
+        + Add Attribute
+      </button>
+    </div>
+  );
+}
+
 // ── Main Page ──────────────────────────────────────────────────
 export default function AssetTypes() {
   const [items, setItems] = useState([]);
   const [search, setSearch] = useState('');
   const [modal, setModal] = useState(false);
-  const [form, setForm] = useState({ name: '', description: '', parent_id: '' });
+  const [form, setForm] = useState({ name: '', description: '', parent_id: '', attributes: [] });
   const [editing, setEditing] = useState(null);
   const [imageFile, setImageFile] = useState(null);
   const [removeImage, setRemoveImage] = useState(false);
@@ -480,7 +559,7 @@ export default function AssetTypes() {
   useEffect(() => { load(); }, []);
 
   const openAdd = (parentId = '') => {
-    setForm({ name: '', description: '', parent_id: parentId });
+    setForm({ name: '', description: '', parent_id: parentId, attributes: [] });
     setEditing(null);
     setImageFile(null);
     setRemoveImage(false);
@@ -503,13 +582,34 @@ export default function AssetTypes() {
       showToast('Name is required', 'error');
       return;
     }
+    const attrs = editing ? [] : (form.attributes || []).filter(
+      a => a.name.trim() || a.list_options.length || String(a.default_value ?? '').trim()
+    );
+    if (attrs.some(a => !a.name.trim())) {
+      showToast('Each attribute needs a name', 'error');
+      return;
+    }
+    if (attrs.some(a => a.attr_type === 'list' && !a.list_options.length)) {
+      showToast('List attributes need at least one option', 'error');
+      return;
+    }
+    const attrNames = attrs.map(a => a.name.trim());
+    const dupName = attrNames.find((n, i) => attrNames.indexOf(n) !== i);
+    if (dupName) {
+      showToast(`Duplicate attribute name: "${dupName}"`, 'error');
+      return;
+    }
     setSaving(true);
     try {
       if (editing) {
-        await updateAssetTypeMultipart(editing, form, imageFile, { removeImage });
+        const { attributes, ...typeFields } = form;
+        await updateAssetTypeMultipart(editing, typeFields, imageFile, { removeImage });
         showToast('Asset type updated', 'success');
       } else {
-        await createAssetTypeMultipart(form, imageFile);
+        await createAssetTypeMultipart(
+          { ...form, attributes: attrs.map(a => ({ ...a, name: a.name.trim() })) },
+          imageFile
+        );
         showToast('Asset type added', 'success');
       }
       setModal(false);
@@ -682,6 +782,12 @@ export default function AssetTypes() {
                 onClear={() => { setImageFile(null); setRemoveImage(true); }}
               />
             </div>
+            {!editing && (
+              <NewTypeAttributes
+                value={form.attributes || []}
+                onChange={(attributes) => setForm({ ...form, attributes })}
+              />
+            )}
             </div>
             <div className="modal-actions">
               <button className="btn btn-secondary" onClick={() => setModal(false)} disabled={saving}>Cancel</button>

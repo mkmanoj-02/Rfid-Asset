@@ -518,7 +518,7 @@ function AlertsTab({ onUnreadChange }) {
               <th>Rule</th>
               <th>Alert Time</th>
               <th>Description</th>
-              <th>Asset Serial</th>
+              <th>Asset ID / Asset Serial</th>
               <th>Asset Type</th>
               <th>Last Location</th>
               <th style={{ width: 60 }} />

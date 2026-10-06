@@ -43,7 +43,7 @@ function sqlReportAssetsSelect() {
   return `
     SELECT
       a.id AS asset_id,
-      COALESCE(NULLIF(TRIM(a.asset_code), ''), NULLIF(TRIM(a.asset_serial), ''), NULLIF(TRIM(a.rfid_tag), ''), CONCAT('#', a.id)) AS asset_code,
+      COALESCE(NULLIF(TRIM(a.asset_code), ''), NULLIF(TRIM(a.rfid_tag), ''), CONCAT('#', a.id)) AS asset_code,
       a.name AS asset_name,
       COALESCE(at.name, '') AS asset_type,
       COALESCE(l.name, '') AS location,
@@ -107,7 +107,7 @@ router.get('/inventory-missing', async (req, res) => {
     `
     SELECT
       a.id AS asset_id,
-      COALESCE(NULLIF(TRIM(a.asset_code), ''), NULLIF(TRIM(a.asset_serial), ''), NULLIF(TRIM(a.rfid_tag), ''), CONCAT('#', a.id)) AS asset_code,
+      COALESCE(NULLIF(TRIM(a.asset_code), ''), NULLIF(TRIM(a.rfid_tag), ''), CONCAT('#', a.id)) AS asset_code,
       a.name AS asset_name,
       COALESCE(at.name, '') AS asset_type,
       COALESCE(l.name, '') AS location,
@@ -150,7 +150,7 @@ router.get('/inventory-missing', async (req, res) => {
 // Most transacted assets (most location changes)
 router.get('/most-transacted', async (req, res) => {
   const [rows] = await db.query(`
-    SELECT a.name AS asset_name, a.asset_serial,
+    SELECT a.name AS asset_name, a.asset_code,
       SUM(CASE WHEN mh.from_location_id IS NOT NULL THEN 1 ELSE 0 END) AS out_count,
       COUNT(mh.id) AS in_count
     FROM movement_history mh
@@ -386,7 +386,6 @@ const OVERALL_DATE_FIELDS = {
 const OVERALL_SORT_MAP = {
   name: 'a.name',
   asset_code: 'a.asset_code',
-  asset_serial: 'a.asset_serial',
   asset_type_name: 'at.name',
   location_name: 'l.name',
   tag_type_name: 'tt.name',
@@ -525,8 +524,8 @@ function buildOverallConditions(body) {
   const search = String(body.search || '').trim();
   if (search) {
     const s = `%${search}%`;
-    conditions.push('(a.asset_code LIKE ? OR a.asset_serial LIKE ? OR a.rfid_tag LIKE ? OR a.name LIKE ?)');
-    params.push(s, s, s, s);
+    conditions.push('(a.asset_code LIKE ? OR a.rfid_tag LIKE ? OR a.name LIKE ?)');
+    params.push(s, s, s);
   }
 
   const presets = Array.isArray(body.presets) ? body.presets : [];

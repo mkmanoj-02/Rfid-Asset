@@ -106,10 +106,17 @@ app.use('/api/tag-types', require('./routes/tagTypes'));
 app.use('/api/vendors',  require('./routes/vendors'));
 app.use('/api/depreciation', require('./routes/depreciation'));
 app.use('/api/handheld-devices', require('./routes/handheldDevices'));
-app.use('/api/reader-locations', require('./routes/readerLocations'));
 app.use('/api/zones', require('./routes/zones'));
 app.use('/api/readers', require('./routes/readers'));
-app.use('/api/floor-plan', require('./routes/floorPlan'));
+
+// RFID middleware API (spec v2.0) — { status, message, data } envelope
+const { layoutRouter: floorLayoutRoutes, plansRouter: floorPlansRoutes } = require('./routes/floorLayout');
+app.use('/api/tag-reads', require('./routes/tagReads'));
+app.use('/api/reader-status', require('./routes/readerStatus'));
+app.use('/api/rfid-dashboard', require('./routes/rfidDashboard'));
+app.use('/api/floor-layout', floorLayoutRoutes);
+app.use('/api/floor-plans', floorPlansRoutes);
+app.use('/api/service', require('./routes/rfidService'));
 app.use('/api/unassigned-tags', require('./routes/unassignedTags'));
 app.use('/api/site-branding', siteBrandingRoutes);
 
@@ -120,6 +127,13 @@ startRuleEngine();
 app.use((req, res, next) => {
   res.status(404).json({ status: false, message: `Endpoint not found: ${req.method} ${req.originalUrl}` });
 });
+
+// Body-parse errors on RFID API paths happen before the routers run; answer with the envelope.
+app.use(
+  ['/api/readers', '/api/tag-reads', '/api/reader-status', '/api/rfid-dashboard',
+    '/api/floor-layout', '/api/floor-plans', '/api/service'],
+  require('./lib/apiEnvelope').envelopeErrorHandler
+);
 
 // ── Global error handler — catches any unhandled error from routes ──
 app.use((err, req, res, next) => {
@@ -133,9 +147,8 @@ app.use((err, req, res, next) => {
 
   // MySQL duplicate entry
   if (err.code === 'ER_DUP_ENTRY') {
-    const field = err.sqlMessage && err.sqlMessage.includes('asset_code') ? 'Asset ID' :
-                  err.sqlMessage && err.sqlMessage.includes('rfid_tag') ? 'RFID tag' :
-                  err.sqlMessage && err.sqlMessage.includes('asset_serial') ? 'Asset serial' : 'A field';
+    const field = err.sqlMessage && err.sqlMessage.includes('asset_code') ? 'Asset ID / Asset Serial' :
+                  err.sqlMessage && err.sqlMessage.includes('rfid_tag') ? 'RFID tag' : 'A field';
     return res.status(409).json({ message: `${field} already exists. Please use a unique value.` });
   }
 

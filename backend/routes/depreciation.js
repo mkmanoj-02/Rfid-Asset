@@ -110,7 +110,7 @@ router.post('/run-monthly', async (req, res) => {
 
   // Get all assets of this type with financials
   const [assets] = await db.query(`
-    SELECT a.id, a.asset_serial, a.name, a.status, af.purchase_cost, af.salvage_value,
+    SELECT a.id, a.asset_code AS asset_serial, a.name, a.status, af.purchase_cost, af.salvage_value,
       af.current_book_value, af.is_disposed
     FROM assets a
     JOIN asset_financials af ON af.asset_id = a.id

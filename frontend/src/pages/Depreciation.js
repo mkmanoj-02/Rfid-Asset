@@ -322,7 +322,7 @@ function RunHistoryTab({ assetTypes }) {
                   <td colSpan={7} style={{ padding: 0, background: '#f8fafc' }}>
                     <div style={{ padding: '12px 20px' }}>
                       <table style={{ boxShadow: 'none', border: '1px solid #e8edf2' }}>
-                        <thead><tr><th>Asset</th><th>Serial</th><th>Opening Value</th><th>Depreciation</th><th>Closing Value</th><th>Method</th></tr></thead>
+                        <thead><tr><th>Asset</th><th>Asset ID / Serial</th><th>Opening Value</th><th>Depreciation</th><th>Closing Value</th><th>Method</th></tr></thead>
                         <tbody>
                           {entries.map(e => (
                             <tr key={e.id}>

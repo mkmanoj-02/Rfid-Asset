@@ -139,7 +139,7 @@ function toEpochMs(value) {
 async function fetchMobileAssets(req, extraConditions = [], extraParams = []) {
   const scoped = scopeAssetWhere(req.authz, 'a', extraConditions, extraParams);
   const [rows] = await db.query(
-    `SELECT a.id, a.asset_code, a.asset_serial, a.name, a.asset_type_id, a.current_location_id, a.rfid_tag,
+    `SELECT a.id, a.asset_code, a.name, a.asset_type_id, a.current_location_id, a.rfid_tag,
             a.description, a.image_url, a.attachment_url, a.attachment_name,
             a.asset_inventory_status, a.updated_at,
             (SELECT MAX(mh.moved_at) FROM movement_history mh WHERE mh.asset_id = a.id) AS last_seen
@@ -177,7 +177,7 @@ async function fetchMobileAssets(req, extraConditions = [], extraParams = []) {
     return {
       id: a.id,
       assetCode: a.asset_code,
-      serial: a.asset_serial,
+      serial: a.asset_code,
       name: a.name,
       assetTypeId: a.asset_type_id,
       locationId: a.current_location_id,
@@ -204,7 +204,7 @@ async function fetchMobileAsset(req, id) {
  * GET /api/mobile/assets[?since=<ISO datetime>][&untagged=true][&q=<text>]
  * Android: every asset the user may see.
  * untagged=true: only assets without an RFID tag.
- * q: search serial, name, or attribute value.
+ * q: search asset ID / serial, name, or attribute value.
  */
 router.get('/assets', async (req, res, next) => {
   try {
@@ -226,7 +226,7 @@ router.get('/assets', async (req, res, next) => {
     if (q) {
       const like = `%${q}%`;
       extraConditions.push(`(
-        a.asset_serial LIKE ? OR a.name LIKE ? OR EXISTS (
+        a.asset_code LIKE ? OR a.name LIKE ? OR EXISTS (
           SELECT 1 FROM asset_attribute_values aavq
           WHERE aavq.asset_id = a.id AND aavq.value LIKE ?
         )
@@ -251,7 +251,7 @@ router.get('/assets/lookup', async (req, res, next) => {
     if (!rfid) return res.status(400).json({ message: 'rfid query parameter is required' });
 
     const [rows] = await db.query(
-      'SELECT id, asset_serial, name, rfid_tag FROM assets WHERE rfid_tag = ? LIMIT 1',
+      'SELECT id, asset_code, name, rfid_tag FROM assets WHERE rfid_tag = ? LIMIT 1',
       [rfid]
     );
     if (!rows.length) return res.status(404).json({ message: 'Tag is not assigned to any asset' });
@@ -261,7 +261,7 @@ router.get('/assets/lookup', async (req, res, next) => {
       const asset = await fetchMobileAsset(req, row.id);
       if (asset) return res.json(asset);
     }
-    res.json({ id: row.id, serial: row.asset_serial, name: row.name, rfid: row.rfid_tag, inScope: false });
+    res.json({ id: row.id, serial: row.asset_code, name: row.name, rfid: row.rfid_tag, inScope: false });
   } catch (err) {
     next(err);
   }
@@ -274,7 +274,7 @@ async function loadAssetForChange(req, res) {
     return null;
   }
   const [rows] = await db.query(
-    `SELECT id, name, asset_serial, rfid_tag, asset_type_id, current_location_id, image_url, is_custom_image,
+    `SELECT id, name, asset_code, rfid_tag, asset_type_id, current_location_id, image_url, is_custom_image,
             attachment_url, attachment_name
      FROM assets WHERE id = ?`,
     [id]
@@ -382,7 +382,7 @@ router.patch('/assets/:id', requireModify('asset'), async (req, res, next) => {
       await audit.log(
         'Asset',
         'Modified',
-        `Asset "${asset.name}" (Serial: ${asset.asset_serial || 'N/A'}) updated from handheld: ${changes.join(', ')}`,
+        `Asset "${asset.name}" (Asset ID / Serial: ${asset.asset_code}) updated from handheld: ${changes.join(', ')}`,
         req.auditUser,
         req.auditUserId
       );
@@ -408,14 +408,14 @@ router.post('/assets/:id/tag', requireModify('asset'), async (req, res, next) =>
     if (!asset) return;
 
     const [conflicts] = await db.query(
-      'SELECT id, asset_serial, name, rfid_tag FROM assets WHERE rfid_tag = ? AND id <> ? LIMIT 1',
+      'SELECT id, asset_code, name, rfid_tag FROM assets WHERE rfid_tag = ? AND id <> ? LIMIT 1',
       [rfid, asset.id]
     );
     if (conflicts.length) {
       const c = conflicts[0];
       return res.status(409).json({
         message: `RFID "${rfid}" is already assigned to asset ${c.id}`,
-        asset: { id: c.id, serial: c.asset_serial, name: c.name, rfid: c.rfid_tag },
+        asset: { id: c.id, serial: c.asset_code, name: c.name, rfid: c.rfid_tag },
       });
     }
 
@@ -435,7 +435,7 @@ router.post('/assets/:id/tag', requireModify('asset'), async (req, res, next) =>
     await audit.log(
       'Asset',
       'Tagged',
-      `Asset "${asset.name}" (Serial: ${asset.asset_serial || 'N/A'}) tagged with RFID ${rfid} from handheld`,
+      `Asset "${asset.name}" (Asset ID / Serial: ${asset.asset_code}) tagged with RFID ${rfid} from handheld`,
       req.auditUser,
       req.auditUserId
     );
@@ -460,7 +460,7 @@ router.delete('/assets/:id/rfid', requireModify('asset'), async (req, res, next)
       await audit.log(
         'Asset',
         'Tag removed',
-        `RFID ${asset.rfid_tag} removed from asset "${asset.name}" (Serial: ${asset.asset_serial || 'N/A'}) from handheld`,
+        `RFID ${asset.rfid_tag} removed from asset "${asset.name}" (Asset ID / Serial: ${asset.asset_code}) from handheld`,
         req.auditUser,
         req.auditUserId
       );
@@ -595,20 +595,15 @@ async function assertTypeAndLocation(authz, assetTypeId, locationId) {
 }
 
 async function findExistingAsset(item, action) {
-  const cols = 'id, asset_code, asset_serial, name, asset_type_id, current_location_id, rfid_tag, description, asset_inventory_status, image_url, is_custom_image';
+  const cols = 'id, asset_code, name, asset_type_id, current_location_id, rfid_tag, description, asset_inventory_status, image_url, is_custom_image';
   const numericId = action === 'CREATE' ? null : toPositiveInt(item.id);
   if (numericId) {
     const [rows] = await db.query(`SELECT ${cols} FROM assets WHERE id = ?`, [numericId]);
     if (rows.length) return rows[0];
   }
-  const assetCode = String(item.assetCode ?? '').trim();
+  const assetCode = String(item.assetCode ?? '').trim() || String(item.serial ?? '').trim();
   if (assetCode) {
     const [rows] = await db.query(`SELECT ${cols} FROM assets WHERE asset_code = ? LIMIT 1`, [assetCode]);
-    if (rows.length) return rows[0];
-  }
-  const serial = String(item.serial ?? '').trim();
-  if (serial) {
-    const [rows] = await db.query(`SELECT ${cols} FROM assets WHERE asset_serial = ? LIMIT 1`, [serial]);
     if (rows.length) return rows[0];
   }
   return null;
@@ -617,9 +612,9 @@ async function findExistingAsset(item, action) {
 function readSyncFields(item) {
   const status = String(item.status ?? '').trim().toUpperCase();
   const rfidRaw = normalizeRfidTag(item.rfid);
+  const assetCode = String(item.assetCode ?? '').trim() || String(item.serial ?? '').trim();
   return {
-    assetCode: String(item.assetCode ?? '').trim(),
-    serial: String(item.serial ?? '').trim(),
+    assetCode,
     name: String(item.name ?? '').trim(),
     assetTypeId: toPositiveInt(item.assetTypeId),
     locationId: toPositiveInt(item.locationId),
@@ -633,26 +628,26 @@ function readSyncFields(item) {
 
 async function createSyncedAsset(req, item, f, attrCache) {
   const missing = [];
-  if (!f.assetCode && !f.serial) missing.push('assetCode');
+  if (!f.assetCode) missing.push('assetCode');
   if (!f.name) missing.push('name');
   if (!f.assetTypeId) missing.push('assetTypeId');
   if (!f.locationId) missing.push('locationId');
   if (missing.length) throw new SyncError(`Missing required fields: ${missing.join(', ')}`);
 
-  const assetCode = f.assetCode || f.serial;
+  const { assetCode } = f;
   await assertTypeAndLocation(req.authz, f.assetTypeId, f.locationId);
-  await assertUnique(db, 'asset_code', assetCode, 'Asset ID');
+  await assertUnique(db, 'asset_code', assetCode, 'Asset ID / Asset Serial');
   await assertUnique(db, 'rfid_tag', f.rfid, 'RFID');
 
   const { imageUrl, isCustom } = await resolveAssetImageOnCreate(f.assetTypeId, null);
 
   return withTransaction(db, async (conn) => {
     const [result] = await conn.query(
-      `INSERT INTO assets (asset_code, rfid_tag, asset_serial, name, asset_type_id, current_location_id,
+      `INSERT INTO assets (asset_code, rfid_tag, name, asset_type_id, current_location_id,
          status, description, asset_inventory_status, image_url, is_custom_image)
-       VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`,
       [
-        assetCode, f.rfid, f.serial || null, f.name, f.assetTypeId, f.locationId,
+        assetCode, f.rfid, f.name, f.assetTypeId, f.locationId,
         f.description || null, f.invStatus || 'in_inventory', imageUrl, isCustom,
       ]
     );
@@ -674,7 +669,7 @@ async function createSyncedAsset(req, item, f, attrCache) {
       await conn.query('DELETE FROM unassigned_tags WHERE tag_value = ?', [f.rfid]);
     }
     return {
-      id, serial: f.serial, name: f.name, created: true,
+      id, serial: assetCode, name: f.name, created: true,
       newlyTagged: shouldLogRfidTagMovement(null, f.rfid),
     };
   });
@@ -687,7 +682,6 @@ async function updateSyncedAsset(req, item, f, existing, attrCache) {
 
   const next = {
     assetCode: f.assetCode || existing.asset_code,
-    serial: f.serial || existing.asset_serial || null,
     name: f.name || existing.name,
     assetTypeId: f.assetTypeId || existing.asset_type_id,
     locationId: f.locationId || existing.current_location_id,
@@ -700,10 +694,7 @@ async function updateSyncedAsset(req, item, f, existing, attrCache) {
     await assertTypeAndLocation(req.authz, next.assetTypeId, next.locationId);
   }
   if (next.assetCode !== existing.asset_code) {
-    await assertUnique(db, 'asset_code', next.assetCode, 'Asset ID', existing.id);
-  }
-  if (next.serial !== existing.asset_serial) {
-    await assertUnique(db, 'asset_serial', next.serial, 'Serial', existing.id);
+    await assertUnique(db, 'asset_code', next.assetCode, 'Asset ID / Asset Serial', existing.id);
   }
   if (next.rfid && next.rfid !== existing.rfid_tag) {
     await assertUnique(db, 'rfid_tag', next.rfid, 'RFID', existing.id);
@@ -718,12 +709,12 @@ async function updateSyncedAsset(req, item, f, existing, attrCache) {
 
   await withTransaction(db, async (conn) => {
     await conn.query(
-      `UPDATE assets SET asset_code = ?, asset_serial = ?, name = ?, asset_type_id = ?, current_location_id = ?,
+      `UPDATE assets SET asset_code = ?, name = ?, asset_type_id = ?, current_location_id = ?,
          rfid_tag = ?, description = ?, asset_inventory_status = ?, image_url = ?, is_custom_image = ?,
          updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
       [
-        next.assetCode, next.serial, next.name, next.assetTypeId, next.locationId, next.rfid, next.description,
+        next.assetCode, next.name, next.assetTypeId, next.locationId, next.rfid, next.description,
         next.invStatus, image.imageUrl, image.isCustom, existing.id,
       ]
     );
@@ -742,7 +733,7 @@ async function updateSyncedAsset(req, item, f, existing, attrCache) {
   });
 
   return {
-    id: existing.id, serial: next.serial, name: next.name, created: false,
+    id: existing.id, serial: next.assetCode, name: next.name, created: false,
     newlyTagged: shouldLogRfidTagMovement(existing.rfid_tag, next.rfid),
   };
 }
@@ -813,8 +804,9 @@ router.post('/register', async (req, res, next) => {
 /**
  * POST /api/mobile/sync
  * Android dashboard sync: applies pending assets, returns the sync report.
- * clientAction CREATE inserts (or updates when the assetCode / serial already exists);
- * anything else updates the asset matched by numeric id, then assetCode, then serial.
+ * clientAction CREATE inserts (or updates when the assetCode already exists);
+ * anything else updates the asset matched by numeric id, then assetCode.
+ * serial is accepted as an alias for assetCode (Asset ID / Asset Serial).
  */
 router.post('/sync', async (req, res, next) => {
   try {
@@ -877,7 +869,7 @@ router.post('/sync', async (req, res, next) => {
         errors.push({
           id: clientId,
           serial: item?.serial ?? null,
-          message: err.code === 'ER_DUP_ENTRY' ? 'Asset ID, serial or RFID already exists' : err.message,
+          message: err.code === 'ER_DUP_ENTRY' ? 'Asset ID / Serial or RFID already exists' : err.message,
         });
       }
     }
@@ -913,14 +905,13 @@ router.post('/assets', requireModify('asset'), async (req, res, next) => {
   try {
     const item = { ...(req.body || {}), status: 'INVENTORIED' };
     const fields = readSyncFields(item);
-    await assertUnique(db, 'asset_serial', fields.serial, 'Serial');
     const saved = await createSyncedAsset(req, item, fields, new Map());
 
     setImmediate(() => runRules().catch((e) => console.error('Rule engine error:', e.message)));
     await audit.log(
       'Asset',
       'Added',
-      `Asset "${saved.name}" (Serial: ${saved.serial || 'N/A'}) was added from handheld`,
+      `Asset "${saved.name}" (Asset ID / Serial: ${saved.serial}) was added from handheld`,
       req.auditUser,
       req.auditUserId
     );
@@ -932,7 +923,7 @@ router.post('/assets', requireModify('asset'), async (req, res, next) => {
       else if (/not allowed/.test(err.message)) status = 403;
       return res.status(status).json({ message: err.message });
     }
-    if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: 'Serial or RFID already exists' });
+    if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: 'Asset ID / Serial or RFID already exists' });
     next(err);
   }
 });

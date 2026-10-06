@@ -1,11 +1,11 @@
 {
   "info": {
-    "_postman_id": "c3dadc9d-41a6-4851-9b7d-837125a3a25c",
+    "_postman_id": "66c22b0f-1af7-46f6-9579-2b357fb68217",
     "name": "RFID Asset — Readers & Floor Plan",
     "description": "Auth, reader catalogs, Readers and the RFID middleware APIs (tag reads, reader status, RFID dashboard, floor plans, service).\n\n1. Run **Auth → Login** first (saves `accessToken`).\n2. Other requests use Bearer `{{accessToken}}`.\n3. Create requests save returned ids into collection variables (readerId, readerName, floorPlanId…).\n\nRFID middleware endpoints return { status, message, data }; timestamps are ISO 8601 with milliseconds and +00:00.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "_exporter_id": "44739241",
-    "_collection_link": "https://go.postman.co/collection/44739241-c3dadc9d-41a6-4851-9b7d-837125a3a25c?source=collection_link"
+    "_collection_link": "https://go.postman.co/collection/44739241-66c22b0f-1af7-46f6-9579-2b357fb68217?source=collection_link"
   },
   "item": [
     {
@@ -283,7 +283,6 @@
     },
     {
       "name": "Readers",
-      "description": "All responses use the envelope { status, message, data }. Errors: { status: false, message, data: null }; validation errors return data: { field }.\n\nReader object: id, name, readerType, ipAddress, port, enabled, mode, antennaCount, txPower, sameTxPower, readDuration, itemSeen, itemSeenEnabled, itemIn, itemOut, status, connectionStatus, lastSeen, tagsReadCount, error, antennas[{ number, txPower, rxSensitivity, enabled }].\n\nRuntime fields (status, connectionStatus, lastSeen, tagsReadCount, error) are read-only.",
       "item": [
         {
           "name": "List readers",
@@ -326,36 +325,6 @@
         },
         {
           "name": "Create reader",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/readers",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "readers"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"Dock-01\",\n  \"readerType\": \"IR-Reader\",\n  \"ipAddress\": \"192.168.1.50\",\n  \"port\": 2022,\n  \"enabled\": true,\n  \"mode\": \"IN\",\n  \"antennaCount\": 4,\n  \"txPower\": 30,\n  \"sameTxPower\": false,\n  \"readDuration\": 1000,\n  \"itemSeen\": 20000,\n  \"itemSeenEnabled\": true,\n  \"itemIn\": 20000,\n  \"itemOut\": 20000,\n  \"antennas\": [\n    {\n      \"number\": 1,\n      \"txPower\": 30,\n      \"rxSensitivity\": -70,\n      \"enabled\": true\n    },\n    {\n      \"number\": 2,\n      \"txPower\": 30,\n      \"rxSensitivity\": -70,\n      \"enabled\": true\n    },\n    {\n      \"number\": 3,\n      \"txPower\": 30,\n      \"rxSensitivity\": -70,\n      \"enabled\": false\n    },\n    {\n      \"number\": 4,\n      \"txPower\": 28,\n      \"rxSensitivity\": -70,\n      \"enabled\": true\n    }\n  ]\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "description": "201 \"Reader created\" → data = full reader.\n\n- name and ipAddress required (trimmed); name max 128, unique case-insensitive → 409 \"A reader named X already exists\"\n- readerType: IR-Reader | 4-Port Reader · mode: IN | OUT | MONITORING · port 1–65535 · antennaCount 1–32\n- Only the first antennaCount antennas are kept; sameTxPower=true saves txPower on every antenna\n- New readers start STOPPED / DISCONNECTED with tagsReadCount 0"
-          },
-          "response": [],
           "event": [
             {
               "listen": "test",
@@ -370,7 +339,37 @@
                 ]
               }
             }
-          ]
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Dock-01\",\n  \"readerType\": \"IR-Reader\",\n  \"ipAddress\": \"192.168.1.50\",\n  \"port\": 2022,\n  \"enabled\": true,\n  \"mode\": \"IN\",\n  \"antennaCount\": 4,\n  \"txPower\": 30,\n  \"sameTxPower\": false,\n  \"readDuration\": 1000,\n  \"itemSeen\": 20000,\n  \"itemSeenEnabled\": true,\n  \"itemIn\": 20000,\n  \"itemOut\": 20000,\n  \"antennas\": [\n    {\n      \"number\": 1,\n      \"txPower\": 30,\n      \"rxSensitivity\": -70,\n      \"enabled\": true\n    },\n    {\n      \"number\": 2,\n      \"txPower\": 30,\n      \"rxSensitivity\": -70,\n      \"enabled\": true\n    },\n    {\n      \"number\": 3,\n      \"txPower\": 30,\n      \"rxSensitivity\": -70,\n      \"enabled\": false\n    },\n    {\n      \"number\": 4,\n      \"txPower\": 28,\n      \"rxSensitivity\": -70,\n      \"enabled\": true\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/readers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "readers"
+              ]
+            },
+            "description": "201 \"Reader created\" → data = full reader.\n\n- name and ipAddress required (trimmed); name max 128, unique case-insensitive → 409 \"A reader named X already exists\"\n- readerType: IR-Reader | 4-Port Reader · mode: IN | OUT | MONITORING · port 1–65535 · antennaCount 1–32\n- Only the first antennaCount antennas are kept; sameTxPower=true saves txPower on every antenna\n- New readers start STOPPED / DISCONNECTED with tagsReadCount 0"
+          },
+          "response": []
         },
         {
           "name": "Update reader",
@@ -382,6 +381,15 @@
                 "value": "application/json"
               }
             ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Dock-01\",\n  \"readerType\": \"4-Port Reader\",\n  \"ipAddress\": \"192.168.1.50\",\n  \"port\": 2022,\n  \"enabled\": true,\n  \"mode\": \"OUT\",\n  \"antennaCount\": 2,\n  \"txPower\": 28,\n  \"sameTxPower\": true,\n  \"readDuration\": 1000,\n  \"itemSeen\": 20000,\n  \"itemSeenEnabled\": true,\n  \"itemIn\": 20000,\n  \"itemOut\": 20000,\n  \"antennas\": [\n    {\n      \"number\": 1,\n      \"txPower\": 28,\n      \"rxSensitivity\": -70,\n      \"enabled\": true\n    },\n    {\n      \"number\": 2,\n      \"txPower\": 28,\n      \"rxSensitivity\": -72,\n      \"enabled\": false\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
             "url": {
               "raw": "{{baseUrl}}/api/readers/{{readerId}}",
               "host": [
@@ -392,15 +400,6 @@
                 "readers",
                 "{{readerId}}"
               ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"Dock-01\",\n  \"readerType\": \"4-Port Reader\",\n  \"ipAddress\": \"192.168.1.50\",\n  \"port\": 2022,\n  \"enabled\": true,\n  \"mode\": \"OUT\",\n  \"antennaCount\": 2,\n  \"txPower\": 28,\n  \"sameTxPower\": true,\n  \"readDuration\": 1000,\n  \"itemSeen\": 20000,\n  \"itemSeenEnabled\": true,\n  \"itemIn\": 20000,\n  \"itemOut\": 20000,\n  \"antennas\": [\n    {\n      \"number\": 1,\n      \"txPower\": 28,\n      \"rxSensitivity\": -70,\n      \"enabled\": true\n    },\n    {\n      \"number\": 2,\n      \"txPower\": 28,\n      \"rxSensitivity\": -72,\n      \"enabled\": false\n    }\n  ]\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
             },
             "description": "200 \"Reader updated\" → data = full reader. Same validation as create. Runtime fields are never changed by this call. 404 unknown id · 409 duplicate name."
           },
@@ -426,11 +425,11 @@
           },
           "response": []
         }
-      ]
+      ],
+      "description": "All responses use the envelope { status, message, data }. Errors: { status: false, message, data: null }; validation errors return data: { field }.\n\nReader object: id, name, readerType, ipAddress, port, enabled, mode, antennaCount, txPower, sameTxPower, readDuration, itemSeen, itemSeenEnabled, itemIn, itemOut, status, connectionStatus, lastSeen, tagsReadCount, error, antennas[{ number, txPower, rxSensitivity, enabled }].\n\nRuntime fields (status, connectionStatus, lastSeen, tagsReadCount, error) are read-only."
     },
     {
       "name": "Tag Reads",
-      "description": "All responses use the envelope { status, message, data }. Errors: { status: false, message, data: null }; validation errors return data: { field }.\n\nPOSTed by the RFID middleware service. Duplicate key: readerName + tid + eventType + timestamp, so re-sending a batch is safe.\n\nAsset link: a read whose epc/tid matches assets.rfid_tag updates the asset's RFID last-seen time; IN / OUT also add a movement_history row at the asset's current location (location is never changed). Unknown 24-character EPCs are added to Unassigned Tags (source fixed-reader).",
       "item": [
         {
           "name": "Post tag reads (batch)",
@@ -442,6 +441,15 @@
                 "value": "application/json"
               }
             ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reads\": [\n    {\n      \"epc\": \"E2801160600002048B2A1C1E\",\n      \"tid\": \"E2801160600002048B2A1C1E\",\n      \"antennaPort\": 1,\n      \"rssi\": -54,\n      \"readerName\": \"{{readerName}}\",\n      \"readerType\": \"IR-Reader\",\n      \"ipAddress\": \"192.168.1.50\",\n      \"mode\": \"IN\",\n      \"location\": \"\",\n      \"zoneName\": \"\",\n      \"previousZoneName\": \"\",\n      \"eventType\": \"IN\",\n      \"timestamp\": \"2026-09-30T09:52:11.123+00:00\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
             "url": {
               "raw": "{{baseUrl}}/api/tag-reads",
               "host": [
@@ -451,15 +459,6 @@
                 "api",
                 "tag-reads"
               ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"reads\": [\n    {\n      \"epc\": \"E2801160600002048B2A1C1E\",\n      \"tid\": \"E2801160600002048B2A1C1E\",\n      \"antennaPort\": 1,\n      \"rssi\": -54,\n      \"readerName\": \"{{readerName}}\",\n      \"readerType\": \"IR-Reader\",\n      \"ipAddress\": \"192.168.1.50\",\n      \"mode\": \"IN\",\n      \"location\": \"\",\n      \"zoneName\": \"\",\n      \"previousZoneName\": \"\",\n      \"eventType\": \"IN\",\n      \"timestamp\": \"2026-09-30T09:52:11.123+00:00\"\n    }\n  ]\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
             },
             "description": "200 \"Tag reads saved\" → data: { accepted, duplicates, assetsMatched, movementsLogged, unassignedTags, unknownReaders[] }\n\n- 1–100 reads per batch, otherwise 400\n- each read needs epc, tid, readerName, timestamp (ISO 8601)\n- eventType: IN | OUT | SEEN · mode (optional): IN | OUT | MONITORING\n- 400 errors name the field, e.g. data: { field: \"reads[0].epc\" }\n- Updates readers.tags_read_count / last_seen and the dashboard post counters"
           },
@@ -502,20 +501,20 @@
                 {
                   "key": "from",
                   "value": "2026-09-30T00:00:00.000+00:00",
-                  "disabled": true,
-                  "description": "Inclusive, ISO 8601"
+                  "description": "Inclusive, ISO 8601",
+                  "disabled": true
                 },
                 {
                   "key": "to",
                   "value": "2026-09-30T23:59:59.999+00:00",
-                  "disabled": true,
-                  "description": "Inclusive, ISO 8601"
+                  "description": "Inclusive, ISO 8601",
+                  "disabled": true
                 },
                 {
                   "key": "eventType",
                   "value": "IN",
-                  "disabled": true,
-                  "description": "IN | OUT | SEEN"
+                  "description": "IN | OUT | SEEN",
+                  "disabled": true
                 }
               ]
             },
@@ -523,11 +522,11 @@
           },
           "response": []
         }
-      ]
+      ],
+      "description": "All responses use the envelope { status, message, data }. Errors: { status: false, message, data: null }; validation errors return data: { field }.\n\nPOSTed by the RFID middleware service. Duplicate key: readerName + tid + eventType + timestamp, so re-sending a batch is safe.\n\nAsset link: a read whose epc/tid matches assets.rfid_tag updates the asset's RFID last-seen time; IN / OUT also add a movement_history row at the asset's current location (location is never changed). Unknown 24-character EPCs are added to Unassigned Tags (source fixed-reader)."
     },
     {
       "name": "Reader Status",
-      "description": "All responses use the envelope { status, message, data }. Errors: { status: false, message, data: null }; validation errors return data: { field }.\n\nPresence reports from the middleware service. POST (first report) and PUT (later reports) behave the same. Every report is logged to reader_status_log.",
       "item": [
         {
           "name": "Get reader status",
@@ -558,6 +557,15 @@
                 "value": "application/json"
               }
             ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{readerName}}\",\n  \"status\": \"online\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
             "url": {
               "raw": "{{baseUrl}}/api/reader-status",
               "host": [
@@ -567,15 +575,6 @@
                 "api",
                 "reader-status"
               ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"{{readerName}}\",\n  \"status\": \"online\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
             },
             "description": "200 \"<name> is online\". online → status RUNNING, CONNECTED, last_seen = now, error cleared.\nUnknown name → 404 · status other than online/offline (case-insensitive) → 400."
           },
@@ -591,6 +590,15 @@
                 "value": "application/json"
               }
             ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{readerName}}\",\n  \"status\": \"offline\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
             "url": {
               "raw": "{{baseUrl}}/api/reader-status",
               "host": [
@@ -600,15 +608,6 @@
                 "api",
                 "reader-status"
               ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"{{readerName}}\",\n  \"status\": \"offline\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
             },
             "description": "200 \"<name> is offline\". offline → status STOPPED, DISCONNECTED, error cleared."
           },
@@ -624,6 +623,15 @@
                 "value": "application/json"
               }
             ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"online\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
             "url": {
               "raw": "{{baseUrl}}/api/reader-status",
               "host": [
@@ -634,24 +642,15 @@
                 "reader-status"
               ]
             },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"status\": \"online\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
             "description": "Omit name to apply to every reader → \"All readers are online\"."
           },
           "response": []
         }
-      ]
+      ],
+      "description": "All responses use the envelope { status, message, data }. Errors: { status: false, message, data: null }; validation errors return data: { field }.\n\nPresence reports from the middleware service. POST (first report) and PUT (later reports) behave the same. Every report is logged to reader_status_log."
     },
     {
       "name": "RFID Dashboard",
-      "description": "All responses use the envelope { status, message, data }. Errors: { status: false, message, data: null }; validation errors return data: { field }.\n\nSpec \"GET /dashboard\" lives at /api/rfid-dashboard (/api/dashboard is the Asset Management dashboard).",
       "item": [
         {
           "name": "Get RFID dashboard",
@@ -672,14 +671,28 @@
           },
           "response": []
         }
-      ]
+      ],
+      "description": "All responses use the envelope { status, message, data }. Errors: { status: false, message, data: null }; validation errors return data: { field }.\n\nSpec \"GET /dashboard\" lives at /api/rfid-dashboard (/api/dashboard is the Asset Management dashboard)."
     },
     {
       "name": "Floor Layout & Plans",
-      "description": "All responses use the envelope { status, message, data }. Errors: { status: false, message, data: null }; validation errors return data: { field }.\n\nFloorPlan: { id, name, imageUrl, zones[{ id (uuid), type: DOOR | BIN, name, x, y, width, height }], placements[{ readerName, placed, x, y, antennas[{ number, x, y }] }] }.\nPlacements reference readers by name; unknown names are silently dropped. Coordinates are pixels on the plan image.",
       "item": [
         {
           "name": "Get floor layout",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  if (body.data && body.data.activeId) pm.collectionVariables.set('floorPlanId', body.data.activeId);",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [],
@@ -695,21 +708,7 @@
             },
             "description": "→ data: { activeId, plans[] }. A default plan floor-1 / \"Floor 1\" exists when there are no plans."
           },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (pm.response.code === 200) {",
-                  "  const body = pm.response.json();",
-                  "  if (body.data && body.data.activeId) pm.collectionVariables.set('floorPlanId', body.data.activeId);",
-                  "}"
-                ]
-              }
-            }
-          ]
+          "response": []
         },
         {
           "name": "Save floor layout",
@@ -721,6 +720,15 @@
                 "value": "application/json"
               }
             ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"activeId\": \"floor-1\",\n  \"plans\": [\n    {\n      \"id\": \"floor-1\",\n      \"name\": \"Floor 1\",\n      \"imageUrl\": \"\",\n      \"zones\": [\n        {\n          \"id\": \"8d1c2a40-1b2e-4c3a-9f10-a1b2c3d4e5f6\",\n          \"type\": \"DOOR\",\n          \"name\": \"Door Zone\",\n          \"x\": 80,\n          \"y\": 80,\n          \"width\": 220,\n          \"height\": 120\n        }\n      ],\n      \"placements\": [\n        {\n          \"readerName\": \"{{readerName}}\",\n          \"placed\": true,\n          \"x\": 120,\n          \"y\": 110,\n          \"antennas\": [\n            {\n              \"number\": 1,\n              \"x\": 200,\n              \"y\": 140\n            }\n          ]\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
             "url": {
               "raw": "{{baseUrl}}/api/floor-layout",
               "host": [
@@ -731,51 +739,12 @@
                 "floor-layout"
               ]
             },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"activeId\": \"floor-1\",\n  \"plans\": [\n    {\n      \"id\": \"floor-1\",\n      \"name\": \"Floor 1\",\n      \"imageUrl\": \"\",\n      \"zones\": [\n        {\n          \"id\": \"8d1c2a40-1b2e-4c3a-9f10-a1b2c3d4e5f6\",\n          \"type\": \"DOOR\",\n          \"name\": \"Door Zone\",\n          \"x\": 80,\n          \"y\": 80,\n          \"width\": 220,\n          \"height\": 120\n        }\n      ],\n      \"placements\": [\n        {\n          \"readerName\": \"{{readerName}}\",\n          \"placed\": true,\n          \"x\": 120,\n          \"y\": 110,\n          \"antennas\": [\n            {\n              \"number\": 1,\n              \"x\": 200,\n              \"y\": 140\n            }\n          ]\n        }\n      ]\n    }\n  ]\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
             "description": "Replaces ALL plans, zones and placements in one transaction (plans not in the body are deleted). Body = data from GET.\n400: no plans · activeId not a plan id · plan without id/name · zone without id/name or bad type."
           },
           "response": []
         },
         {
           "name": "Create floor plan",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/floor-plans",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "floor-plans"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"Floor 2\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "description": "201 \"Floor plan created\" → data = new plan (UUID id, empty image, no zones). The new plan becomes active."
-          },
-          "response": [],
           "event": [
             {
               "listen": "test",
@@ -789,7 +758,37 @@
                 ]
               }
             }
-          ]
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Floor 2\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/floor-plans",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "floor-plans"
+              ]
+            },
+            "description": "201 \"Floor plan created\" → data = new plan (UUID id, empty image, no zones). The new plan becomes active."
+          },
+          "response": []
         },
         {
           "name": "Update floor plan",
@@ -801,6 +800,15 @@
                 "value": "application/json"
               }
             ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Floor 2\",\n  \"imageUrl\": \"\",\n  \"zones\": [\n    {\n      \"id\": \"3f2b6c1e-7a4d-4e9b-8c21-0d5e6f7a8b9c\",\n      \"type\": \"BIN\",\n      \"name\": \"Bin Zone\",\n      \"x\": 300,\n      \"y\": 200,\n      \"width\": 220,\n      \"height\": 120\n    }\n  ],\n  \"placements\": [\n    {\n      \"readerName\": \"{{readerName}}\",\n      \"placed\": true,\n      \"x\": 320,\n      \"y\": 220,\n      \"antennas\": []\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
             "url": {
               "raw": "{{baseUrl}}/api/floor-plans/{{floorPlanId}}",
               "host": [
@@ -812,15 +820,6 @@
                 "{{floorPlanId}}"
               ]
             },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"Floor 2\",\n  \"imageUrl\": \"\",\n  \"zones\": [\n    {\n      \"id\": \"3f2b6c1e-7a4d-4e9b-8c21-0d5e6f7a8b9c\",\n      \"type\": \"BIN\",\n      \"name\": \"Bin Zone\",\n      \"x\": 300,\n      \"y\": 200,\n      \"width\": 220,\n      \"height\": 120\n    }\n  ],\n  \"placements\": [\n    {\n      \"readerName\": \"{{readerName}}\",\n      \"placed\": true,\n      \"x\": 320,\n      \"y\": 220,\n      \"antennas\": []\n    }\n  ]\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
             "description": "200 \"Floor plan updated\" → data = plan. zones / placements, when sent, replace the plan's existing ones. 404 unknown id."
           },
           "response": []
@@ -830,6 +829,17 @@
           "request": {
             "method": "POST",
             "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "value": null,
+                  "description": "JPG/PNG/WebP/GIF/SVG, max 5MB. Field name must be `file`."
+                }
+              ]
+            },
             "url": {
               "raw": "{{baseUrl}}/api/floor-plans/{{floorPlanId}}/image",
               "host": [
@@ -840,17 +850,6 @@
                 "floor-plans",
                 "{{floorPlanId}}",
                 "image"
-              ]
-            },
-            "body": {
-              "mode": "formdata",
-              "formdata": [
-                {
-                  "key": "file",
-                  "type": "file",
-                  "value": null,
-                  "description": "JPG/PNG/WebP/GIF/SVG, max 5MB. Field name must be `file`."
-                }
               ]
             },
             "description": "200 \"Floor image uploaded\" → data: { id, imageUrl }. imageUrl is public (/uploads/floor-plan/...). 400 missing/empty/non-image file · 404 unknown plan."
@@ -898,11 +897,11 @@
           },
           "response": []
         }
-      ]
+      ],
+      "description": "All responses use the envelope { status, message, data }. Errors: { status: false, message, data: null }; validation errors return data: { field }.\n\nFloorPlan: { id, name, imageUrl, zones[{ id (uuid), type: DOOR | BIN, name, x, y, width, height }], placements[{ readerName, placed, x, y, antennas[{ number, x, y }] }] }.\nPlacements reference readers by name; unknown names are silently dropped. Coordinates are pixels on the plan image."
     },
     {
       "name": "Service",
-      "description": "All responses use the envelope { status, message, data }. Errors: { status: false, message, data: null }; validation errors return data: { field }.\n\nMiddleware service state (browser mode only). Stored in service_state; no OS process is started or stopped.\n\nNOT_CREATED --create--> STOPPED --start--> RUNNING --stop--> STOPPED; delete from STOPPED/RUNNING → NOT_CREATED. Invalid transitions → 409.\n\nService object: { status, label, updatedAt }.",
       "item": [
         {
           "name": "Get service",
@@ -1001,7 +1000,8 @@
           },
           "response": []
         }
-      ]
+      ],
+      "description": "All responses use the envelope { status, message, data }. Errors: { status: false, message, data: null }; validation errors return data: { field }.\n\nMiddleware service state (browser mode only). Stored in service_state; no OS process is started or stopped.\n\nNOT_CREATED --create--> STOPPED --start--> RUNNING --stop--> STOPPED; delete from STOPPED/RUNNING → NOT_CREATED. Invalid transitions → 409.\n\nService object: { status, label, updatedAt }."
     }
   ],
   "auth": {

@@ -5,8 +5,7 @@ const { normalizeRfidTag, isValidRfidTag } = require('./rfidMovements');
 const CHUNK_SIZE = 500;
 
 const RFID_DUP_FILE_MSG = 'Duplicate RFID tag in import file';
-const SERIAL_DUP_FILE_MSG = 'Duplicate asset serial in import file';
-const ASSET_CODE_DUP_FILE_MSG = 'Duplicate Asset ID in import file';
+const ASSET_CODE_DUP_FILE_MSG = 'Duplicate Asset ID / Asset Serial in import file';
 const ASSET_TYPE_DUP_FILE_MSG = 'Duplicate asset type name in import file';
 
 function chunkArray(arr, size = CHUNK_SIZE) {
@@ -27,14 +26,6 @@ function buildIdMap(list) {
   const map = new Map();
   (list || []).forEach((item) => {
     if (item?.id != null) map.set(Number(item.id), item);
-  });
-  return map;
-}
-
-function buildSerialMap(assets) {
-  const map = new Map();
-  (assets || []).forEach((a) => {
-    if (a?.asset_serial) map.set(a.asset_serial, a);
   });
   return map;
 }
@@ -63,10 +54,9 @@ function appendImportRowError(row, message) {
   row._status = 'error';
 }
 
-/** Flag duplicate RFID / asset serial / Asset ID within one preview or execute batch. */
+/** Flag duplicate RFID / Asset ID within one preview or execute batch. */
 function markImportRowDuplicates(rows) {
   const rfidSeen = new Map();
-  const serialSeen = new Map();
   const codeSeen = new Map();
 
   rows.forEach((row, index) => {
@@ -87,16 +77,6 @@ function markImportRowDuplicates(rows) {
         appendImportRowError(rows[rfidSeen.get(rfid)], RFID_DUP_FILE_MSG);
       } else {
         rfidSeen.set(rfid, index);
-      }
-    }
-
-    const serial = row.asset_serial != null ? String(row.asset_serial).trim() : '';
-    if (serial) {
-      if (serialSeen.has(serial)) {
-        appendImportRowError(row, SERIAL_DUP_FILE_MSG);
-        appendImportRowError(rows[serialSeen.get(serial)], SERIAL_DUP_FILE_MSG);
-      } else {
-        serialSeen.set(serial, index);
       }
     }
   });
@@ -144,7 +124,6 @@ function resolveMasterIdFromMaps(row, idKey, nameKey, nameMap, idMap, label) {
 function slimAssetPreviewRow(row) {
   return {
     asset_code: row.asset_code,
-    asset_serial: row.asset_serial,
     name: row.name,
     rfid_tag: row.rfid_tag,
     asset_type: row.asset_type,
@@ -177,6 +156,8 @@ function slimLocationPreviewRow(row) {
     _status: row._status,
     _errors: row._errors,
     _parentFix: row._parentFix,
+    _nameFix: row._nameFix,
+    _notes: row._notes,
     _existingId: row._existingId,
     _parentId: row._parentId,
   };
@@ -216,7 +197,6 @@ module.exports = {
   chunkArray,
   buildNameMap,
   buildIdMap,
-  buildSerialMap,
   buildAssetCodeMap,
   buildRfidMap,
   markImportRowDuplicates,

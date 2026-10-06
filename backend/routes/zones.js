@@ -44,37 +44,6 @@ async function findDuplicateName(name, excludeId = null) {
   return rows[0] || null;
 }
 
-/** True when a `readers` table with a `zone_type` column exists (cascade target). */
-async function readersZoneTypeColumnExists(conn = db) {
-  const [rows] = await conn.query(
-    `SELECT 1 AS ok
-     FROM information_schema.columns
-     WHERE table_schema = DATABASE()
-       AND table_name = 'readers'
-       AND column_name = 'zone_type'
-     LIMIT 1`
-  );
-  return rows.length > 0;
-}
-
-/** Rename zone_type on every reader still using the old name. */
-async function cascadeRenameOnReaders(conn, oldName, newName) {
-  if (!(await readersZoneTypeColumnExists(conn))) return;
-  await conn.query(
-    'UPDATE readers SET zone_type = ? WHERE zone_type = ?',
-    [newName, oldName]
-  );
-}
-
-/** Clear zone_type to empty string on readers that used this name. */
-async function cascadeClearOnReaders(conn, oldName) {
-  if (!(await readersZoneTypeColumnExists(conn))) return;
-  await conn.query(
-    "UPDATE readers SET zone_type = '' WHERE zone_type = ?",
-    [oldName]
-  );
-}
-
 // GET /api/zones → [{ id, name }]
 router.get('/', async (req, res) => {
   const [rows] = await db.query(
@@ -137,28 +106,13 @@ router.put('/:id', async (req, res) => {
     return res.status(409).json({ message: `Zone "${parsed.name}" already exists` });
   }
 
-  const conn = await db.getConnection();
   try {
-    await conn.beginTransaction();
-
-    await conn.query(
-      'UPDATE zones SET name = ? WHERE id = ?',
-      [parsed.name, id]
-    );
-
-    if (existing.name !== parsed.name) {
-      await cascadeRenameOnReaders(conn, existing.name, parsed.name);
-    }
-
-    await conn.commit();
+    await db.query('UPDATE zones SET name = ? WHERE id = ?', [parsed.name, id]);
   } catch (err) {
-    await conn.rollback();
     if (err.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ message: `Zone "${parsed.name}" already exists` });
     }
     throw err;
-  } finally {
-    conn.release();
   }
 
   await audit.log(
@@ -180,18 +134,7 @@ router.delete('/:id', async (req, res) => {
   const existing = await findById(id);
   if (!existing) return res.status(404).json({ message: 'Zone not found' });
 
-  const conn = await db.getConnection();
-  try {
-    await conn.beginTransaction();
-    await cascadeClearOnReaders(conn, existing.name);
-    await conn.query('DELETE FROM zones WHERE id = ?', [id]);
-    await conn.commit();
-  } catch (err) {
-    await conn.rollback();
-    throw err;
-  } finally {
-    conn.release();
-  }
+  await db.query('DELETE FROM zones WHERE id = ?', [id]);
 
   await audit.log(
     'Settings',

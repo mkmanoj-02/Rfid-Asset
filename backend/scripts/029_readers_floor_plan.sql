@@ -46,7 +46,10 @@ CREATE TABLE IF NOT EXISTS floor_plans (
   CONSTRAINT chk_floor_plans_singleton CHECK (id = 1)
 );
 
-INSERT IGNORE INTO floor_plans (id, image_url) VALUES (1, NULL);
+INSERT IGNORE INTO floor_plans (id, image_url)
+SELECT 1, NULL FROM DUAL
+WHERE (SELECT DATA_TYPE FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'floor_plans' AND COLUMN_NAME = 'id') = 'int';
 
 CREATE TABLE IF NOT EXISTS floor_zones (
   id             INT NOT NULL AUTO_INCREMENT PRIMARY KEY,

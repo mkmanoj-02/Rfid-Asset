@@ -10,7 +10,7 @@ const {
 } = require('../lib/rfidMovements');
 
 const ASSET_COLS =
-  'asset_code, asset_serial, name, rfid_tag, tag_type_id, vendor_id, asset_type_id, current_location_id, status, description';
+  'asset_code, name, rfid_tag, tag_type_id, vendor_id, asset_type_id, current_location_id, status, description';
 
 /**
  * Ensure attribute definitions exist; returns Map keyed by `${typeId}:${attrNameLower}` -> attrId
@@ -98,10 +98,9 @@ function collectAttributePairs(rows, attrState, assetIdForRow) {
 
 async function batchInsertAssets(conn, rows) {
   if (!rows.length) return [];
-  const placeholders = rows.map(() => '(?,?,?,?,?,?,?,?,?,?)').join(',');
+  const placeholders = rows.map(() => '(?,?,?,?,?,?,?,?,?)').join(',');
   const vals = rows.flatMap((row) => [
     row.asset_code,
-    row.asset_serial || null,
     row.name,
     row.rfid_tag || null,
     row.tag_type_id || null,
@@ -121,11 +120,10 @@ async function batchInsertAssets(conn, rows) {
 
 async function batchUpdateAssets(conn, rows) {
   if (!rows.length) return;
-  const placeholders = rows.map(() => '(?,?,?,?,?,?,?,?,?,?,?)').join(',');
+  const placeholders = rows.map(() => '(?,?,?,?,?,?,?,?,?,?)').join(',');
   const vals = rows.flatMap((row) => [
     row._existingId,
     row.asset_code,
-    row.asset_serial || null,
     row.name,
     row.rfid_tag || null,
     row.tag_type_id || null,
@@ -136,11 +134,10 @@ async function batchUpdateAssets(conn, rows) {
     row.description || null,
   ]);
   await conn.query(
-    `INSERT INTO assets (id, asset_code, asset_serial, name, rfid_tag, tag_type_id, vendor_id, asset_type_id, current_location_id, status, description)
+    `INSERT INTO assets (id, asset_code, name, rfid_tag, tag_type_id, vendor_id, asset_type_id, current_location_id, status, description)
      VALUES ${placeholders}
      ON DUPLICATE KEY UPDATE
        asset_code = VALUES(asset_code),
-       asset_serial = COALESCE(VALUES(asset_serial), asset_serial),
        name = VALUES(name),
        rfid_tag = VALUES(rfid_tag),
        tag_type_id = VALUES(tag_type_id),

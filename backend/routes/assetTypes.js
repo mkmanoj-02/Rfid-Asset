@@ -70,45 +70,57 @@ router.post('/', requireModify('asset_type'), optionalImageUpload('asset_types')
     });
   }
 
+  const attrList = Array.isArray(attributes) ? attributes : [];
+  const seenInBatch = new Set();
+  for (const attr of attrList) {
+    const attrName = trimAttrName(attr.name);
+    if (!attrName)
+      return res.status(400).json({ message: 'Each attribute must have a non-empty name' });
+    if (seenInBatch.has(attrName))
+      return res.status(400).json({ message: `Duplicate attribute name in request: "${attrName}"` });
+    seenInBatch.add(attrName);
+  }
+
   let imageUrl = null;
   if (req.file) {
     imageUrl = publicUrlForStoredFile(ENTITY_UPLOAD_SUBDIR.asset_types, req.file.filename);
   }
 
-  const [result] = await db.query(
-    'INSERT INTO asset_types (name, description, parent_id, image_url) VALUES (?, ?, ?, ?)',
-    [name, description || null, req.body.parent_id || null, imageUrl]
-  );
-  const typeId = result.insertId;
+  const conn = await db.getConnection();
+  let typeId;
+  try {
+    await conn.beginTransaction();
+    const [result] = await conn.query(
+      'INSERT INTO asset_types (name, description, parent_id, image_url) VALUES (?, ?, ?, ?)',
+      [name, description || null, req.body.parent_id || null, imageUrl]
+    );
+    typeId = result.insertId;
 
-  if (attributes && Array.isArray(attributes) && attributes.length) {
-    const seenInBatch = new Set();
-    for (const attr of attributes) {
-      const attrName = trimAttrName(attr.name);
-      if (!attrName)
-        return res.status(400).json({ message: 'Each attribute must have a non-empty name' });
-      if (seenInBatch.has(attrName))
-        return res.status(400).json({ message: `Duplicate attribute name in request: "${attrName}"` });
-      seenInBatch.add(attrName);
-    }
-    for (const attr of attributes) {
+    for (const attr of attrList) {
       const attrName = trimAttrName(attr.name);
       const attrType = attr.attr_type || 'string';
-      const defVal = attr.default_value != null ? attr.default_value : null;
-      const [ins] = await db.query(
+      const defVal = attr.default_value != null && attr.default_value !== '' ? attr.default_value : null;
+      const [ins] = await conn.query(
         'INSERT INTO asset_type_attributes (asset_type_id, name, attr_type, default_value) VALUES (?, ?, ?, ?)',
         [typeId, attrName, attrType, defVal]
       );
       const attrId = ins.insertId;
       if (attrType === 'list' && attr.list_options && attr.list_options.length) {
         for (let i = 0; i < attr.list_options.length; i++) {
-          await db.query(
+          await conn.query(
             'INSERT INTO attribute_list_options (attribute_id, option_value, sort_order) VALUES (?, ?, ?)',
             [attrId, attr.list_options[i], i]
           );
         }
       }
     }
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    if (imageUrl) await safeUnlinkImageUrl(imageUrl);
+    throw err;
+  } finally {
+    conn.release();
   }
 
   await audit.log('Asset Type', 'Added', `Asset type "${name}" was created`, req.auditUser, req.auditUserId);
