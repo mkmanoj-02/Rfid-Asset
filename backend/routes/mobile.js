@@ -33,6 +33,13 @@ const fs = require('fs').promises;
 
 const FIELD_TYPE = { string: 'TEXT', double: 'NUMBER', date: 'DATE', list: 'LIST' };
 
+const SYNC_TIME_ZONE = 'Asia/Kolkata';
+
+/** Current time as 'YYYY-MM-DD HH:MM:SS' in SYNC_TIME_ZONE, independent of the server's TZ. */
+function syncTimeNow() {
+  return new Date().toLocaleString('sv-SE', { timeZone: SYNC_TIME_ZONE, hour12: false });
+}
+
 function toKey(name) {
   return String(name || '')
     .trim()
@@ -823,6 +830,7 @@ router.post('/sync', async (req, res, next) => {
         newlyTaggedCount: 0,
         newlyTaggedAssets: [],
         errors: [],
+        lastSyncTime: syncTimeNow(),
       });
     }
 
@@ -891,6 +899,7 @@ router.post('/sync', async (req, res, next) => {
       newlyTaggedCount: newlyTaggedAssets.length,
       newlyTaggedAssets,
       errors,
+      lastSyncTime: syncTimeNow(),
     });
   } catch (err) {
     next(err);

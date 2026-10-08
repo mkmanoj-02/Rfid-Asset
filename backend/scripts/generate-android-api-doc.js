@@ -480,6 +480,7 @@ const syncSection = [
       'One failing asset does not stop the others — it is returned in errors.',
       'inventoriedCount / missingCount count the synced assets by their status.',
       'newlyTaggedAssets: replace the local id with serverId on the device.',
+      'lastSyncTime: time of this sync in India time (IST), "YYYY-MM-DD HH:MM:SS". Store it as the device\'s last sync time.',
     ],
     success: [{
       code: 200,
@@ -489,6 +490,7 @@ const syncSection = [
         missingCount: 1,
         newlyTaggedAssets: [{ id: 'asset-9f3a', serverId: 1234, serial: 'AST-20001', name: 'New Laptop' }],
         errors: [],
+        lastSyncTime: '2026-10-08 09:50:15',
       },
     }, {
       code: 200,
@@ -498,6 +500,7 @@ const syncSection = [
         missingCount: 0,
         newlyTaggedAssets: [],
         errors: [{ id: 'asset-7b2c', serial: 'AST-20009', message: 'RFID "E2800003E89999" is already used by asset 1234' }],
+        lastSyncTime: '2026-10-08 09:50:15',
       },
     }],
     failures: [

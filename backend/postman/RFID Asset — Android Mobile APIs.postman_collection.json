@@ -386,7 +386,7 @@
                 "sync"
               ]
             },
-            "description": "CREATE inserts (or updates when the serial exists). Anything else updates by numeric id, then by serial.\n\nReturns `{ inventoriedCount, missingCount, newlyTaggedAssets: [{ id, serverId, serial, name }], errors: [{ id, serial, message }] }`."
+            "description": "CREATE inserts (or updates when the serial exists). Anything else updates by numeric id, then by serial.\n\nReturns `{ inventoriedCount, missingCount, newlyTaggedAssets: [{ id, serverId, serial, name }], errors: [{ id, serial, message }], lastSyncTime }`.\n\nlastSyncTime is the time of this sync in India time (IST), format YYYY-MM-DD HH:MM:SS."
           },
           "response": []
         }

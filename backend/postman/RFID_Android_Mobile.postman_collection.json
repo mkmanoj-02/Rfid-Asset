@@ -209,7 +209,7 @@
               "raw": "{\n  \"deviceName\": \"{{deviceName}}\",\n  \"syncedAt\": 1759040000000,\n  \"assets\": [\n    {\n      \"id\": \"asset-9f3a\",\n      \"clientAction\": \"CREATE\",\n      \"serial\": \"AST-20001\",\n      \"name\": \"New Laptop\",\n      \"assetTypeId\": {{assetTypeId}},\n      \"locationId\": {{locationId}},\n      \"rfid\": \"E2800003E89999\",\n      \"description\": \"\",\n      \"attributes\": { \"manufacturer\": \"Dell\", \"model\": \"Latitude 5440\" },\n      \"status\": \"INVENTORIED\",\n      \"lastSeenAt\": 1759040000000,\n      \"newlyTagged\": true,\n      \"updatedAt\": 1759040000000\n    },\n    {\n      \"id\": {{assetId}},\n      \"clientAction\": \"UPDATE\",\n      \"status\": \"MISSING\"\n    }\n  ]\n}"
             },
             "url": "{{baseUrl}}/api/mobile/sync",
-            "description": "CREATE inserts (or updates when the serial exists). Anything else updates by numeric id, then by serial.\n\nReturns `{ inventoriedCount, missingCount, newlyTaggedAssets: [{ id, serverId, serial, name }], errors: [{ id, serial, message }] }`."
+            "description": "CREATE inserts (or updates when the serial exists). Anything else updates by numeric id, then by serial.\n\nReturns `{ inventoriedCount, missingCount, newlyTaggedAssets: [{ id, serverId, serial, name }], errors: [{ id, serial, message }], lastSyncTime }`.\n\nlastSyncTime is the time of this sync in India time (IST), format YYYY-MM-DD HH:MM:SS."
           }
         }
       ]
