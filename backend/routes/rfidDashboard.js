@@ -2,15 +2,11 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { ok, envelopeNotFound, envelopeErrorHandler } = require('../lib/apiEnvelope');
-const { isoSql, toSqlUtc } = require('../lib/rfidTime');
+const { isoSql, todayRangeSql } = require('../lib/rfidTime');
 
 // GET /api/rfid-dashboard — RFID middleware counters (spec "GET /dashboard";
 // /api/dashboard stays the Asset Management dashboard)
 router.get('/', async (req, res) => {
-  const now = new Date();
-  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const dayEnd = new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate() + 1);
-
   const [[counts]] = await db.query(
     `SELECT COUNT(*) AS totalReaders,
             COALESCE(SUM(status = 'RUNNING'), 0) AS running
@@ -18,7 +14,7 @@ router.get('/', async (req, res) => {
   );
   const [[{ tagsToday }]] = await db.query(
     'SELECT COUNT(*) AS tagsToday FROM tag_events WHERE event_time >= ? AND event_time < ?',
-    [toSqlUtc(dayStart), toSqlUtc(dayEnd)]
+    todayRangeSql()
   );
   const [[service]] = await db.query('SELECT status FROM service_state WHERE id = 1');
   const [[stats]] = await db.query(

@@ -76,27 +76,19 @@ function mapReportAssetRow(r) {
 
 // Dashboard report data
 
-// Inventory vs Missing - "missing" = no movement recorded in [from, to]; total = all assets.
+// Inventory vs Missing - "missing" = asset_inventory_status 'missing' (same rule as the dashboard
+// and the Assets "Missing" filter). The date range only scopes the per-asset movement columns.
 router.get('/inventory-missing', async (req, res) => {
   const range = parseReportRange(req.query);
   if (!range.ok) return res.status(400).json({ message: range.message });
   const { fromDate, toDate } = range;
-
-  const missingWhere = `
-    NOT EXISTS (
-      SELECT 1 FROM movement_history mh
-      WHERE mh.asset_id = a.id
-        AND mh.moved_at >= ?
-        AND mh.moved_at < DATE_ADD(?, INTERVAL 1 DAY)
-    )
-  `;
 
   const totalScope = scopeAssetWhere(req.authz, 'a', [], []);
   const [[{ total }]] = await db.query(
     `SELECT COUNT(*) AS total FROM assets a ${totalScope.sql}`,
     totalScope.params
   );
-  const missingScope = scopeAssetWhere(req.authz, 'a', [missingWhere], [fromDate, toDate]);
+  const missingScope = scopeAssetWhere(req.authz, 'a', ["a.asset_inventory_status = 'missing'"], []);
   const [[{ missing }]] = await db.query(
     `SELECT COUNT(*) AS missing FROM assets a ${missingScope.sql}`,
     missingScope.params
@@ -114,7 +106,7 @@ router.get('/inventory-missing', async (req, res) => {
       CAST(NULL AS CHAR(255)) AS assigned_to,
       a.status AS asset_status,
       a.created_at AS created_at,
-      CASE WHEN COUNT(mh.id) > 0 THEN 'In Stock' ELSE 'Missing' END AS report_status,
+      CASE WHEN a.asset_inventory_status = 'missing' THEN 'Missing' ELSE 'In Stock' END AS report_status,
       COUNT(mh.id) AS movement_count,
       MAX(mh.moved_at) AS last_movement_at
     FROM assets a
@@ -123,10 +115,10 @@ router.get('/inventory-missing', async (req, res) => {
     LEFT JOIN movement_history mh ON mh.asset_id = a.id
       AND mh.moved_at >= ?
       AND mh.moved_at < DATE_ADD(?, INTERVAL 1 DAY)
-    ${totalScope.active ? `WHERE ${totalScope.sql.replace(/^WHERE /, '')}` : ''}
-    GROUP BY a.id, at.name, l.name
+    ${totalScope.sql}
+    GROUP BY a.id, at.name, l.name, a.asset_inventory_status
     ORDER BY report_status ASC, a.id DESC`,
-    [...totalScope.params, fromDate, toDate]
+    [fromDate, toDate, ...totalScope.params]
   );
   const assets = assetRows.map((r) => ({
     ...mapReportAssetRow(r),

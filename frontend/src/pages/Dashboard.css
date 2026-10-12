@@ -288,3 +288,25 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Location tree rows (search-friendly, hover via CSS instead of JS) */
+.dash-loc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #f7f8fc;
+  font-size: 13px;
+  transition: background 0.1s;
+}
+.dash-loc-row:hover { background: #f8fafc; }
+.dash-loc-row.is-selected,
+.dash-loc-row.is-selected:hover { background: #eff6ff; }
+
+/* Map pins matching the location search */
+.dash-map-pin.is-match > div {
+  animation: dashPinPulse 1.2s ease-in-out infinite;
+}
+@keyframes dashPinPulse {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}

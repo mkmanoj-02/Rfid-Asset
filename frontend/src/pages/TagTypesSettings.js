@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
-import { getTagTypes, createTagType, updateTagType, deleteTagType } from '../api';
+import { getTagTypes, createTagType, updateTagType, deleteTagType, bulkDeleteTagTypes } from '../api';
 import { useToast } from '../Toast';
 import { toastApiFailure } from '../apiErrorHandling';
+import CheckableMasterList from '../components/CheckableMasterList';
+import ConfirmModal from '../components/ConfirmModal';
 
 export default function TagTypesSettings() {
   const [items, setItems]     = useState([]);
@@ -9,15 +11,35 @@ export default function TagTypesSettings() {
   const [modal, setModal]     = useState(false);
   const [form, setForm]       = useState({ name: '', description: '' });
   const [editing, setEditing] = useState(null);
+  const [checkedIds, setCheckedIds] = useState(() => new Set());
+  const [confirmBulk, setConfirmBulk] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const { showToast } = useToast();
 
   const load = () => getTagTypes().then(r => {
     setItems(r.data);
-    if (selected) {
-      const updated = r.data.find(t => t.id === selected.id);
-      setSelected(updated || null);
-    }
+    setSelected((cur) => (cur ? r.data.find(t => t.id === cur.id) || null : null));
+    const ids = new Set(r.data.map((t) => t.id));
+    setCheckedIds((cur) => new Set([...cur].filter((id) => ids.has(id))));
   }).catch((e) => toastApiFailure(e, 'Tag types'));
+
+  const bulkRemove = async () => {
+    const ids = [...checkedIds];
+    if (!ids.length || deleting) return;
+    setDeleting(true);
+    try {
+      const { data } = await bulkDeleteTagTypes(ids);
+      showToast(data?.message || `${ids.length} tag type(s) deleted`, 'success');
+      if (selected && checkedIds.has(selected.id)) setSelected(null);
+      setCheckedIds(new Set());
+      setConfirmBulk(false);
+      load();
+    } catch (e) {
+      toastApiFailure(e, 'Tag types');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   useEffect(() => { load(); }, []);
 
@@ -42,6 +64,7 @@ export default function TagTypesSettings() {
       await deleteTagType(id);
       showToast('Tag type deleted', 'success');
       if (selected?.id === id) setSelected(null);
+      setCheckedIds((cur) => { const next = new Set(cur); next.delete(id); return next; });
       load();
     } catch (e) {
       toastApiFailure(e, 'Tag types');
@@ -56,26 +79,16 @@ export default function TagTypesSettings() {
       </div>
 
       <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
-        {/* List */}
-        <div style={{ width: 260, flexShrink: 0, background: '#fff', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', overflow: 'hidden', border: '1px solid #e8edf2' }}>
-          <div style={{ fontWeight: 600, fontSize: 13, padding: '10px 16px', background: '#f8fafc', borderBottom: '1px solid #e8edf2', textAlign: 'center' }}>
-            Tag Type List
-          </div>
-          <div style={{ maxHeight: 480, overflowY: 'auto' }}>
-            {items.map(t => (
-              <div key={t.id} onClick={() => setSelected(t)} style={{
-                padding: '10px 16px', cursor: 'pointer', fontSize: 14,
-                borderBottom: '1px solid #f8fafc',
-                background: selected?.id === t.id ? '#dbeafe' : 'inherit',
-                color:      selected?.id === t.id ? '#1d4ed8' : '#374151',
-                fontWeight: selected?.id === t.id ? 600 : 400,
-              }}>
-                {t.name}
-              </div>
-            ))}
-            {items.length === 0 && <div style={{ padding: 20, color: '#aaa', fontSize: 13, textAlign: 'center' }}>No tag types yet</div>}
-          </div>
-        </div>
+        <CheckableMasterList
+          title="Tag Type List"
+          items={items}
+          selectedId={selected?.id}
+          onSelect={setSelected}
+          checkedIds={checkedIds}
+          onCheckedChange={setCheckedIds}
+          onBulkDelete={() => setConfirmBulk(true)}
+          emptyLabel="No tag types yet"
+        />
 
         {/* Detail */}
         {selected ? (
@@ -104,6 +117,17 @@ export default function TagTypesSettings() {
           </div>
         )}
       </div>
+
+      {confirmBulk && (
+        <ConfirmModal
+          title="Delete tag types"
+          message={`Delete ${checkedIds.size} selected tag type${checkedIds.size !== 1 ? 's' : ''}? This cannot be undone.`}
+          subMessage="Assets using these tag types will have their Tag Type cleared."
+          confirmLabel={deleting ? 'Deleting…' : 'Delete'}
+          onConfirm={bulkRemove}
+          onCancel={() => { if (!deleting) setConfirmBulk(false); }}
+        />
+      )}
 
       {modal && (
         <div className="modal-overlay">

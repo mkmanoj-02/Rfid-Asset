@@ -3,7 +3,7 @@ const router = express.Router();
 const db = require('../db');
 const audit = require('../audit');
 const { ok, conflict, envelopeNotFound, envelopeErrorHandler } = require('../lib/apiEnvelope');
-const { isoSql } = require('../lib/rfidTime');
+const { isoSql, nowSql } = require('../lib/rfidTime');
 
 /**
  * Middleware service state (browser mode only). Persists the state machine in
@@ -17,7 +17,8 @@ const LABELS = { NOT_CREATED: 'Not created', STOPPED: 'Stopped', RUNNING: 'Runni
 
 async function readState(conn = db) {
   await conn.query(
-    "INSERT IGNORE INTO service_state (id, status, updated_at) VALUES (1, 'NOT_CREATED', UTC_TIMESTAMP(3))"
+    "INSERT IGNORE INTO service_state (id, status, updated_at) VALUES (1, 'NOT_CREATED', ?)",
+    [nowSql()]
   );
   const [[row]] = await conn.query(
     `SELECT status, ${isoSql('updated_at')} AS updated_iso FROM service_state WHERE id = 1`
@@ -36,7 +37,7 @@ async function transition(req, res, { from, to, message, conflictMessage }) {
       await conn.rollback();
       throw conflict(typeof conflictMessage === 'function' ? conflictMessage(row.status) : conflictMessage);
     }
-    await conn.query('UPDATE service_state SET status = ?, updated_at = UTC_TIMESTAMP(3) WHERE id = 1', [to]);
+    await conn.query('UPDATE service_state SET status = ?, updated_at = ? WHERE id = 1', [to, nowSql()]);
     await conn.commit();
   } catch (err) {
     if (!err.httpStatus) await conn.rollback().catch(() => {});

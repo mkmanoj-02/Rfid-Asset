@@ -181,6 +181,19 @@ router.put('/:id', requireModify('location'), optionalImageUpload('locations'), 
       if (parent && Number(parent.id) === Number(current.id)) {
         return { status: 400, body: { message: 'A location cannot be its own parent' } };
       }
+      if (parent) {
+        const [allLocs] = await conn.query('SELECT id, parent_id FROM locations');
+        const parentOf = new Map(allLocs.map((l) => [Number(l.id), l.parent_id == null ? null : Number(l.parent_id)]));
+        const seen = new Set();
+        let cur = Number(parent.id);
+        while (cur != null && !seen.has(cur)) {
+          if (cur === Number(current.id)) {
+            return { status: 400, body: { message: 'A location cannot be moved under one of its own sub-locations' } };
+          }
+          seen.add(cur);
+          cur = parentOf.get(cur) ?? null;
+        }
+      }
 
       let requestedName = req.body.name;
       if (current.parent_id != null && Number(current.parent_id) !== Number(pid)) {

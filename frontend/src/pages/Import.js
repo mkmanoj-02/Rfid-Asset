@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import XLSX from 'xlsx-js-style';
 import api, { getTagTypes, getVendors } from '../api';
 import { toastApiFailure } from '../apiErrorHandling';
@@ -9,6 +9,30 @@ const ASSET_CODE_DUP_FILE_MSG = 'Duplicate Asset ID / Asset Serial in import fil
 
 function normalizeHeader(h) {
   return String(h).toLowerCase().replace(/\s+/g, '');
+}
+
+/** Preview renders at most this many rows; import still processes every row. */
+const PREVIEW_RENDER_LIMIT = 500;
+
+/**
+ * Shrink the sheet's declared range to the cells that actually exist.
+ * Excel often declares ranges like A1:Z1048576 when whole columns are formatted, and
+ * converting that range row-by-row freezes the browser tab.
+ */
+function trimSheetToUsedRange(ws) {
+  let maxR = -1;
+  let maxC = -1;
+  Object.keys(ws).forEach((key) => {
+    if (key[0] === '!') return;
+    const cell = ws[key];
+    if (!cell || cell.v === undefined || cell.v === null || cell.v === '') return;
+    const { r, c } = XLSX.utils.decode_cell(key);
+    if (r > maxR) maxR = r;
+    if (c > maxC) maxC = c;
+  });
+  if (maxR < 0) return false;
+  ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: maxR, c: maxC } });
+  return true;
 }
 
 function appendImportPreviewError(row, message) {
@@ -239,7 +263,7 @@ function FieldMapper({ fields, columns, mapping, attrMapping, attrTypes, onMappi
 
   return (
     <div style={{ background: '#fff', borderRadius: 8, padding: 20, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginBottom: 20 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '160px 200px 160px', gap: '10px 16px', alignItems: 'center' }}>
+      <div className="import-field-mapper">
         <div style={{ fontWeight: 600, fontSize: 13, color: '#333' }}>CSV Keys</div>
         <div style={{ fontWeight: 600, fontSize: 13, color: '#333' }}>System Keys</div>
         <div />
@@ -316,8 +340,26 @@ function PreviewStatusLegend({ rows }) {
 // ── Preview Table (scrollable body — footer/actions stay fixed below) ──
 function PreviewTable({ rows, columns, attrCols, fieldLabels }) {
   const labelFor = (key) => fieldLabels?.[key] || key;
+  const [showAll, setShowAll] = useState(false);
+  const visibleRows = useMemo(() => {
+    if (showAll || rows.length <= PREVIEW_RENDER_LIMIT) return rows;
+    // Error rows first so problems stay visible when the list is truncated.
+    const errors = rows.filter(isImportPreviewErrorRow);
+    const rest = rows.filter((r) => !isImportPreviewErrorRow(r));
+    return [...errors, ...rest].slice(0, PREVIEW_RENDER_LIMIT);
+  }, [rows, showAll]);
+  const hidden = rows.length - visibleRows.length;
 
   return (
+    <>
+    {hidden > 0 && (
+      <div className="import-preview-truncated">
+        Showing {visibleRows.length} of {rows.length} rows (errors first). All rows will be imported.
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowAll(true)}>
+          Show all rows
+        </button>
+      </div>
+    )}
     <table className="import-preview-table">
       <thead>
         <tr>
@@ -328,7 +370,7 @@ function PreviewTable({ rows, columns, attrCols, fieldLabels }) {
         </tr>
       </thead>
       <tbody>
-        {rows.map((row, i) => (
+        {visibleRows.map((row, i) => (
           <tr key={i} style={{ background: STATUS_BG[row._status] || 'inherit' }}>
             <td><StatusBadge status={row._status} /></td>
             {columns.map((c) => <td key={c} style={{ fontSize: 13 }}>{row[c] ?? ''}</td>)}
@@ -341,6 +383,7 @@ function PreviewTable({ rows, columns, attrCols, fieldLabels }) {
         ))}
       </tbody>
     </table>
+    </>
   );
 }
 
@@ -362,6 +405,7 @@ function ImportWizard({ title, fields, endpoint }) {
   const [importProgress, setImportProgress] = useState(null);
   const [tagTypes, setTagTypes] = useState([]);
   const [vendors, setVendors] = useState([]);
+  const [parsing, setParsing] = useState(false);
 
   const fieldLabels = Object.fromEntries(fields.map((f) => [f.key, f.label]));
 
@@ -413,27 +457,53 @@ function ImportWizard({ title, fields, endpoint }) {
     const file = e.target.files[0];
     if (!file) return;
     setFileName(file.name);
+    setParsing(true);
     const reader = new FileReader();
-    reader.onload = (evt) => {
-      const wb = XLSX.read(evt.target.result, { type: 'binary' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-      if (data.length < 1) return;
-      const headers = data[0].map(h => String(h).trim()).filter(Boolean);
-      const rows = data.slice(1).filter(r => r.some(c => c !== '')).map(r => {
-        const obj = {};
-        headers.forEach((h, i) => { obj[h] = String(r[i] || '').trim(); });
-        return obj;
-      });
-      setColumns(headers);
-      setRawRows(rows);
-      const { auto, savedAttrTypes, savedAttrMapping } = loadSaved(headers);
-      setMapping(auto);
-      setAttrTypes(savedAttrTypes);
-      setAttrMapping(savedAttrMapping);
-      setStep(2);
+    reader.onerror = () => {
+      setParsing(false);
+      showToast('Could not read the file', 'error');
     };
-    reader.readAsBinaryString(file);
+    reader.onload = (evt) => {
+      // Let the "Reading file…" state paint before the synchronous parse.
+      setTimeout(() => {
+        try {
+          const wb = XLSX.read(new Uint8Array(evt.target.result), { type: 'array', cellStyles: false, cellHTML: false });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          if (!ws || !trimSheetToUsedRange(ws)) {
+            showToast('The file has no data', 'warning');
+            return;
+          }
+          const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', blankrows: false });
+          if (data.length < 1) return;
+          const headerRow = data[0].map((h) => String(h).trim());
+          const headers = headerRow.filter(Boolean);
+          const headerIdx = headers.map((h) => headerRow.indexOf(h));
+          const rows = [];
+          for (let r = 1; r < data.length; r++) {
+            const line = data[r];
+            if (!line.some((c) => c !== '' && c != null)) continue;
+            const obj = {};
+            headers.forEach((h, i) => {
+              const v = line[headerIdx[i]];
+              obj[h] = v === undefined || v === null ? '' : String(v).trim();
+            });
+            rows.push(obj);
+          }
+          setColumns(headers);
+          setRawRows(rows);
+          const { auto, savedAttrTypes, savedAttrMapping } = loadSaved(headers);
+          setMapping(auto);
+          setAttrTypes(savedAttrTypes);
+          setAttrMapping(savedAttrMapping);
+          setStep(2);
+        } catch (err) {
+          showToast(`Could not read the file: ${err.message || err}`, 'error');
+        } finally {
+          setParsing(false);
+        }
+      }, 30);
+    };
+    reader.readAsArrayBuffer(file);
     e.target.value = '';
   };
 
@@ -640,10 +710,11 @@ function ImportWizard({ title, fields, endpoint }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <input type="text" readOnly value={fileName} placeholder="No file selected"
                 style={{ width: 240, padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13 }} />
-              <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer', marginBottom: 0 }}>
+              <label className="btn btn-secondary btn-sm" style={{ cursor: parsing ? 'wait' : 'pointer', marginBottom: 0, opacity: parsing ? 0.6 : 1 }}>
                 ...
-                <input type="file" accept=".csv,.xls,.xlsx" style={{ display: 'none' }} onChange={handleFile} />
+                <input type="file" accept=".csv,.xls,.xlsx" style={{ display: 'none' }} onChange={handleFile} disabled={parsing} />
               </label>
+              {parsing && <span style={{ fontSize: 13, color: '#5a67d8' }}>Reading file…</span>}
             </div>
             <button className="btn btn-secondary btn-sm" style={{ color: '#7c8cf8' }} onClick={() => downloadSample(endpoint)}>
               ⬇ Download sample spreadsheet

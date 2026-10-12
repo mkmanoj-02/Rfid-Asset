@@ -106,7 +106,7 @@ function endpoint(spec) {
   out.push(para(`URL: ${BASE_URL}${spec.path}`, { font: 'Consolas', size: 18, color: '555555' }));
   if (spec.description) out.push(para(spec.description));
   if (spec.notes) spec.notes.forEach((n) => out.push(bullet(n)));
-  out.push(para(`Auth: ${spec.auth === false ? 'None (public)' : 'Bearer access token required'}`, { italics: true, color: '555555' }));
+  out.push(para(`Auth: ${spec.auth === false ? 'None (public)' : 'X-Auth-Token header (or web-app Bearer token)'}`, { italics: true, color: '555555' }));
   if (spec.params) {
     out.push(label('Path parameters'));
     out.push(table(['Name', 'Type', 'Description'], spec.params));
@@ -140,8 +140,8 @@ const err = (message, field) => ({ status: false, message, data: field ? { field
 // ── Shared samples ─────────────────────────────────────────────
 
 const UNAUTH = [
-  { code: 401, desc: 'Missing / invalid Authorization header', body: { status: false, message: 'Access token required. Use Authorization: Bearer <token>' } },
-  { code: 403, desc: 'Access token expired — call refresh-token, then retry', body: { status: false, message: 'Access token expired', code: 'TOKEN_EXPIRED' } },
+  { code: 401, desc: 'X-Auth-Token is not a configured key', body: { status: false, message: 'Invalid X-Auth-Token', data: null } },
+  { code: 401, desc: 'No X-Auth-Token and no Bearer token', body: { status: false, message: 'Access token required. Use Authorization: Bearer <token>' } },
 ];
 
 const ID_PARAM = [['id', 'integer', 'Reader id']];
@@ -219,7 +219,7 @@ const authSection = [
     path: '/api/auth/login',
     title: 'Login (unchanged)',
     auth: false,
-    description: 'Existing login API. The RFID middleware service and the RFID UI sign in here and send the accessToken as a Bearer token on every RFID request.',
+    description: 'Existing login API, used by the web app (RFID UI), which sends the accessToken as a Bearer token. The RFID middleware service does not log in; it sends the X-Auth-Token header instead.',
     request: { username: '<username>', password: '<password>' },
     success: [{
       code: 200,
@@ -645,7 +645,7 @@ const intro = [
     ['Base URL', BASE_URL],
     ['Path prefix', 'All endpoints are under /api (e.g. /api/readers)'],
     ['Content type', 'application/json; charset=utf-8 (image upload: multipart/form-data)'],
-    ['Authentication', 'Bearer access token from POST /api/auth/login on every request'],
+    ['Authentication', 'RFID middleware: header X-Auth-Token: <API key> on every request (key from RFID_API_KEYS on the server; no login). Web app: Bearer access token from POST /api/auth/login.'],
     ['JSON naming', 'camelCase'],
     ['Timestamps', 'ISO 8601, milliseconds, +00:00 (UTC) — e.g. 2026-09-30T09:52:11.123+00:00'],
     ['Database', 'Existing Asset Management database (no separate rfid_middleware database)'],

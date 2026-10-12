@@ -25,6 +25,7 @@ const {
   DEFAULT_PLAN_ID,
   DEFAULT_PLAN_NAME,
 } = require('../lib/floorLayout');
+const { nowSql } = require('../lib/rfidTime');
 const {
   uploadImageMiddleware,
   publicUrlForStoredFile,
@@ -115,11 +116,11 @@ layoutRouter.put('/', async (req, res) => {
     for (const p of plans) {
       await conn.query(
         `INSERT INTO floor_plans (id, name, image_url, is_active, sort_order, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, UTC_TIMESTAMP(3), UTC_TIMESTAMP(3))
+         VALUES (?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE
            name = VALUES(name), image_url = VALUES(image_url), is_active = VALUES(is_active),
-           sort_order = VALUES(sort_order), updated_at = UTC_TIMESTAMP(3)`,
-        [p.id, p.name, p.imageUrl, p.id === activeId ? 1 : 0, order++]
+           sort_order = VALUES(sort_order), updated_at = VALUES(updated_at)`,
+        [p.id, p.name, p.imageUrl, p.id === activeId ? 1 : 0, order++, nowSql(), nowSql()]
       );
       await writePlanContents(conn, p.id, p.zones, p.placements);
     }
@@ -158,11 +159,11 @@ plansRouter.post('/', async (req, res) => {
     const [[{ nextOrder }]] = await conn.query(
       'SELECT COALESCE(MAX(sort_order), -1) + 1 AS nextOrder FROM floor_plans'
     );
-    await conn.query('UPDATE floor_plans SET is_active = 0, updated_at = UTC_TIMESTAMP(3) WHERE is_active = 1');
+    await conn.query('UPDATE floor_plans SET is_active = 0, updated_at = ? WHERE is_active = 1', [nowSql()]);
     await conn.query(
       `INSERT INTO floor_plans (id, name, image_url, is_active, sort_order, created_at, updated_at)
-       VALUES (?, ?, '', 1, ?, UTC_TIMESTAMP(3), UTC_TIMESTAMP(3))`,
-      [id, name, nextOrder]
+       VALUES (?, ?, '', 1, ?, ?, ?)`,
+      [id, name, nextOrder, nowSql(), nowSql()]
     );
   });
   await audit.log('Settings', 'Added', `Floor plan "${name}" was created`, req.auditUser, req.auditUserId);
@@ -181,8 +182,8 @@ plansRouter.put('/:id', async (req, res) => {
 
   await inTransaction(async (conn) => {
     await conn.query(
-      'UPDATE floor_plans SET name = ?, image_url = ?, updated_at = UTC_TIMESTAMP(3) WHERE id = ?',
-      [name, imageUrl, existing.id]
+      'UPDATE floor_plans SET name = ?, image_url = ?, updated_at = ? WHERE id = ?',
+      [name, imageUrl, nowSql(), existing.id]
     );
     if (replaceZones || replacePlacements) {
       const current = (await loadPlans(conn, existing.id))[0];
@@ -207,8 +208,8 @@ plansRouter.delete('/:id', async (req, res) => {
     if (Number(n) === 0) {
       await conn.query(
         `INSERT INTO floor_plans (id, name, image_url, is_active, sort_order, created_at, updated_at)
-         VALUES (?, ?, '', 1, 0, UTC_TIMESTAMP(3), UTC_TIMESTAMP(3))`,
-        [DEFAULT_PLAN_ID, DEFAULT_PLAN_NAME]
+         VALUES (?, ?, '', 1, 0, ?, ?)`,
+        [DEFAULT_PLAN_ID, DEFAULT_PLAN_NAME, nowSql(), nowSql()]
       );
     }
     await ensureDefaultPlan(conn);
@@ -247,8 +248,9 @@ plansRouter.post('/:id/image', async (req, res, next) => {
   }
   const existing = await getPlanRow(req.params.id);
   const imageUrl = publicUrlForStoredFile(FLOOR_PLAN_SUBDIR, req.file.filename);
-  await db.query('UPDATE floor_plans SET image_url = ?, updated_at = UTC_TIMESTAMP(3) WHERE id = ?', [
+  await db.query('UPDATE floor_plans SET image_url = ?, updated_at = ? WHERE id = ?', [
     imageUrl,
+    nowSql(),
     existing.id,
   ]);
   if (existing.image_url && existing.image_url !== imageUrl) await unlinkImageIfUnused(existing.image_url);
@@ -258,7 +260,7 @@ plansRouter.post('/:id/image', async (req, res, next) => {
 
 plansRouter.delete('/:id/image', async (req, res) => {
   const existing = await requirePlan(req.params.id);
-  await db.query("UPDATE floor_plans SET image_url = '', updated_at = UTC_TIMESTAMP(3) WHERE id = ?", [existing.id]);
+  await db.query("UPDATE floor_plans SET image_url = '', updated_at = ? WHERE id = ?", [nowSql(), existing.id]);
   await unlinkImageIfUnused(existing.image_url);
   await audit.log('Settings', 'Modified', `Floor plan "${existing.name}" image removed`, req.auditUser, req.auditUserId);
   ok(res, 'Floor image removed', { id: existing.id, imageUrl: '' });

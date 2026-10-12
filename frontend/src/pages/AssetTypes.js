@@ -543,6 +543,7 @@ export default function AssetTypes() {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ name: '', description: '', parent_id: '', attributes: [] });
   const [editing, setEditing] = useState(null);
+  const [addSubOf, setAddSubOf] = useState(null);
   const [imageFile, setImageFile] = useState(null);
   const [removeImage, setRemoveImage] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -561,6 +562,7 @@ export default function AssetTypes() {
   const openAdd = (parentId = '') => {
     setForm({ name: '', description: '', parent_id: parentId, attributes: [] });
     setEditing(null);
+    setAddSubOf(parentId || null);
     setImageFile(null);
     setRemoveImage(false);
     setModal(true);
@@ -569,10 +571,24 @@ export default function AssetTypes() {
   const openEdit = (item) => {
     setForm({ name: item.name, description: item.description || '', parent_id: item.parent_id || '' });
     setEditing(item.id);
+    setAddSubOf(null);
     setImageFile(null);
     setRemoveImage(false);
     setModal(true);
   };
+
+  /** "+ Add sub-type": only the chosen type and the types above it (top level first). */
+  const parentTypeOptions = useMemo(() => {
+    if (!addSubOf) return items.filter(t => t.id !== editing);
+    const byId = new Map(items.map(t => [t.id, t]));
+    const chain = [];
+    const seen = new Set();
+    for (let cur = byId.get(addSubOf); cur && !seen.has(cur.id); cur = byId.get(cur.parent_id)) {
+      seen.add(cur.id);
+      chain.unshift(cur);
+    }
+    return chain;
+  }, [addSubOf, items, editing]);
 
   const editingItem = editing ? items.find(t => t.id === editing) : null;
   const typePreviewUrl = editingItem?.image_url ? resolveImageUrl(editingItem.image_url) : null;
@@ -766,8 +782,8 @@ export default function AssetTypes() {
             <div className="form-group">
               <label>Parent Asset Type</label>
               <select value={form.parent_id} onChange={e => setForm({ ...form, parent_id: e.target.value })}>
-                <option value="">— None (top level) —</option>
-                {items.filter(t => t.id !== editing).map(t => (
+                {!addSubOf && <option value="">— None (top level) —</option>}
+                {parentTypeOptions.map(t => (
                   <option key={t.id} value={t.id}>{t.parent_name ? `${t.parent_name} › ${t.name}` : t.name}</option>
                 ))}
               </select>

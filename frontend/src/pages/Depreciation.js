@@ -10,6 +10,13 @@ const METHOD_DESC = {
   'Declining Balance': 'Fixed % on reducing balance. Aggressive early write-off.',
 };
 
+/** Today's date in the user's timezone as YYYY-MM-DD (toISOString would give the UTC day). */
+function localToday() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 const STATUS_COLORS = { success: '#10b981', failed: '#ef4444', partial: '#f59e0b' };
 
 // ── Depreciation Rules Tab ─────────────────────────────────────
@@ -18,14 +25,14 @@ function RulesTab({ assetTypes }) {
   const [rules, setRules] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editRule, setEditRule] = useState(null);
-  const [form, setForm] = useState({ asset_type_id: '', method: 'SLM', useful_life_years: '', depreciation_rate: '', salvage_value: '', effective_from: new Date().toISOString().split('T')[0], stop_on_disposal: true, partial_year: true });
+  const [form, setForm] = useState({ asset_type_id: '', method: 'SLM', useful_life_years: '', depreciation_rate: '', salvage_value: '', effective_from: localToday(), stop_on_disposal: true, partial_year: true });
 
   const load = () => api.get('/depreciation/rules').then(r => setRules(r.data))
     .catch((e) => toastApiFailure(e, 'Depreciation rules'));
 
   useEffect(() => { load(); }, []);
 
-  const openAdd = () => { setForm({ asset_type_id: '', method: 'SLM', useful_life_years: '', depreciation_rate: '', salvage_value: '', effective_from: new Date().toISOString().split('T')[0], stop_on_disposal: true, partial_year: true }); setEditRule(null); setShowForm(true); };
+  const openAdd = () => { setForm({ asset_type_id: '', method: 'SLM', useful_life_years: '', depreciation_rate: '', salvage_value: '', effective_from: localToday(), stop_on_disposal: true, partial_year: true }); setEditRule(null); setShowForm(true); };
   const openEdit = (r) => { setForm({ asset_type_id: r.asset_type_id, method: r.method, useful_life_years: r.useful_life_years, depreciation_rate: r.depreciation_rate, salvage_value: r.salvage_value, effective_from: r.effective_from?.split('T')[0] || '', stop_on_disposal: !!r.stop_on_disposal, partial_year: !!r.partial_year }); setEditRule(r); setShowForm(true); };
 
   const save = async () => {
@@ -186,7 +193,7 @@ function RulesTab({ assetTypes }) {
 function RunHistoryTab({ assetTypes }) {
   const [history, setHistory] = useState([]);
   const [running, setRunning] = useState(false);
-  const [runForm, setRunForm] = useState({ asset_type_id: '', run_date: new Date().toISOString().split('T')[0] });
+  const [runForm, setRunForm] = useState({ asset_type_id: '', run_date: localToday() });
   const [expandedRun, setExpandedRun] = useState(null);
   const [entries, setEntries] = useState([]);
   const [bulkForm, setBulkForm] = useState({ asset_type_id: '', purchase_cost: '', salvage_value: '', purchase_date: '' });

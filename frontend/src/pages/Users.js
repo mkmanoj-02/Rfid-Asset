@@ -299,8 +299,9 @@ function AssetTypeTreePicker(props) {
       {...props}
       items={props.assetTypes}
       title="Asset Type Privileges"
-      hint="Select asset types. Child types under a selected parent are included automatically."
+      hint="Select a parent type to include all child types automatically. You can still uncheck individual child types if needed."
       saveLabelSingular="Type"
+      cascadeDescendants
       emptyLabel="No asset types found"
       renderNodeExtra={(node, depth) => (
         node.parent_name && depth === 0 ? (
@@ -373,6 +374,7 @@ function AssetPrivilegePicker({ current, onClose, onSave, assetTypes = [] }) {
   const [entries, setEntries] = useState(current || []); // [{ attribute_id, attribute_name, value }]
   const [selAttr, setSelAttr] = useState('');
   const [selVal, setSelVal] = useState('');
+  const [selVals, setSelVals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [listOptionsLoading, setListOptionsLoading] = useState(false);
 
@@ -416,29 +418,58 @@ function AssetPrivilegePicker({ current, onClose, onSave, assetTypes = [] }) {
     return () => { cancelled = true; };
   }, [selAttr, selectedAttr?.id, selectedAttr?.attr_type, assetTypes]);
 
-  const addEntry = () => {
-    if (!selAttr) return;
-    const attr = allAttrs.find(a => String(a.id) === String(selAttr));
-    if (!attr) return;
-    // avoid duplicate attribute
-    if (entries.find(e => String(e.attribute_id) === String(selAttr))) return;
-    setEntries([...entries, { attribute_id: attr.id, attribute_name: attr.name, value: selVal }]);
-    setSelAttr('');
-    setSelVal('');
+  const isListAttr = selectedAttr?.attr_type === 'list';
+  const hasEntry = (attrId, value) => entries.some(
+    (e) => String(e.attribute_id) === String(attrId)
+      && String(e.value).trim().toLowerCase() === String(value).trim().toLowerCase()
+  );
+
+  const toggleListValue = (value) => {
+    setSelVals((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
   };
 
-  const removeEntry = (idx) => setEntries(entries.filter((_, i) => i !== idx));
+  const addEntry = () => {
+    if (!selectedAttr) return;
+    const values = isListAttr ? selVals : [selVal];
+    const fresh = values
+      .map((v) => String(v).trim())
+      .filter((v) => v && !hasEntry(selectedAttr.id, v))
+      .map((v) => ({ attribute_id: selectedAttr.id, attribute_name: selectedAttr.name, value: v }));
+    if (fresh.length) setEntries([...entries, ...fresh]);
+    setSelAttr('');
+    setSelVal('');
+    setSelVals([]);
+  };
+
+  const removeEntry = (entry) => setEntries(entries.filter((e) => e !== entry));
+  const removeAttribute = (attrId) => setEntries(entries.filter((e) => String(e.attribute_id) !== String(attrId)));
+
+  const groupedEntries = useMemo(() => {
+    const groups = [];
+    for (const e of entries) {
+      let g = groups.find((x) => String(x.attribute_id) === String(e.attribute_id));
+      if (!g) {
+        g = { attribute_id: e.attribute_id, attribute_name: e.attribute_name, items: [] };
+        groups.push(g);
+      }
+      g.items.push(e);
+    }
+    return groups;
+  }, [entries]);
 
   return (
     <div className="modal-overlay" style={{ zIndex: 400 }}>
       <div className="modal asset-priv-modal">
         <h2 style={{ fontSize: 15, marginBottom: 4 }}>Attribute based Asset Privilege</h2>
-        <p style={{ fontSize: 12, color: '#888', marginBottom: 16 }}>Select an attribute and enter a value. Only assets matching ALL entries will be visible.</p>
+        <p style={{ fontSize: 12, color: '#888', marginBottom: 16 }}>
+          Select an attribute and its value(s). List attributes accept multiple values — an asset matches if it has any of them.
+          Assets must match every attribute listed.
+        </p>
 
         <div className="asset-priv-add-row">
           <select
             value={selAttr}
-            onChange={e => { setSelAttr(e.target.value); setSelVal(''); }}
+            onChange={e => { setSelAttr(e.target.value); setSelVal(''); setSelVals([]); }}
             aria-label="Select attribute"
           >
             <option value="">- Select attribute -</option>
@@ -450,16 +481,27 @@ function AssetPrivilegePicker({ current, onClose, onSave, assetTypes = [] }) {
           </select>
 
           {selectedAttr && (
-            selectedAttr.attr_type === 'list' ? (
-              <select
-                value={selVal}
-                onChange={e => setSelVal(e.target.value)}
-                disabled={listOptionsLoading}
-                aria-label="Attribute value"
-              >
-                <option value="">{listOptionsLoading ? 'Loading values…' : '- Select value -'}</option>
-                {(selectedAttr.list_options || []).map(o => <option key={o.id} value={o.option_value}>{o.option_value}</option>)}
-              </select>
+            isListAttr ? (
+              <div className="asset-priv-list-values" role="group" aria-label="Attribute values">
+                {listOptionsLoading && <div className="asset-priv-list-empty">Loading values…</div>}
+                {!listOptionsLoading && !(selectedAttr.list_options || []).length && (
+                  <div className="asset-priv-list-empty">No values configured</div>
+                )}
+                {!listOptionsLoading && (selectedAttr.list_options || []).map((o) => {
+                  const already = hasEntry(selectedAttr.id, o.option_value);
+                  return (
+                    <label key={o.id} className={already ? 'is-added' : undefined}>
+                      <input
+                        type="checkbox"
+                        checked={already || selVals.includes(o.option_value)}
+                        disabled={already}
+                        onChange={() => toggleListValue(o.option_value)}
+                      />
+                      <span>{o.option_value}</span>
+                    </label>
+                  );
+                })}
+              </div>
             ) : (
               <input
                 value={selVal}
@@ -475,9 +517,9 @@ function AssetPrivilegePicker({ current, onClose, onSave, assetTypes = [] }) {
             type="button"
             className="btn btn-secondary btn-sm asset-priv-add-btn"
             onClick={addEntry}
-            disabled={!selAttr || !selVal}
+            disabled={!selAttr || (isListAttr ? !selVals.length : !selVal)}
           >
-            Add Attribute
+            {isListAttr && selVals.length > 1 ? `Add ${selVals.length} Values` : 'Add Attribute'}
           </button>
         </div>
 
@@ -495,12 +537,23 @@ function AssetPrivilegePicker({ current, onClose, onSave, assetTypes = [] }) {
                 </tr>
               </thead>
               <tbody>
-                {entries.map((e, i) => (
-                  <tr key={i} style={{ borderTop: '1px solid #f0f2f5' }}>
-                    <td style={{ padding: '7px 12px' }}>{e.attribute_name}</td>
-                    <td style={{ padding: '7px 12px' }}>{e.value}</td>
-                    <td style={{ padding: '7px 12px', textAlign: 'center' }}>
-                      <button onClick={() => removeEntry(i)} style={{ background: 'none', border: 'none', color: '#e53e3e', cursor: 'pointer', fontSize: 16 }}>×</button>
+                {groupedEntries.map((g) => (
+                  <tr key={g.attribute_id} style={{ borderTop: '1px solid #f0f2f5' }}>
+                    <td style={{ padding: '7px 12px', verticalAlign: 'top' }}>{g.attribute_name}</td>
+                    <td style={{ padding: '7px 12px' }}>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {g.items.map((e) => (
+                          <span key={e.value} className="asset-priv-chip">
+                            {e.value}
+                            {g.items.length > 1 && (
+                              <button type="button" onClick={() => removeEntry(e)} aria-label={`Remove ${e.value}`}>×</button>
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td style={{ padding: '7px 12px', textAlign: 'center', verticalAlign: 'top' }}>
+                      <button type="button" onClick={() => removeAttribute(g.attribute_id)} aria-label={`Remove ${g.attribute_name}`} style={{ background: 'none', border: 'none', color: '#e53e3e', cursor: 'pointer', fontSize: 16 }}>×</button>
                     </td>
                   </tr>
                 ))}
@@ -659,7 +712,13 @@ function UserForm({ user, locations, assetTypes, onClose, onSaved }) {
 
   const assetPrivLabel = (val) => {
     if (!val || !val.length) return '-Any Asset-';
-    return val.map(e => `${e.attribute_name}=${e.value}`).join(', ');
+    const groups = new Map();
+    val.forEach((e) => {
+      const key = String(e.attribute_id ?? e.attribute_name);
+      if (!groups.has(key)) groups.set(key, { name: e.attribute_name, values: [] });
+      groups.get(key).values.push(e.value);
+    });
+    return [...groups.values()].map((g) => `${g.name}=${g.values.join(' / ')}`).join(', ');
   };
 
   const assetTypePrivLabel = (val) => {

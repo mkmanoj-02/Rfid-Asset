@@ -7,6 +7,7 @@
 const crypto = require('crypto');
 const db = require('../db');
 const { validationError } = require('./apiEnvelope');
+const { nowSql } = require('./rfidTime');
 
 const ZONE_TYPES = new Set(['DOOR', 'BIN']);
 const DEFAULT_PLAN_ID = 'floor-1';
@@ -40,14 +41,14 @@ async function ensureDefaultPlan(conn = db) {
   if (Number(n) === 0) {
     await conn.query(
       `INSERT IGNORE INTO floor_plans (id, name, image_url, is_active, sort_order, created_at, updated_at)
-       VALUES (?, ?, '', 1, 0, UTC_TIMESTAMP(3), UTC_TIMESTAMP(3))`,
-      [DEFAULT_PLAN_ID, DEFAULT_PLAN_NAME]
+       VALUES (?, ?, '', 1, 0, ?, ?)`,
+      [DEFAULT_PLAN_ID, DEFAULT_PLAN_NAME, nowSql(), nowSql()]
     );
   }
   const [[{ active }]] = await conn.query('SELECT COUNT(*) AS active FROM floor_plans WHERE is_active = 1');
   if (Number(active) !== 1) {
     const [[first]] = await conn.query('SELECT id FROM floor_plans ORDER BY sort_order, created_at, id LIMIT 1');
-    await conn.query('UPDATE floor_plans SET is_active = (id = ?), updated_at = UTC_TIMESTAMP(3)', [first.id]);
+    await conn.query('UPDATE floor_plans SET is_active = (id = ?), updated_at = ?', [first.id, nowSql()]);
   }
 }
 

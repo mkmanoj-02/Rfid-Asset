@@ -8,7 +8,7 @@ const {
   envelopeNotFound,
   envelopeErrorHandler,
 } = require('../lib/apiEnvelope');
-const { toSqlUtc } = require('../lib/rfidTime');
+const { nowSql } = require('../lib/rfidTime');
 
 const PRESENCE = new Set(['online', 'offline']);
 
@@ -52,9 +52,9 @@ async function reportPresence(req, res) {
         await conn.query(
           `UPDATE readers
               SET status = 'RUNNING', connection_status = 'CONNECTED',
-                  last_seen = UTC_TIMESTAMP(3), last_error = NULL
+                  last_seen = ?, last_error = NULL
             WHERE id IN (?)`,
-          [ids]
+          [nowSql(), ids]
         );
       } else {
         await conn.query(
@@ -67,7 +67,7 @@ async function reportPresence(req, res) {
       await conn.query(
         `INSERT INTO reader_status_log (reader_id, reader_name, presence, http_method, reported_at)
          VALUES ?`,
-        [targets.map((r) => [r.id, r.name, presence, req.method, toSqlUtc(new Date())])]
+        [targets.map((r) => [r.id, r.name, presence, req.method, nowSql()])]
       );
     }
     await conn.commit();

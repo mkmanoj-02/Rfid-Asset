@@ -45,9 +45,9 @@ function TreeNode({ node, selectedId, onSelect, level = 0 }) {
         {hasChildren
           ? <span className="tree-toggle" onClick={e => { e.stopPropagation(); setExpanded(!expanded); }}>{expanded ? '▾' : '▸'}</span>
           : <span style={{ display: 'inline-block', width: 16 }} />}
-        <span>{node.name}</span>
+        <span className="tree-node-name">{node.name}</span>
         {node.location_type_name && (
-          <span style={{ marginLeft: 6, fontSize: 11, background: '#e9ecff', color: '#5a67d8', padding: '1px 6px', borderRadius: 8 }}>
+          <span style={{ marginLeft: 6, flexShrink: 0, fontSize: 11, background: '#e9ecff', color: '#5a67d8', padding: '1px 6px', borderRadius: 8 }}>
             {node.location_type_name}
           </span>
         )}
@@ -114,6 +114,7 @@ function ManageLocations() {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ name: '', description: '', parent_id: '', location_type_id: '' });
   const [editing, setEditing] = useState(null);
+  const [addChildOf, setAddChildOf] = useState(null);
   const [imageFile, setImageFile] = useState(null);
   const [removeImage, setRemoveImage] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -149,6 +150,7 @@ function ManageLocations() {
   const openAdd = (parentId = '') => {
     setForm({ name: '', description: '', parent_id: parentId, location_type_id: '' });
     setEditing(null);
+    setAddChildOf(parentId || null);
     setImageFile(null);
     setRemoveImage(false);
     setModal(true);
@@ -162,10 +164,24 @@ function ManageLocations() {
       location_type_id: item.location_type_id || '',
     });
     setEditing(item.id);
+    setAddChildOf(null);
     setImageFile(null);
     setRemoveImage(false);
     setModal(true);
   };
+
+  /** "+ Add Child": only the chosen location and the locations above it (top level first). */
+  const parentOptions = useMemo(() => {
+    if (!addChildOf) return flatList.filter(l => l.id !== editing);
+    const byId = new Map(flatList.map(l => [l.id, l]));
+    const chain = [];
+    const seen = new Set();
+    for (let cur = byId.get(addChildOf); cur && !seen.has(cur.id); cur = byId.get(cur.parent_id)) {
+      seen.add(cur.id);
+      chain.unshift(cur);
+    }
+    return chain;
+  }, [addChildOf, flatList, editing]);
 
   const editingItem = editing ? flatList.find(l => l.id === editing) : null;
   const locationPreviewUrl = editingItem?.image_url && !removeImage
@@ -284,10 +300,10 @@ function ManageLocations() {
           />
         ) : (
           <div className="location-detail-body">
-            <div className="page-header">
-              <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+            <div className="page-header location-detail-header">
+              <div className="location-detail-heading">
               <LocationImage imageUrl={selected.image_url} name={selected.name} />
-              <div>
+              <div className="location-detail-text">
                 <h1>{selected.name}</h1>
                 {selected.location_type_name && (
                   <span style={{ fontSize: 12, background: '#e9ecff', color: '#5a67d8', padding: '2px 8px', borderRadius: 8, marginRight: 8 }}>
@@ -298,7 +314,7 @@ function ManageLocations() {
                 {selected.description && <p style={{ color: '#555', marginTop: 4 }}>{selected.description}</p>}
               </div>
               </div>
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                 {canModify && <button className="btn btn-primary" onClick={() => openAdd(selected.id)}>+ Add Child</button>}
                 {canModify && <button className="btn btn-secondary" onClick={() => openEdit(selected)}>Edit</button>}
                 {canDelete && <button className="btn btn-danger" onClick={() => remove(selected.id)}>Delete</button>}
@@ -308,7 +324,7 @@ function ManageLocations() {
             {children.length === 0 ? <p style={{ color: '#aaa' }}>No sub-locations.</p> : filteredChildren.length === 0 ? (
               <p style={{ color: '#aaa' }}>No sub-locations match your search.</p>
             ) : (
-              <table>
+              <table className="location-children-table">
                 <thead><tr><th>Name</th><th>Type</th><th>Description</th><th>Actions</th></tr></thead>
                 <tbody>
                   {filteredChildren.map(child => (
@@ -348,8 +364,8 @@ function ManageLocations() {
             <div className="form-group">
               <label>Parent Location</label>
               <select value={form.parent_id} onChange={e => setForm({ ...form, parent_id: e.target.value })}>
-                <option value="">— None (top level) —</option>
-                {flatList.filter(l => l.id !== editing).map(l => (
+                {!addChildOf && <option value="">— None (top level) —</option>}
+                {parentOptions.map(l => (
                   <option key={l.id} value={l.id}>{l.name}</option>
                 ))}
               </select>

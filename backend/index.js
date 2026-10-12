@@ -55,7 +55,7 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-username', 'x-user-id'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-username', 'x-user-id', 'x-auth-token'],
 }));
 
 app.use(express.json({ limit: '10mb' }));
@@ -78,6 +78,19 @@ app.get('/api/site-branding', siteBrandingRoutes.getBranding);
 // Public static files — must be before verifyToken (<img> cannot send Bearer tokens)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// RFID middleware API (spec v2.0) — { status, message, data } envelope.
+// Accepts X-Auth-Token (RFID_API_KEYS) or the normal Bearer JWT.
+const apiKeyOrToken = require('./middleware/apiKeyOrToken');
+const { layoutRouter: floorLayoutRoutes, plansRouter: floorPlansRoutes } = require('./routes/floorLayout');
+app.use('/api/zones', apiKeyOrToken, require('./routes/zones'));
+app.use('/api/readers', apiKeyOrToken, require('./routes/readers'));
+app.use('/api/tag-reads', apiKeyOrToken, require('./routes/tagReads'));
+app.use('/api/reader-status', apiKeyOrToken, require('./routes/readerStatus'));
+app.use('/api/rfid-dashboard', apiKeyOrToken, require('./routes/rfidDashboard'));
+app.use('/api/floor-layout', apiKeyOrToken, floorLayoutRoutes);
+app.use('/api/floor-plans', apiKeyOrToken, floorPlansRoutes);
+app.use('/api/service', apiKeyOrToken, require('./routes/rfidService'));
 
 app.use(verifyToken);
 const attachUserContext = require('./middleware/attachUserContext');
@@ -106,17 +119,6 @@ app.use('/api/tag-types', require('./routes/tagTypes'));
 app.use('/api/vendors',  require('./routes/vendors'));
 app.use('/api/depreciation', require('./routes/depreciation'));
 app.use('/api/handheld-devices', require('./routes/handheldDevices'));
-app.use('/api/zones', require('./routes/zones'));
-app.use('/api/readers', require('./routes/readers'));
-
-// RFID middleware API (spec v2.0) — { status, message, data } envelope
-const { layoutRouter: floorLayoutRoutes, plansRouter: floorPlansRoutes } = require('./routes/floorLayout');
-app.use('/api/tag-reads', require('./routes/tagReads'));
-app.use('/api/reader-status', require('./routes/readerStatus'));
-app.use('/api/rfid-dashboard', require('./routes/rfidDashboard'));
-app.use('/api/floor-layout', floorLayoutRoutes);
-app.use('/api/floor-plans', floorPlansRoutes);
-app.use('/api/service', require('./routes/rfidService'));
 app.use('/api/unassigned-tags', require('./routes/unassignedTags'));
 app.use('/api/site-branding', siteBrandingRoutes);
 

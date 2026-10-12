@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import api, { bulkDeleteRules, getRules } from '../api';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import api, { bulkDeleteRules, getAttributeList, getRules } from '../api';
 import { toastApiFailure } from '../apiErrorHandling';
 import ConfirmModal from '../components/ConfirmModal';
 import { useToast } from '../Toast';
@@ -181,12 +181,19 @@ function RuleWizard({ locations, assetTypes, onClose, onSaved, editRule }) {
 
   const needsDuration = ['stays_at', 'not_scanned', 'is_missing'].includes(form.asset_action);
 
+  const [saving, setSaving] = useState(false);
+  /** Synchronous guard: rapid double-clicks fire before `saving` state re-renders. */
+  const savingRef = useRef(false);
+
   const save = async () => {
+    if (savingRef.current) return;
     if (!form.name.trim()) {
       showToast('Rule name is required', 'warning');
       return;
     }
     const payload = { ...form, filter_type: filterType };
+    savingRef.current = true;
+    setSaving(true);
     try {
       if (editRule) {
         await api.put(`/rules/${editRule.id}`, { ...payload, is_active: editRule.is_active });
@@ -198,6 +205,8 @@ function RuleWizard({ locations, assetTypes, onClose, onSaved, editRule }) {
       onClose();
     } catch (e) {
       toastApiFailure(e, 'Rules');
+      savingRef.current = false;
+      setSaving(false);
     }
   };
 
@@ -424,9 +433,11 @@ function RuleWizard({ locations, assetTypes, onClose, onSaved, editRule }) {
               </div>
             </div>
             <div className="modal-actions">
-              <button className="btn btn-secondary" onClick={goBackToConditionStep}>← Back</button>
-              <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-              <button className="btn btn-primary" onClick={save}>Save Rule</button>
+              <button className="btn btn-secondary" onClick={goBackToConditionStep} disabled={saving}>← Back</button>
+              <button className="btn btn-secondary" onClick={onClose} disabled={saving}>Cancel</button>
+              <button className="btn btn-primary" onClick={save} disabled={saving}>
+                {saving ? 'Saving…' : 'Save Rule'}
+              </button>
             </div>
           </div>
         )}

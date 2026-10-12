@@ -9,7 +9,7 @@ const {
   envelopeErrorHandler,
 } = require('../lib/apiEnvelope');
 const { parseBatch, ingestBatch, EVENT_TYPES } = require('../lib/rfidTagEvents');
-const { isoSql, parseIso, toSqlUtc } = require('../lib/rfidTime');
+const { isoSql, parseIso, toSqlLocal, nowSql } = require('../lib/rfidTime');
 
 async function recordFailedPost() {
   try {
@@ -38,9 +38,9 @@ router.post('/', async (req, res) => {
       `UPDATE api_post_stats
           SET successful_posts = successful_posts + 1,
               tags_posted = tags_posted + ?,
-              last_post_at = UTC_TIMESTAMP(3)
+              last_post_at = ?
         WHERE id = 1`,
-      [summary.accepted]
+      [summary.accepted, nowSql()]
     );
     await conn.commit();
   } catch (err) {
@@ -168,11 +168,11 @@ router.get('/', async (req, res) => {
   }
   if (from) {
     where.push('event_time >= ?');
-    args.push(toSqlUtc(from));
+    args.push(toSqlLocal(from));
   }
   if (to) {
     where.push('event_time <= ?');
-    args.push(toSqlUtc(to));
+    args.push(toSqlLocal(to));
   }
   if (eventType) {
     where.push('event_type = ?');

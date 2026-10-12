@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
-import { getVendors, createVendor, updateVendor, deleteVendor } from '../api';
+import { getVendors, createVendor, updateVendor, deleteVendor, bulkDeleteVendors } from '../api';
 import { useToast } from '../Toast';
 import { toastApiFailure } from '../apiErrorHandling';
+import CheckableMasterList from '../components/CheckableMasterList';
+import ConfirmModal from '../components/ConfirmModal';
 
 export default function VendorsSettings() {
   const [items, setItems]     = useState([]);
@@ -9,15 +11,35 @@ export default function VendorsSettings() {
   const [modal, setModal]     = useState(false);
   const [form, setForm]       = useState({ name: '', contact: '', email: '', phone: '', website: '', description: '' });
   const [editing, setEditing] = useState(null);
+  const [checkedIds, setCheckedIds] = useState(() => new Set());
+  const [confirmBulk, setConfirmBulk] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const { showToast } = useToast();
 
   const load = () => getVendors().then(r => {
     setItems(r.data);
-    if (selected) {
-      const updated = r.data.find(v => v.id === selected.id);
-      setSelected(updated || null);
-    }
+    setSelected((cur) => (cur ? r.data.find(v => v.id === cur.id) || null : null));
+    const ids = new Set(r.data.map((v) => v.id));
+    setCheckedIds((cur) => new Set([...cur].filter((id) => ids.has(id))));
   }).catch((e) => toastApiFailure(e, 'Vendors'));
+
+  const bulkRemove = async () => {
+    const ids = [...checkedIds];
+    if (!ids.length || deleting) return;
+    setDeleting(true);
+    try {
+      const { data } = await bulkDeleteVendors(ids);
+      showToast(data?.message || `${ids.length} vendor(s) deleted`, 'success');
+      if (selected && checkedIds.has(selected.id)) setSelected(null);
+      setCheckedIds(new Set());
+      setConfirmBulk(false);
+      load();
+    } catch (e) {
+      toastApiFailure(e, 'Vendors');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   useEffect(() => { load(); }, []);
 
@@ -45,6 +67,7 @@ export default function VendorsSettings() {
       await deleteVendor(id);
       showToast('Vendor deleted', 'success');
       if (selected?.id === id) setSelected(null);
+      setCheckedIds((cur) => { const next = new Set(cur); next.delete(id); return next; });
       load();
     } catch (e) {
       toastApiFailure(e, 'Vendors');
@@ -59,26 +82,16 @@ export default function VendorsSettings() {
       </div>
 
       <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
-        {/* List */}
-        <div style={{ width: 260, flexShrink: 0, background: '#fff', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', overflow: 'hidden', border: '1px solid #e8edf2' }}>
-          <div style={{ fontWeight: 600, fontSize: 13, padding: '10px 16px', background: '#f8fafc', borderBottom: '1px solid #e8edf2', textAlign: 'center' }}>
-            Vendor List
-          </div>
-          <div style={{ maxHeight: 480, overflowY: 'auto' }}>
-            {items.map(v => (
-              <div key={v.id} onClick={() => setSelected(v)} style={{
-                padding: '10px 16px', cursor: 'pointer', fontSize: 14,
-                borderBottom: '1px solid #f8fafc',
-                background: selected?.id === v.id ? '#dbeafe' : 'inherit',
-                color:      selected?.id === v.id ? '#1d4ed8' : '#374151',
-                fontWeight: selected?.id === v.id ? 600 : 400,
-              }}>
-                {v.name}
-              </div>
-            ))}
-            {items.length === 0 && <div style={{ padding: 20, color: '#aaa', fontSize: 13, textAlign: 'center' }}>No vendors yet</div>}
-          </div>
-        </div>
+        <CheckableMasterList
+          title="Vendor List"
+          items={items}
+          selectedId={selected?.id}
+          onSelect={setSelected}
+          checkedIds={checkedIds}
+          onCheckedChange={setCheckedIds}
+          onBulkDelete={() => setConfirmBulk(true)}
+          emptyLabel="No vendors yet"
+        />
 
         {/* Detail */}
         {selected ? (
@@ -111,6 +124,17 @@ export default function VendorsSettings() {
           </div>
         )}
       </div>
+
+      {confirmBulk && (
+        <ConfirmModal
+          title="Delete vendors"
+          message={`Delete ${checkedIds.size} selected vendor${checkedIds.size !== 1 ? 's' : ''}? This cannot be undone.`}
+          subMessage="Assets linked to these vendors will have their Vendor cleared."
+          confirmLabel={deleting ? 'Deleting…' : 'Delete'}
+          onConfirm={bulkRemove}
+          onCancel={() => { if (!deleting) setConfirmBulk(false); }}
+        />
+      )}
 
       {modal && (
         <div className="modal-overlay">

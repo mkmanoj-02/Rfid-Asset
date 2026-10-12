@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "c3dadc9d-41a6-4851-9b7d-837125a3a25c",
     "name": "RFID Asset — Readers & Floor Plan",
-    "description": "Auth, reader catalogs, Readers and the RFID middleware APIs (tag reads, reader status, RFID dashboard, floor plans, service).\n\n1. Run **Auth → Login** first (saves `accessToken`).\n2. Other requests use Bearer `{{accessToken}}`.\n3. Create requests save returned ids into collection variables (readerId, readerName, floorPlanId…).\n\nRFID middleware endpoints return { status, message, data }; timestamps are ISO 8601 with milliseconds and +00:00.",
+    "description": "Reader catalogs, Readers and the RFID middleware APIs (tag reads, reader status, RFID dashboard, floor plans, service).\n\n**Authentication**\n1. Set the collection variable `apiKey` to the server's RFID API key (`RFID_API_KEYS` in backend/.env).\n2. Every request sends it as the header `X-Auth-Token: {{apiKey}}`; no login is needed.\n3. A wrong key returns 401 { status: false, message: \"Invalid X-Auth-Token\" }.\n4. Requests without X-Auth-Token still accept a web-app Bearer token (Auth → Login saves `accessToken`).\n\nCreate requests save returned ids into collection variables (readerId, readerName, floorPlanId…).\n\nRFID middleware endpoints return { status, message, data }; timestamps are ISO 8601 with milliseconds and +00:00.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "_exporter_id": "44739241",
     "_collection_link": "https://go.postman.co/collection/44739241-c3dadc9d-41a6-4851-9b7d-837125a3a25c?source=collection_link"
@@ -152,7 +152,18 @@
           },
           "response": []
         }
-      ]
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{accessToken}}",
+            "type": "string"
+          }
+        ]
+      },
+      "description": "Web-app login (Bearer JWT). Not needed by the RFID middleware, which uses X-Auth-Token."
     },
     {
       "name": "Zones",
@@ -1005,11 +1016,21 @@
     }
   ],
   "auth": {
-    "type": "bearer",
-    "bearer": [
+    "type": "apikey",
+    "apikey": [
       {
-        "key": "token",
-        "value": "{{accessToken}}",
+        "key": "key",
+        "value": "X-Auth-Token",
+        "type": "string"
+      },
+      {
+        "key": "value",
+        "value": "{{apiKey}}",
+        "type": "string"
+      },
+      {
+        "key": "in",
+        "value": "header",
         "type": "string"
       }
     ]
@@ -1018,6 +1039,10 @@
     {
       "key": "baseUrl",
       "value": "http://localhost:5004"
+    },
+    {
+      "key": "apiKey",
+      "value": ""
     },
     {
       "key": "accessToken",

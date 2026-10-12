@@ -15,6 +15,7 @@ import ImageUploadField from '../components/ImageUploadField';
 import LocationTreeSelect from '../components/LocationTreeSelect';
 import { resolveImageUrl, PLACEHOLDER_IMAGE, TABLE_THUMB_PLACEHOLDER } from '../utils/imageUrl';
 import { buildLocationPath } from '../utils/locationTree';
+import { movementCells } from '../utils/movementDisplay';
 
 function detailDisplay(value) {
   if (value == null) return '—';
@@ -337,6 +338,8 @@ function AddAssetModal({ types, locations, locationTree, tagTypes, vendors, onCl
   const [typeAttrs, setTypeAttrs] = useState([]);
   const [attrValues, setAttrValues] = useState({});
   const [customImageFile, setCustomImageFile] = useState(null);
+  /** 'inherit' = use asset type image; 'choose' = image removed, user must pick custom or inherit. */
+  const [imageMode, setImageMode] = useState('inherit');
   const [saving, setSaving] = useState(false);
 
   // Fetch attributes when asset type changes
@@ -353,6 +356,7 @@ function AddAssetModal({ types, locations, locationTree, tagTypes, vendors, onCl
   const pickAssetType = async (assetTypeId) => {
     const id = assetTypeId ? String(assetTypeId) : '';
     setCustomImageFile(null);
+    setImageMode('inherit');
     const recTagId = id ? await resolveRecommendedTagTypeId(id, tagTypes) : null;
     setForm((prev) => ({
       ...prev,
@@ -373,15 +377,35 @@ function AddAssetModal({ types, locations, locationTree, tagTypes, vendors, onCl
     if (!form.name.trim()) e.name = 'Asset Name is required';
     if (!form.current_location_id) e.current_location_id = 'Location is required';
     if (!form.asset_type_id) e.asset_type_id = 'Asset Type is required';
+    if (form.asset_type_id && imageMode === 'choose' && !customImageFile && inheritedPreviewUrl) {
+      e.image = 'Upload a custom image or choose "Use inherited image"';
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
   const selectedType = types.find(t => String(t.id) === String(form.asset_type_id));
   const inheritedPreviewUrl = selectedType?.image_url ? resolveImageUrl(selectedType.image_url) : null;
+  const showInherited = !customImageFile && imageMode === 'inherit';
   const imageSourceLabel = customImageFile
     ? 'Custom Image'
-    : (inheritedPreviewUrl ? 'Inherited Image' : null);
+    : (showInherited && inheritedPreviewUrl ? 'Inherited Image' : null);
+
+  const handleImageFileChange = (f) => {
+    setCustomImageFile(f);
+    if (f) setErrors((prev) => ({ ...prev, image: undefined }));
+  };
+
+  const removeAddImage = () => {
+    setCustomImageFile(null);
+    setImageMode('choose');
+  };
+
+  const useInheritedImage = () => {
+    setCustomImageFile(null);
+    setImageMode('inherit');
+    setErrors((prev) => ({ ...prev, image: undefined }));
+  };
 
   const save = async () => {
     if (!validate()) return;
@@ -409,6 +433,7 @@ function AddAssetModal({ types, locations, locationTree, tagTypes, vendors, onCl
     setTypeAttrs([]);
     setAttrValues({});
     setCustomImageFile(null);
+    setImageMode('inherit');
   };
 
   const saveRef = React.useRef(null);
@@ -467,14 +492,38 @@ function AddAssetModal({ types, locations, locationTree, tagTypes, vendors, onCl
             <div className="field-wrap" style={{ maxWidth: 420 }}>
               <ImageUploadField
                 label=""
-                previewUrl={!customImageFile ? inheritedPreviewUrl : null}
+                previewUrl={showInherited ? inheritedPreviewUrl : null}
                 sourceLabel={imageSourceLabel}
                 file={customImageFile}
-                onFileChange={setCustomImageFile}
-                onClear={() => setCustomImageFile(null)}
+                onFileChange={handleImageFileChange}
                 disabled={!form.asset_type_id}
-                hint={form.asset_type_id ? 'Optional — inherits type image if empty' : 'Select asset type first'}
+                hint={!form.asset_type_id
+                  ? 'Select asset type first'
+                  : (imageMode === 'choose' && !customImageFile
+                    ? 'Upload a custom image or use the inherited image'
+                    : 'Optional — inherits type image if empty')}
+                renderActions={({ openPicker }) => {
+                  if (customImageFile || (showInherited && inheritedPreviewUrl)) {
+                    return (
+                      <button type="button" className="btn btn-secondary btn-sm" style={{ marginTop: 10 }} onClick={removeAddImage}>
+                        Remove image
+                      </button>
+                    );
+                  }
+                  if (imageMode !== 'choose') return null;
+                  return (
+                    <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                      <button type="button" className="btn btn-primary btn-sm" onClick={openPicker}>
+                        Upload custom image
+                      </button>
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={useInheritedImage}>
+                        Use inherited image
+                      </button>
+                    </div>
+                  );
+                }}
               />
+              {errors.image && <span className="field-error">{errors.image}</span>}
             </div>
           </div>
           <div className="form-row">
@@ -913,10 +962,11 @@ function AssetDetail({ asset, types, locations, locationTree, tagTypes, vendors,
                 else if (mins > 0) { duration = `${mins} Min${mins > 1 ? 's' : ''} ${secs > 0 ? secs + ' Sec' + (secs > 1 ? 's' : '') : ''}`; }
                 else { duration = `${secs} Sec${secs !== 1 ? 's' : ''}`; }
                 const isCurrent = !nextMove;
+                const cells = movementCells(t);
                 return (
                   <tr key={t.id}>
-                    <td>{t.from_location || '—'}</td>
-                    <td style={{ fontWeight: 500 }}>{t.to_location}</td>
+                    <td>{cells.from}</td>
+                    <td style={{ fontWeight: 500 }}>{cells.to}</td>
                     <td>{movedAt.toLocaleString()}</td>
                     <td style={{ color: isCurrent ? '#7c8cf8' : '#555', fontSize: 13, fontWeight: isCurrent ? 500 : 400 }}>
                       {isCurrent ? `${duration.trim()} (now)` : duration.trim()}
@@ -2091,24 +2141,24 @@ export default function Assets() {
           <input
             value={search}
             onChange={e => handleSearch(e.target.value)}
-            placeholder="Search asset ID / serial, name, RFID, type, attribute..."
+            placeholder="Search asset ID / serial, name, RFID, tag type, type, attribute..."
             style={{ width: '100%', padding: '7px 10px 7px 30px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, boxSizing: 'border-box' }}
           />
         </div>
         <select value={filterLocation} onChange={e => handleLocationFilter(e.target.value)}
-          style={{ padding: '7px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, minWidth: 150 }}>
+          style={{ padding: '7px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13 }}>
           <option value="">All Locations</option>
           {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
         </select>
         <select value={filterType} onChange={e => handleTypeFilter(e.target.value)}
-          style={{ padding: '7px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, minWidth: 150 }}>
+          style={{ padding: '7px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13 }}>
           <option value="">All Asset Types</option>
           {types.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
         <select
           value={filterInventoryStatus}
           onChange={e => handleInventoryStatusFilter(e.target.value)}
-          style={{ padding: '7px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, minWidth: 158 }}
+          style={{ padding: '7px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13 }}
           aria-label="Filter by inventory status"
         >
           <option value="">Inventory status</option>

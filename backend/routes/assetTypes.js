@@ -23,6 +23,81 @@ const {
   findAssetTypeNameConflict,
 } = require('../lib/assetTypeName');
 
+function blankToNull(v) {
+  if (v === undefined || v === null) return null;
+  const s = String(v).trim();
+  return s ? s : null;
+}
+
+async function loadAttributeSnapshot(attrId) {
+  const [[row]] = await db.query(
+    'SELECT attr_type, default_value FROM asset_type_attributes WHERE id = ?',
+    [attrId]
+  );
+  if (!row) return null;
+  const [opts] = await db.query(
+    'SELECT option_value FROM attribute_list_options WHERE attribute_id = ? ORDER BY sort_order, id',
+    [attrId]
+  );
+  return {
+    attr_type: row.attr_type,
+    default_value: blankToNull(row.default_value),
+    options: opts.map((o) => String(o.option_value).trim()),
+  };
+}
+
+/** Give every asset of the type a value row for this attribute (pre-filled with the default). */
+async function ensureAttributeValueRows(typeId, attrId, defaultValue) {
+  await db.query(
+    `INSERT IGNORE INTO asset_attribute_values (asset_id, attribute_id, value)
+     SELECT a.id, ?, ? FROM assets a WHERE a.asset_type_id = ?`,
+    [attrId, blankToNull(defaultValue), typeId]
+  );
+}
+
+/**
+ * Push an attribute definition change onto existing assets of the type:
+ * - renamed list options are renamed in stored values (matched by position; reorders are ignored)
+ * - a new default fills assets whose value is empty or still the previous default
+ */
+async function propagateAttributeUpdate(typeId, attrId, before) {
+  const after = await loadAttributeSnapshot(attrId);
+  if (!after) return;
+
+  if (before && before.attr_type === 'list' && after.attr_type === 'list') {
+    const oldSet = new Set(before.options.map((o) => o.toLowerCase()));
+    const newSet = new Set(after.options.map((o) => o.toLowerCase()));
+    const n = Math.min(before.options.length, after.options.length);
+    for (let i = 0; i < n; i++) {
+      const oldOpt = before.options[i];
+      const newOpt = after.options[i];
+      if (oldOpt === newOpt) continue;
+      if (newSet.has(oldOpt.toLowerCase()) || oldSet.has(newOpt.toLowerCase())) continue;
+      await db.query(
+        `UPDATE asset_attribute_values SET value = ?
+         WHERE attribute_id = ? AND LOWER(TRIM(value)) = LOWER(?)`,
+        [newOpt, attrId, oldOpt]
+      );
+    }
+  }
+
+  await ensureAttributeValueRows(typeId, attrId, after.default_value);
+
+  const oldDefault = before ? before.default_value : null;
+  if (after.default_value && after.default_value !== oldDefault) {
+    const params = [after.default_value, attrId];
+    let match = "value IS NULL OR TRIM(value) = ''";
+    if (oldDefault) {
+      match += ' OR value = ?';
+      params.push(oldDefault);
+    }
+    await db.query(
+      `UPDATE asset_attribute_values SET value = ? WHERE attribute_id = ? AND (${match})`,
+      params
+    );
+  }
+}
+
 router.get('/', async (req, res) => {
   const allowedIds = req.authz?.typeIds ?? null;
 
@@ -182,6 +257,7 @@ router.put('/:id', requireModify('asset_type'), optionalImageUpload('asset_types
         );
         if (dup.length)
           return res.status(400).json({ message: `An attribute with the exact name "${attrName}" already exists for this asset type` });
+        const before = await loadAttributeSnapshot(attr.id);
         await db.query(
           'UPDATE asset_type_attributes SET name = ?, attr_type = ?, default_value = ? WHERE id = ? AND asset_type_id = ?',
           [attrName, attrType, defVal, attr.id, typeId]
@@ -197,6 +273,7 @@ router.put('/:id', requireModify('asset_type'), optionalImageUpload('asset_types
             }
           }
         }
+        await propagateAttributeUpdate(typeId, attr.id, before);
       } else {
         const [dup] = await db.query(
           'SELECT id FROM asset_type_attributes WHERE asset_type_id = ? AND BINARY TRIM(name) = BINARY ?',
@@ -217,13 +294,7 @@ router.put('/:id', requireModify('asset_type'), optionalImageUpload('asset_types
             );
           }
         }
-        const [assets] = await db.query('SELECT id FROM assets WHERE asset_type_id = ?', [typeId]);
-        for (const asset of assets) {
-          await db.query(
-            'INSERT IGNORE INTO asset_attribute_values (asset_id, attribute_id, value) VALUES (?, ?, NULL)',
-            [asset.id, attrId]
-          );
-        }
+        await ensureAttributeValueRows(typeId, attrId, defVal);
       }
     }
   }
@@ -342,14 +413,7 @@ router.post('/:id/attributes', requireModify('asset_type'), async (req, res) => 
     }
   }
 
-  // Percolate: add empty value for all existing assets of this type
-  const [assets] = await db.query('SELECT id FROM assets WHERE asset_type_id = ?', [req.params.id]);
-  for (const asset of assets) {
-    await db.query(
-      'INSERT IGNORE INTO asset_attribute_values (asset_id, attribute_id, value) VALUES (?, ?, NULL)',
-      [asset.id, attrId]
-    );
-  }
+  await ensureAttributeValueRows(req.params.id, attrId, default_value);
 
   res.status(201).json({ id: attrId, name, attr_type });
 });
@@ -370,6 +434,7 @@ router.put('/:typeId/attributes/:attrId', requireModify('asset_type'), async (re
   if (dup.length)
     return res.status(400).json({ message: `An attribute with the exact name "${name}" already exists for this asset type` });
 
+  const before = await loadAttributeSnapshot(req.params.attrId);
   await db.query(
     'UPDATE asset_type_attributes SET name = ?, attr_type = ?, default_value = ? WHERE id = ? AND asset_type_id = ?',
     [name, attr_type, default_value || null, req.params.attrId, req.params.typeId]
@@ -385,6 +450,7 @@ router.put('/:typeId/attributes/:attrId', requireModify('asset_type'), async (re
       }
     }
   }
+  await propagateAttributeUpdate(req.params.typeId, req.params.attrId, before);
   res.json({ message: 'Updated' });
 });
 

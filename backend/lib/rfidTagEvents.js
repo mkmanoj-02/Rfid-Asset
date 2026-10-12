@@ -11,7 +11,7 @@
  */
 
 const { validationError } = require('./apiEnvelope');
-const { parseIso, toSqlUtc } = require('./rfidTime');
+const { parseIso, toSqlLocal, nowSql } = require('./rfidTime');
 const { isValidRfidTag } = require('./rfidMovements');
 
 const MAX_BATCH = 100;
@@ -108,14 +108,14 @@ async function ingestBatch(conn, reads) {
       `INSERT IGNORE INTO tag_events
          (epc, tid, antenna_port, rssi, reader_name, reader_type, ip_address, mode,
           location, zone_name, previous_zone_name, event_type, event_time, posted_to_server, received_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, UTC_TIMESTAMP(3))`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
       [
         r.epc, r.tid, r.antennaPort, r.rssi, r.readerName,
         r.readerType || reader?.reader_type || '',
         r.ipAddress || reader?.ip_address || '',
         r.mode || reader?.mode || defaultMode(r.eventType),
         r.location, r.zoneName, r.previousZoneName,
-        r.eventType, toSqlUtc(r.eventDate),
+        r.eventType, toSqlLocal(r.eventDate), nowSql(),
       ]
     );
     if (result.affectedRows === 1) accepted.push({ ...r, reader });
@@ -127,8 +127,8 @@ async function ingestBatch(conn, reads) {
   }
   for (const [readerId, count] of perReader) {
     await conn.query(
-      'UPDATE readers SET tags_read_count = tags_read_count + ?, last_seen = UTC_TIMESTAMP(3) WHERE id = ?',
-      [count, readerId]
+      'UPDATE readers SET tags_read_count = tags_read_count + ?, last_seen = ? WHERE id = ?',
+      [count, nowSql(), readerId]
     );
   }
 
@@ -167,7 +167,7 @@ async function linkAssets(conn, accepted) {
     }
     matchedIds.add(asset.id);
 
-    const eventSql = toSqlUtc(r.eventDate);
+    const eventSql = toSqlLocal(r.eventDate);
     await conn.query(
       `UPDATE assets
           SET rfid_last_seen_at = GREATEST(COALESCE(rfid_last_seen_at, ?), ?),

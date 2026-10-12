@@ -97,6 +97,59 @@ function markAssetTypeNameDuplicatesInFile(rows) {
   });
 }
 
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+function ymdIfValid(y, m, d) {
+  if (!y || !m || !d || m < 1 || m > 12 || d < 1 || d > 31) return null;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null;
+  return `${y}-${pad2(m)}-${pad2(d)}`;
+}
+
+/**
+ * Normalize a spreadsheet date cell to YYYY-MM-DD (the format date attributes are stored in).
+ * Accepts Excel serial numbers, ISO dates, DD/MM/YYYY (or MM/DD/YYYY when unambiguous), and
+ * textual dates like "15 Mar 2025". Returns null when the value is not a recognizable date.
+ */
+function normalizeImportDate(raw) {
+  if (raw === undefined || raw === null) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+
+  // Excel serial date (days since 1899-12-30); optional fractional time part.
+  if (/^\d+(\.\d+)?$/.test(s)) {
+    const serial = Math.floor(Number(s));
+    if (serial < 1 || serial > 2958465) return null;
+    const dt = new Date(Date.UTC(1899, 11, 30) + serial * 86400000);
+    return ymdIfValid(dt.getUTCFullYear(), dt.getUTCMonth() + 1, dt.getUTCDate());
+  }
+
+  let m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?:[T\s].*)?$/);
+  if (m) return ymdIfValid(Number(m[1]), Number(m[2]), Number(m[3]));
+
+  m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2}|\d{4})(?:\s.*)?$/);
+  if (m) {
+    const a = Number(m[1]);
+    const b = Number(m[2]);
+    let y = Number(m[3]);
+    if (m[3].length === 2) y += y >= 70 ? 1900 : 2000;
+    // Day-first unless the second part can only be a day.
+    if (b > 12 && a <= 12) return ymdIfValid(y, a, b);
+    return ymdIfValid(y, b, a);
+  }
+
+  if (/[a-z]/i.test(s)) {
+    const t = Date.parse(s);
+    if (!Number.isNaN(t)) {
+      const dt = new Date(t);
+      return ymdIfValid(dt.getFullYear(), dt.getMonth() + 1, dt.getDate());
+    }
+  }
+  return null;
+}
+
 function findInNameMap(name, nameMap) {
   if (!name) return null;
   return nameMap.get(name.trim().toLowerCase()) || null;
@@ -202,6 +255,7 @@ module.exports = {
   markImportRowDuplicates,
   markAssetTypeNameDuplicatesInFile,
   ASSET_TYPE_DUP_FILE_MSG,
+  normalizeImportDate,
   findInNameMap,
   resolveMasterIdFromMaps,
   slimAssetPreviewRow,

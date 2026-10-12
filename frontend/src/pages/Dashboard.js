@@ -23,48 +23,170 @@ const STAT_METRICS = [
   { label: 'Untagged', key: 'untagged', icon: CircleOff, tone: 'untagged' },
 ];
 
-function buildLocationTree(items, parentId = null) {
-  return items
-    .filter(i => (i.parent_id || null) == parentId)
-    .map(i => ({ ...i, children: buildLocationTree(items, i.id) }));
-}
+const idKey = (id) => (id === null || id === undefined || id === '' ? null : String(id));
 
-/** Flat list → ids to keep: matches, their ancestors (path), and descendants (context under a match). */
-function filterLocationsBySearch(locations, queryNorm) {
-  if (!queryNorm) return locations;
-  const byId = Object.fromEntries(locations.map(l => [l.id, l]));
-  const childrenByParent = {};
-  for (const l of locations) {
-    const p = l.parent_id ?? null;
-    if (!childrenByParent[p]) childrenByParent[p] = [];
-    childrenByParent[p].push(l.id);
-  }
-  const matches = new Set();
-  for (const l of locations) {
-    if (String(l.name || '').toLowerCase().includes(queryNorm)) matches.add(l.id);
-  }
-  if (matches.size === 0) return [];
-  const idsToShow = new Set();
-  const addAncestors = (id) => {
-    let cur = byId[id];
-    while (cur) {
-      idsToShow.add(cur.id);
-      cur = cur.parent_id != null && cur.parent_id !== undefined ? byId[cur.parent_id] : null;
-    }
-  };
-  const addDescendants = (id) => {
-    const stack = [id];
+/**
+ * Flat list → nested tree in O(n). Items whose parent is missing from the list become roots,
+ * and cyclic parent links are broken so rendering can never recurse forever.
+ */
+function buildLocationTree(items) {
+  const nodes = new Map();
+  items.forEach((i) => nodes.set(idKey(i.id), { ...i, children: [] }));
+  const roots = [];
+  nodes.forEach((node) => {
+    const pid = idKey(node.parent_id);
+    const parent = pid !== null && pid !== idKey(node.id) ? nodes.get(pid) : null;
+    if (parent) parent.children.push(node);
+    else roots.push(node);
+  });
+  const placed = new Set();
+  const mark = (node) => {
+    const stack = [node];
     while (stack.length) {
       const n = stack.pop();
-      idsToShow.add(n);
-      for (const c of childrenByParent[n] || []) stack.push(c);
+      const k = idKey(n.id);
+      if (placed.has(k)) continue;
+      placed.add(k);
+      n.children = n.children.filter((c) => !placed.has(idKey(c.id)));
+      stack.push(...n.children);
     }
   };
-  for (const id of matches) {
-    addAncestors(id);
-    addDescendants(id);
+  roots.forEach(mark);
+  // Nodes only reachable through a parent cycle: surface them as roots.
+  nodes.forEach((node) => {
+    if (!placed.has(idKey(node.id))) {
+      roots.push(node);
+      mark(node);
+    }
+  });
+  return roots;
+}
+
+/** Flat list → matches, their ancestors (path), and descendants (context under a match). */
+function filterLocationsBySearch(locations, queryNorm) {
+  if (!queryNorm) return locations;
+  const byId = new Map(locations.map((l) => [idKey(l.id), l]));
+  const childrenByParent = new Map();
+  for (const l of locations) {
+    const p = idKey(l.parent_id);
+    if (!childrenByParent.has(p)) childrenByParent.set(p, []);
+    childrenByParent.get(p).push(idKey(l.id));
   }
-  return locations.filter(l => idsToShow.has(l.id));
+  const matches = [];
+  for (const l of locations) {
+    if (String(l.name || '').toLowerCase().includes(queryNorm)) matches.push(idKey(l.id));
+  }
+  if (matches.length === 0) return [];
+
+  const idsToShow = new Set();
+  for (const id of matches) {
+    // Ancestors — stop at an already-visited id so a parent cycle cannot loop forever.
+    let cur = byId.get(id);
+    const seenUp = new Set();
+    while (cur && !seenUp.has(idKey(cur.id))) {
+      seenUp.add(idKey(cur.id));
+      idsToShow.add(idKey(cur.id));
+      cur = byId.get(idKey(cur.parent_id));
+    }
+    // Descendants
+    const stack = [id];
+    const seenDown = new Set();
+    while (stack.length) {
+      const n = stack.pop();
+      if (seenDown.has(n)) continue;
+      seenDown.add(n);
+      idsToShow.add(n);
+      for (const c of childrenByParent.get(n) || []) stack.push(c);
+    }
+  }
+  return locations.filter((l) => idsToShow.has(idKey(l.id)));
+}
+
+/** Collapsible tree node; defined at module level so typing in search doesn't remount the tree. */
+function DashLocNode({ loc, depth = 0, pins, selectedLocationId, showPinPanel, placingPin, matchQuery, onSelect, onRemovePin, onTogglePlacing }) {
+  const [expanded, setExpanded] = useState(true);
+  const hasChildren = loc.children && loc.children.length > 0;
+  const hasPinned = !!pins[loc.id];
+  const isSelected = selectedLocationId != null && String(selectedLocationId) === String(loc.id);
+  const isMatch = !!matchQuery && String(loc.name || '').toLowerCase().includes(matchQuery);
+  const isPlacing = placingPin === String(loc.id);
+
+  useEffect(() => {
+    if (matchQuery) setExpanded(true);
+  }, [matchQuery]);
+
+  return (
+    <div>
+      <div
+        className={`dash-loc-row${isSelected ? ' is-selected' : ''}`}
+        style={{ padding: `7px 14px 7px ${14 + depth * 16}px` }}
+      >
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
+          {hasChildren ? (
+            <span
+              onClick={e => { e.stopPropagation(); setExpanded(v => !v); }}
+              style={{ color: '#94a3b8', fontSize: 10, cursor: 'pointer', width: 14, flexShrink: 0, userSelect: 'none' }}
+            >
+              {expanded ? '▾' : '▸'}
+            </span>
+          ) : (
+            <span style={{ width: 14, flexShrink: 0 }} />
+          )}
+          <span
+            onClick={() => onSelect(loc)}
+            title={loc.name}
+            style={{
+              cursor: 'pointer',
+              color: hasPinned ? '#2563EB' : depth === 0 ? '#0f172a' : '#475569',
+              fontWeight: depth === 0 || isMatch ? 600 : 400,
+              background: isMatch ? '#fef9c3' : undefined,
+              borderRadius: 3,
+              padding: isMatch ? '0 3px' : undefined,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}
+          >
+            {hasPinned && <span style={{ marginRight: 4 }}>📍</span>}
+            {loc.name}
+          </span>
+        </span>
+
+        {showPinPanel && (
+          hasPinned ? (
+            <button
+              onClick={e => { e.stopPropagation(); onRemovePin(loc.id); }}
+              style={{ fontSize: 10, padding: '2px 6px', background: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 5, cursor: 'pointer', flexShrink: 0 }}
+            >✕</button>
+          ) : (
+            <button
+              onClick={e => { e.stopPropagation(); onTogglePlacing(loc.id); }}
+              style={{
+                fontSize: 10, padding: '2px 6px', borderRadius: 5, cursor: 'pointer', flexShrink: 0,
+                background: isPlacing ? '#2563EB' : '#f1f5f9',
+                color: isPlacing ? '#fff' : '#64748b',
+                border: `1px solid ${isPlacing ? '#2563EB' : '#e2e8f0'}`,
+              }}
+            >+ Pin</button>
+          )
+        )}
+      </div>
+
+      {expanded && hasChildren && loc.children.map(child => (
+        <DashLocNode
+          key={child.id}
+          loc={child}
+          depth={depth + 1}
+          pins={pins}
+          selectedLocationId={selectedLocationId}
+          showPinPanel={showPinPanel}
+          placingPin={placingPin}
+          matchQuery={matchQuery}
+          onSelect={onSelect}
+          onRemovePin={onRemovePin}
+          onTogglePlacing={onTogglePlacing}
+        />
+      ))}
+    </div>
+  );
 }
 
 // ── Main Dashboard ─────────────────────────────────────────────
@@ -83,6 +205,8 @@ export default function Dashboard() {
   const [popupLoading, setPopupLoading] = useState(false);
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const mapRef = useRef();
+  const pinsRef = useRef(pins);
+  pinsRef.current = pins;
 
   useEffect(() => {
     if (!popupLocation) {
@@ -155,7 +279,7 @@ export default function Dashboard() {
   }, [placingPin, pins]);
 
   const removePin = (locId) => {
-    const next = { ...pins };
+    const next = { ...pinsRef.current };
     delete next[locId];
     savePins(next);
   };
@@ -163,12 +287,27 @@ export default function Dashboard() {
   const untagged = data ? (data.rfid_breakdown?.untagged || 0) : 0;
   const missing  = data?.missing_inventory ?? 0;
 
-  const locationSearchNorm = locationSearch.trim().toLowerCase();
+  const [locationSearchNorm, setLocationSearchNorm] = useState('');
+  useEffect(() => {
+    const q = locationSearch.trim().toLowerCase();
+    const t = setTimeout(() => setLocationSearchNorm(q), 200);
+    return () => clearTimeout(t);
+  }, [locationSearch]);
   const filteredLocations = useMemo(
     () => filterLocationsBySearch(locations, locationSearchNorm),
     [locations, locationSearchNorm],
   );
-  const locationTree = buildLocationTree(filteredLocations);
+  const locationTree = useMemo(() => buildLocationTree(filteredLocations), [filteredLocations]);
+  const locationById = useMemo(
+    () => new Map(locations.map((l) => [String(l.id), l])),
+    [locations],
+  );
+
+  const selectLocation = useCallback((loc) => setSelectedLocation({ id: loc.id, name: loc.name }), []);
+  const togglePlacing = useCallback(
+    (locId) => setPlacingPin((cur) => (cur === String(locId) ? null : String(locId))),
+    [],
+  );
 
   const distributionRows = useMemo(() => {
     if (!data?.assets_by_type) return [];
@@ -188,81 +327,6 @@ export default function Dashboard() {
     setSelectedLocation(null);
     setPopupLocation(null);
   };
-
-  // Collapsible tree node for dashboard
-  function DashLocNode({ loc, depth = 0 }) {
-    const [expanded, setExpanded] = useState(true);
-    const hasChildren = loc.children && loc.children.length > 0;
-    const hasPinned = !!pins[loc.id];
-    const isSelected = selectedLocation && String(selectedLocation.id) === String(loc.id);
-
-    return (
-      <div>
-        <div
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: `7px 14px 7px ${14 + depth * 16}px`,
-            borderBottom: '1px solid #f7f8fc', fontSize: 13,
-            transition: 'background 0.1s',
-            background: isSelected ? '#eff6ff' : undefined,
-          }}
-          onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#f8fafc'; }}
-          onMouseLeave={e => { e.currentTarget.style.background = isSelected ? '#eff6ff' : 'transparent'; }}
-        >
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
-            {/* Single expand/collapse toggle — only shown when has children */}
-            {hasChildren ? (
-              <span
-                onClick={e => { e.stopPropagation(); setExpanded(v => !v); }}
-                style={{ color: '#94a3b8', fontSize: 10, cursor: 'pointer', width: 14, flexShrink: 0, userSelect: 'none' }}
-              >
-                {expanded ? '▾' : '▸'}
-              </span>
-            ) : (
-              <span style={{ width: 14, flexShrink: 0 }} />
-            )}
-            <span
-              onClick={() => setSelectedLocation({ id: loc.id, name: loc.name })}
-              style={{
-                cursor: 'pointer',
-                color: hasPinned ? '#2563EB' : depth === 0 ? '#0f172a' : '#475569',
-                fontWeight: depth === 0 ? 600 : 400,
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}
-            >
-              {hasPinned && <span style={{ marginRight: 4 }}>📍</span>}
-              {loc.name}
-            </span>
-          </span>
-
-          {/* Pin controls — only shown when pin panel is open */}
-          {showPinPanel && (
-            hasPinned ? (
-              <button
-                onClick={e => { e.stopPropagation(); removePin(loc.id); }}
-                style={{ fontSize: 10, padding: '2px 6px', background: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 5, cursor: 'pointer', flexShrink: 0 }}
-              >✕</button>
-            ) : (
-              <button
-                onClick={e => { e.stopPropagation(); setPlacingPin(placingPin === String(loc.id) ? null : String(loc.id)); }}
-                style={{
-                  fontSize: 10, padding: '2px 6px', borderRadius: 5, cursor: 'pointer', flexShrink: 0,
-                  background: placingPin === String(loc.id) ? '#2563EB' : '#f1f5f9',
-                  color: placingPin === String(loc.id) ? '#fff' : '#64748b',
-                  border: `1px solid ${placingPin === String(loc.id) ? '#2563EB' : '#e2e8f0'}`,
-                }}
-              >+ Pin</button>
-            )
-          )}
-        </div>
-
-        {/* Children — only rendered when expanded */}
-        {expanded && hasChildren && loc.children.map(child => (
-          <DashLocNode key={child.id} loc={child} depth={depth + 1} />
-        ))}
-      </div>
-    );
-  }
 
   return (
     <div className="dashboard-page">
@@ -373,7 +437,21 @@ export default function Dashboard() {
               ) : locationTree.length === 0 ? (
                 <div style={{ padding: '16px 14px', fontSize: 13, color: '#94a3b8' }}>No locations match your search</div>
               ) : (
-                locationTree.map(loc => <DashLocNode key={loc.id} loc={loc} depth={0} />)
+                locationTree.map(loc => (
+                  <DashLocNode
+                    key={loc.id}
+                    loc={loc}
+                    depth={0}
+                    pins={pins}
+                    selectedLocationId={selectedLocation?.id}
+                    showPinPanel={showPinPanel}
+                    placingPin={placingPin}
+                    matchQuery={locationSearchNorm}
+                    onSelect={selectLocation}
+                    onRemovePin={removePin}
+                    onTogglePlacing={togglePlacing}
+                  />
+                ))
               )}
             </div>
           </div>
@@ -389,7 +467,7 @@ export default function Dashboard() {
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               {placingPin && (
                 <span style={{ fontSize: 12, color: '#7c8cf8', fontWeight: 500 }}>
-                  Click on map to place pin for "{locations.find(l => String(l.id) === placingPin)?.name}"
+                  Click on map to place pin for "{locationById.get(placingPin)?.name}"
                 </span>
               )}
               <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer', marginBottom: 0 }}>
@@ -421,36 +499,43 @@ export default function Dashboard() {
 
             {/* Location pins */}
             {mapImage && Object.entries(pins).map(([locId, pos]) => {
-              const loc = locations.find(l => String(l.id) === locId);
+              const loc = locationById.get(locId);
               if (!loc) return null;
+              const searching = !!locationSearchNorm;
+              const isMatch = searching && String(loc.name || '').toLowerCase().includes(locationSearchNorm);
+              const isSelected = selectedLocation && String(selectedLocation.id) === locId;
+              const pinColor = isMatch || isSelected ? '#2563EB' : '#1a1f36';
               return (
                 <div
                   key={locId}
+                  className={isMatch ? 'dash-map-pin is-match' : 'dash-map-pin'}
                   onClick={e => {
                     e.stopPropagation();
                     if (placingPin) return;
                     setSelectedLocation({ id: loc.id, name: loc.name });
                     setPopupLocation({ id: loc.id, name: loc.name });
                   }}
+                  title={loc.name}
                   style={{
                     position: 'absolute',
                     left: `${pos.x}%`, top: `${pos.y}%`,
                     transform: 'translate(-50%, -100%)',
                     cursor: 'pointer',
-                    zIndex: 10,
+                    zIndex: isMatch ? 12 : 10,
+                    opacity: searching && !isMatch ? 0.3 : 1,
+                    transition: 'opacity 0.15s',
                   }}
                 >
-                  {/* Pin */}
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                     <div style={{
-                      background: '#1a1f36', color: '#fff', fontSize: 11, fontWeight: 600,
+                      background: pinColor, color: '#fff', fontSize: 11, fontWeight: 600,
                       padding: '3px 7px', borderRadius: 4, whiteSpace: 'nowrap',
                       boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
                       maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis',
                     }}>
                       {loc.name}
                     </div>
-                    <div style={{ width: 0, height: 0, borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderTop: '8px solid #1a1f36' }} />
+                    <div style={{ width: 0, height: 0, borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderTop: `8px solid ${pinColor}` }} />
                   </div>
                 </div>
               );

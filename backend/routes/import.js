@@ -12,6 +12,7 @@ const {
   buildRfidMap,
   markImportRowDuplicates,
   markAssetTypeNameDuplicatesInFile,
+  normalizeImportDate,
   findInNameMap,
   resolveMasterIdFromMaps,
   slimAssetPreviewRow,
@@ -165,6 +166,7 @@ function validateAssetImportRow(row, ctx) {
     vendorIdMap,
     assetCodeMap,
     rfidMap,
+    attrTypeMap,
   } = ctx;
   const errors = [];
 
@@ -212,6 +214,22 @@ function validateAssetImportRow(row, ctx) {
     else status = normalized;
   }
 
+  let attributes = row.attributes;
+  if (attributes && typeof attributes === 'object') {
+    attributes = { ...attributes };
+    for (const [attrName, rawVal] of Object.entries(attributes)) {
+      if (rawVal === undefined || rawVal === null || String(rawVal).trim() === '') continue;
+      const dbType = typeMatch && attrTypeMap
+        ? attrTypeMap.get(`${typeMatch.id}:${attrName.trim().toLowerCase()}`)
+        : null;
+      const attrType = dbType || row.attrTypes?.[attrName];
+      if (attrType !== 'date') continue;
+      const normalized = normalizeImportDate(rawVal);
+      if (normalized) attributes[attrName] = normalized;
+      else errors.push(`Invalid date "${rawVal}" for attribute "${attrName}" (use YYYY-MM-DD)`);
+    }
+  }
+
   const existingMatch = assetCode ? assetCodeMap.get(assetCode.toLowerCase()) || null : null;
 
   if (rfidTag && isValidRfidTag(rfidTag)) {
@@ -235,7 +253,7 @@ function validateAssetImportRow(row, ctx) {
     vendor: row.vendor,
     status,
     description: row.description,
-    attributes: row.attributes,
+    attributes,
     attrTypes: row.attrTypes,
     tag_type_id: tagRes.id,
     vendor_id: vendorRes.id,
@@ -614,7 +632,13 @@ async function buildAssetImportContext() {
   const [locations] = await db.query('SELECT id, name FROM locations');
   const [tagTypes] = await db.query('SELECT id, name FROM tag_types');
   const [vendors] = await db.query('SELECT id, name FROM vendors');
+  const [typeAttrs] = await db.query('SELECT asset_type_id, name, attr_type FROM asset_type_attributes');
+  const attrTypeMap = new Map();
+  typeAttrs.forEach((a) => {
+    if (a.name) attrTypeMap.set(`${a.asset_type_id}:${String(a.name).trim().toLowerCase()}`, a.attr_type);
+  });
   return {
+    attrTypeMap,
     typeNameMap: buildNameMap(assetTypes),
     locationNameMap: buildNameMap(locations),
     tagTypeNameMap: buildNameMap(tagTypes),

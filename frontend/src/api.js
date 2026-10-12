@@ -360,6 +360,8 @@ export const getTagTypes = () => api.get("/tag-types");
 export const createTagType = (data) => api.post("/tag-types", data);
 export const updateTagType = (id, data) => api.put(`/tag-types/${id}`, data);
 export const deleteTagType = (id) => api.delete(`/tag-types/${id}`);
+export const bulkDeleteTagTypes = (ids) =>
+  api.delete("/tag-types/bulk", { data: { ids } });
 
 /** Asset type → recommended tag type — backend: tagTypes.js */
 export const getTagRecommendations = () =>
@@ -375,6 +377,8 @@ export const getVendors = () => api.get("/vendors");
 export const createVendor = (data) => api.post("/vendors", data);
 export const updateVendor = (id, data) => api.put(`/vendors/${id}`, data);
 export const deleteVendor = (id) => api.delete(`/vendors/${id}`);
+export const bulkDeleteVendors = (ids) =>
+  api.delete("/vendors/bulk", { data: { ids } });
 
 /** Handheld / mobile reader devices */
 export const getHandheldDevices = () => api.get("/handheld-devices");

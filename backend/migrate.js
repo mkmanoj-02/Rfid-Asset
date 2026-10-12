@@ -47,6 +47,7 @@ const files = [
   '034_rfid_middleware.js',
   '035_rfid_spec_cleanup.js',
   '036_merge_asset_serial.js',
+  '037_rfid_times_to_local.js',
 ];
 
 /** MySQL errors that are safe to skip when re-running migrations. */

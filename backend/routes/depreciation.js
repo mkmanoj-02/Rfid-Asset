@@ -13,10 +13,25 @@ async function nextRuleCode() {
   return `R${String(cnt + 1).padStart(3, '0')}`;
 }
 
+/**
+ * DATE columns must be sent to MySQL as YYYY-MM-DD. Clients may echo back the ISO timestamp
+ * mysql2 produced (e.g. 2026-10-08T18:30:00.000Z for 2026-10-09 local), so convert using the
+ * server's local calendar day — the same timezone mysql2 used when reading it.
+ */
+function toSqlDate(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const s = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const d = value instanceof Date ? value : new Date(s);
+  if (Number.isNaN(d.getTime())) return null;
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 // ── RULES ──────────────────────────────────────────────────────
 router.get('/rules', async (req, res) => {
   const [rows] = await db.query(`
-    SELECT dr.*, at.name AS asset_type_name
+    SELECT dr.*, DATE_FORMAT(dr.effective_from, '%Y-%m-%d') AS effective_from, at.name AS asset_type_name
     FROM depreciation_rules dr
     JOIN asset_types at ON dr.asset_type_id = at.id
     ORDER BY dr.created_at DESC
@@ -30,7 +45,7 @@ router.post('/rules', async (req, res) => {
   const [result] = await db.query(
     `INSERT INTO depreciation_rules (rule_code, asset_type_id, method, useful_life_years, depreciation_rate, salvage_value, effective_from, stop_on_disposal, partial_year, created_by)
      VALUES (?,?,?,?,?,?,?,?,?,?)`,
-    [rule_code, asset_type_id, method, useful_life_years, depreciation_rate, salvage_value || 0, effective_from, stop_on_disposal ? 1 : 0, partial_year ? 1 : 0, req.auditUser]
+    [rule_code, asset_type_id, method, useful_life_years, depreciation_rate, salvage_value || 0, toSqlDate(effective_from), stop_on_disposal ? 1 : 0, partial_year ? 1 : 0, req.auditUser]
   );
   await db.query('INSERT INTO depreciation_audit (action, target, performed_by, details) VALUES (?,?,?,?)',
     ['Rule created', `${rule_code} — ${req.body.asset_type_name || asset_type_id}`, req.auditUser, JSON.stringify(req.body)]);
@@ -41,7 +56,7 @@ router.put('/rules/:id', async (req, res) => {
   const { method, useful_life_years, depreciation_rate, salvage_value, effective_from, stop_on_disposal, partial_year, is_active } = req.body;
   await db.query(
     `UPDATE depreciation_rules SET method=?, useful_life_years=?, depreciation_rate=?, salvage_value=?, effective_from=?, stop_on_disposal=?, partial_year=?, is_active=? WHERE id=?`,
-    [method, useful_life_years, depreciation_rate, salvage_value || 0, effective_from, stop_on_disposal ? 1 : 0, partial_year ? 1 : 0, is_active ? 1 : 0, req.params.id]
+    [method, useful_life_years, depreciation_rate, salvage_value || 0, toSqlDate(effective_from), stop_on_disposal ? 1 : 0, partial_year ? 1 : 0, is_active ? 1 : 0, req.params.id]
   );
   const [[rule]] = await db.query('SELECT rule_code FROM depreciation_rules WHERE id=?', [req.params.id]);
   await db.query('INSERT INTO depreciation_audit (action, target, performed_by, details) VALUES (?,?,?,?)',

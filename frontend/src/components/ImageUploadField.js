@@ -18,6 +18,8 @@ export default function ImageUploadField({
   exactPreview = false,
   accept = '.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp',
   validateFn = validateImageFile,
+  /** Replaces the default clear button; receives { openPicker }. */
+  renderActions,
 }) {
   const inputRef = useRef(null);
   const [dragOver, setDragOver] = useState(false);
@@ -185,7 +187,9 @@ export default function ImageUploadField({
         </div>
       </div>
 
-      {(file || previewUrl) && onClear && !disabled && (
+      {renderActions && !disabled && renderActions({ openPicker: () => inputRef.current?.click() })}
+
+      {!renderActions && (file || previewUrl) && onClear && !disabled && (
         <button
           type="button"
           className="btn btn-secondary btn-sm"

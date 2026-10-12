@@ -33,6 +33,7 @@ async function validateAndNormalizeAssetPrivileges(raw) {
 
   const parsed = [];
   const seenIds = new Set();
+  const seenPairs = new Set();
 
   for (let i = 0; i < entries.length; i++) {
     const e = entries[i];
@@ -70,9 +71,11 @@ async function validateAndNormalizeAssetPrivileges(raw) {
       };
     }
 
-    if (seenIds.has(attrId)) {
-      return { ok: false, message: 'Duplicate attribute in asset_privileges' };
+    const pairKey = `${attrId}\u0000${value.toLowerCase()}`;
+    if (seenPairs.has(pairKey)) {
+      return { ok: false, message: `Asset privilege "${label}": duplicate value "${value}"` };
     }
+    seenPairs.add(pairKey);
     seenIds.add(attrId);
 
     parsed.push({ attrId, value, index: i, providedName });

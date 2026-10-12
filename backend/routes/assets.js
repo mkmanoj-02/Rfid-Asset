@@ -26,6 +26,7 @@ const {
 const { requireModify, requireDelete } = require('../middleware/requireAuthz');
 const { withTransaction } = require('../lib/importHelpers');
 const { attachAssetAttributeValues } = require('../services/assetQueryService');
+const { buildAttrFilterConditions } = require('../lib/assetScope');
 const fs = require('fs').promises;
 
 const ASSET_INVENTORY_STATUSES = ['in_inventory', 'missing', 'not_in_inventory'];
@@ -116,16 +117,9 @@ router.get('/', async (req, res, next) => {
   // Attribute-based filter: asset must have ALL specified attribute=value pairs
   // Match by attribute NAME (case-insensitive) not ID, since same-named attrs have different IDs per asset type
   if (assetAttrFilters && assetAttrFilters.length) {
-    for (const f of assetAttrFilters) {
-      conditions.push(`EXISTS (
-        SELECT 1 FROM asset_attribute_values aav
-        JOIN asset_type_attributes ata ON aav.attribute_id = ata.id
-        WHERE aav.asset_id = a.id
-          AND LOWER(ata.name) = LOWER(?)
-          AND LOWER(aav.value) = LOWER(?)
-      )`);
-      params.push(f.attribute_name, f.value);
-    }
+    const attr = buildAttrFilterConditions(assetAttrFilters, 'a');
+    conditions.push(...attr.conditions);
+    params.push(...attr.params);
   }
 
   // Filter by specific location
@@ -156,13 +150,14 @@ router.get('/', async (req, res, next) => {
     params.push(st);
   }
 
-  // Search across asset ID / serial, name, rfid, asset type name, location name, attribute values
+  // Search across asset ID / serial, name, rfid, tag type, asset type name, location name, attribute values
   if (search && search.trim().length >= 2) {
     const s = `%${search.trim()}%`;
     conditions.push(`(
       a.asset_code LIKE ? OR
       a.name LIKE ? OR
       a.rfid_tag LIKE ? OR
+      tt.name LIKE ? OR
       at.name LIKE ? OR
       l.name LIKE ? OR
       EXISTS (
@@ -170,7 +165,7 @@ router.get('/', async (req, res, next) => {
         WHERE aav2.asset_id = a.id AND aav2.value LIKE ?
       )
     )`);
-    params.push(s, s, s, s, s, s);
+    params.push(s, s, s, s, s, s, s);
   }
 
   const whereClause = conditions.length ? ' WHERE ' + conditions.join(' AND ') : '';
@@ -442,7 +437,7 @@ router.post('/', requireModify('asset'), optionalImageUpload('assets'), async (r
       }
 
       await conn.query(
-        'INSERT INTO movement_history (asset_id, from_location_id, to_location_id, notes) VALUES (?, ?, NULL, ?)',
+        'INSERT INTO movement_history (asset_id, from_location_id, to_location_id, notes) VALUES (?, NULL, ?, ?)',
         [id, locationId, 'Initial placement']
       );
 

@@ -6,6 +6,7 @@ const db = require('../db');
 const {
   parsePriv,
   parseAssetPrivileges,
+  groupAttrFilters,
   buildAssetWhereClause,
   expandWithSubLocations,
   filterAttributesByPrivilege,
@@ -85,15 +86,15 @@ function assetRowInScope(authz, row) {
 
 async function assetMatchesAttrFilters(authz, assetId) {
   if (!authz?.attrFilters?.length) return true;
-  for (const f of authz.attrFilters) {
+  for (const g of groupAttrFilters(authz.attrFilters)) {
     const [rows] = await db.query(
       `SELECT 1 FROM asset_attribute_values aav
        JOIN asset_type_attributes ata ON aav.attribute_id = ata.id
        WHERE aav.asset_id = ?
          AND LOWER(ata.name) = LOWER(?)
-         AND LOWER(aav.value) = LOWER(?)
+         AND LOWER(aav.value) IN (${g.values.map(() => 'LOWER(?)').join(',')})
        LIMIT 1`,
-      [assetId, f.attribute_name, f.value]
+      [assetId, g.attribute_name, ...g.values]
     );
     if (!rows.length) return false;
   }

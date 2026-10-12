@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Search } from 'lucide-react';
 import { getMovements, getAssetDropdown } from '../api';
 import { toastApiFailure } from '../apiErrorHandling';
+import { movementCells } from '../utils/movementDisplay';
 
 const PAGE_SIZES = [25, 50, 100, 500];
 
@@ -156,8 +157,8 @@ export default function Movements() {
                   <td>{rangeStart + i}</td>
                   <td>{m.asset_name}</td>
                   <td><code>{m.rfid_tag}</code></td>
-                  <td>{m.from_location || '—'}</td>
-                  <td>{m.to_location || '—'}</td>
+                  <td>{movementCells(m).from}</td>
+                  <td>{movementCells(m).to}</td>
                   <td>{movedAt.toLocaleString()}</td>
                   <td style={{ color: isCurrentLocation ? '#7c8cf8' : '#555', fontSize: 13, fontWeight: isCurrentLocation ? 500 : 400 }}>
                     {isCurrentLocation ? `${duration.trim()} (now)` : duration.trim()}

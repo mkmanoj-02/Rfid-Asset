@@ -31,6 +31,42 @@ function parseAssetPrivileges(val) {
   }
 }
 
+/**
+ * Group attribute privilege entries by attribute name.
+ * Values for the same attribute are OR-ed; different attributes are AND-ed.
+ * @returns {Array<{ attribute_name: string, values: string[] }>}
+ */
+function groupAttrFilters(attrFilters) {
+  const groups = new Map();
+  for (const f of attrFilters || []) {
+    const name = String(f.attribute_name || '').trim();
+    const value = f.value != null ? String(f.value).trim() : '';
+    if (!name || !value) continue;
+    const key = name.toLowerCase();
+    if (!groups.has(key)) groups.set(key, { attribute_name: name, values: [] });
+    const g = groups.get(key);
+    if (!g.values.some((v) => v.toLowerCase() === value.toLowerCase())) g.values.push(value);
+  }
+  return [...groups.values()];
+}
+
+/** One EXISTS condition per attribute (values matched with IN, case-insensitive). */
+function buildAttrFilterConditions(attrFilters, alias = 'a') {
+  const conditions = [];
+  const params = [];
+  for (const g of groupAttrFilters(attrFilters)) {
+    conditions.push(`EXISTS (
+        SELECT 1 FROM asset_attribute_values aav
+        JOIN asset_type_attributes ata ON aav.attribute_id = ata.id
+        WHERE aav.asset_id = ${alias}.id
+          AND LOWER(ata.name) = LOWER(?)
+          AND LOWER(aav.value) IN (${g.values.map(() => 'LOWER(?)').join(',')})
+      )`);
+    params.push(g.attribute_name, ...g.values);
+  }
+  return { conditions, params };
+}
+
 /** Names allowed when user has asset_privileges; null = no restriction. */
 function getPrivilegedAttributeNameSet(authz) {
   if (!authz?.attrFilters?.length) return null;
@@ -98,16 +134,9 @@ function buildAssetWhereClause(scope = {}) {
     params.push(...scope.typeIds);
   }
   if (!skip.has('attr') && scope.attrFilters?.length) {
-    for (const f of scope.attrFilters) {
-      conditions.push(`EXISTS (
-        SELECT 1 FROM asset_attribute_values aav
-        JOIN asset_type_attributes ata ON aav.attribute_id = ata.id
-        WHERE aav.asset_id = ${alias}.id
-          AND LOWER(ata.name) = LOWER(?)
-          AND LOWER(aav.value) = LOWER(?)
-      )`);
-      params.push(f.attribute_name, f.value);
-    }
+    const attr = buildAttrFilterConditions(scope.attrFilters, alias);
+    conditions.push(...attr.conditions);
+    params.push(...attr.params);
   }
 
   const sql = conditions.length ? conditions.join(' AND ') : '';
@@ -117,6 +146,8 @@ function buildAssetWhereClause(scope = {}) {
 module.exports = {
   parsePriv,
   parseAssetPrivileges,
+  groupAttrFilters,
+  buildAttrFilterConditions,
   expandWithSubLocations,
   buildAssetWhereClause,
   getPrivilegedAttributeNameSet,

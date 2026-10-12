@@ -103,8 +103,8 @@ function inventoryMissingExportSections(body) {
   const missing = formatAssetRowsForExport(missingRaw);
   const columns = INVENTORY_MISSING_EXPORT_COLUMNS;
   return [
-    { name: 'In Stock', title: 'In Stock (movement in period)', columns, rows: inventory },
-    { name: 'Missing Assets', title: 'Missing (no movement in period)', columns, rows: missing },
+    { name: 'In Stock', title: 'In Stock (not marked missing)', columns, rows: inventory },
+    { name: 'Missing Assets', title: 'Missing (inventory status: missing)', columns, rows: missing },
   ];
 }
 
@@ -234,7 +234,7 @@ function DashboardReports() {
       {/* ── Inventory vs Missing ── */}
       <ReportCard
         title="Inventory vs Missing"
-        subtitle={`With movement in range vs none (${rangeLabel})`}
+        subtitle="Current inventory status (same as Dashboard)"
         onExcel={() => exportInventoryMissingExcel(
           inventoryMissing,
           'inventory-vs-missing',

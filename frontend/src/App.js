@@ -29,6 +29,7 @@ import UnassignedTags    from './pages/UnassignedTags';
 import { AuthProvider, useAuth } from './AuthContext';
 import { ToastProvider }         from './Toast';
 import ToastRouteSync            from './ToastRouteSync';
+import SelectEnhancer            from './components/SelectEnhancer';
 import './App.css';
 
 /* ─── Design tokens (theme-aware sidebar chrome) ─────────────── */
@@ -552,6 +553,7 @@ export default function App() {
         <ToastProvider>
           <BrowserRouter>
             <ToastRouteSync />
+            <SelectEnhancer />
             <Routes>
               <Route
                 path="/login"

@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
+import ConfirmModal from '../components/ConfirmModal';
 import {
-  getTagTypes, createTagType, updateTagType, deleteTagType,
+  getTagTypes, createTagType, updateTagType, deleteTagType, bulkDeleteTagTypes,
   getTagRecommendations, saveTagRecommendation, deleteTagRecommendation,
   getAssetTypes
 } from '../api';
@@ -28,8 +29,60 @@ function TagTypesTab() {
     });
   }, [items, searchQuery]);
 
-  const load = () => getTagTypes().then(r => setItems(r.data)).catch((e) => toastApiFailure(e, 'Tag types'));
+  const [checkedIds, setCheckedIds] = useState(() => new Set());
+  const [confirmBulk, setConfirmBulk] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const selectAllRef = useRef(null);
+
+  const load = () => getTagTypes().then(r => {
+    setItems(r.data);
+    const ids = new Set(r.data.map((t) => t.id));
+    setCheckedIds((cur) => new Set([...cur].filter((id) => ids.has(id))));
+  }).catch((e) => toastApiFailure(e, 'Tag types'));
   useEffect(() => { load(); }, []);
+
+  const visibleCheckedCount = filteredItems.filter((t) => checkedIds.has(t.id)).length;
+  const allVisibleChecked = filteredItems.length > 0 && visibleCheckedCount === filteredItems.length;
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = visibleCheckedCount > 0 && !allVisibleChecked;
+    }
+  }, [visibleCheckedCount, allVisibleChecked]);
+
+  const toggleChecked = (id) => {
+    setCheckedIds((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllVisible = () => {
+    setCheckedIds((cur) => {
+      const next = new Set(cur);
+      if (allVisibleChecked) filteredItems.forEach((t) => next.delete(t.id));
+      else filteredItems.forEach((t) => next.add(t.id));
+      return next;
+    });
+  };
+
+  const bulkRemove = async () => {
+    const ids = [...checkedIds];
+    if (!ids.length || deleting) return;
+    setDeleting(true);
+    try {
+      const { data } = await bulkDeleteTagTypes(ids);
+      showToast(data?.message || `${ids.length} tag type(s) deleted`, 'success');
+      setCheckedIds(new Set());
+      setConfirmBulk(false);
+      load();
+    } catch (e) {
+      toastApiFailure(e, 'Tag types');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const openAdd = () => { setForm({ name: '', description: '' }); setEditing(null); setError(''); setModal(true); };
   const openEdit = (item) => { setForm({ name: item.name, description: item.description || '' }); setEditing(item.id); setError(''); setModal(true); };
@@ -56,6 +109,7 @@ function TagTypesTab() {
     try {
       await deleteTagType(id);
       showToast('Tag type deleted', 'success');
+      setCheckedIds((cur) => { const next = new Set(cur); next.delete(id); return next; });
       load();
     } catch (e) {
       toastApiFailure(e, 'Tag types');
@@ -83,11 +137,44 @@ function TagTypesTab() {
           <button className="btn btn-primary btn-sm" onClick={openAdd}>+ Add Tag Type</button>
         </div>
       </div>
+      {checkedIds.size > 0 && (
+        <div className="master-list-bulk" role="status" style={{ marginBottom: 12, borderRadius: 8, border: '1px solid #bfdbfe', fontSize: 13 }}>
+          <span>{checkedIds.size} selected</span>
+          <button className="btn btn-danger btn-sm" onClick={() => setConfirmBulk(true)} disabled={deleting}>
+            Delete selected
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={() => setCheckedIds(new Set())} disabled={deleting}>
+            Clear
+          </button>
+        </div>
+      )}
       <table>
-        <thead><tr><th>S.No</th><th>Name</th><th>Description</th><th>Actions</th></tr></thead>
+        <thead>
+          <tr>
+            <th style={{ width: 40 }}>
+              <input
+                ref={selectAllRef}
+                type="checkbox"
+                checked={allVisibleChecked}
+                onChange={toggleAllVisible}
+                disabled={filteredItems.length === 0}
+                aria-label="Select all tag types"
+              />
+            </th>
+            <th>S.No</th><th>Name</th><th>Description</th><th>Actions</th>
+          </tr>
+        </thead>
         <tbody>
           {filteredItems.map((item, i) => (
-            <tr key={item.id}>
+            <tr key={item.id} style={checkedIds.has(item.id) ? { background: '#f5f3ff' } : undefined}>
+              <td>
+                <input
+                  type="checkbox"
+                  checked={checkedIds.has(item.id)}
+                  onChange={() => toggleChecked(item.id)}
+                  aria-label={`Select ${item.name}`}
+                />
+              </td>
               <td>{i + 1}</td>
               <td><strong>{item.name}</strong></td>
               <td style={{ color: '#888', fontSize: 13 }}>{item.description || '—'}</td>
@@ -98,13 +185,24 @@ function TagTypesTab() {
             </tr>
           ))}
           {items.length === 0 && (
-            <tr><td colSpan={4} style={{ textAlign: 'center', color: '#aaa', padding: 24 }}>No tag types yet</td></tr>
+            <tr><td colSpan={5} style={{ textAlign: 'center', color: '#aaa', padding: 24 }}>No tag types yet</td></tr>
           )}
           {items.length > 0 && filteredItems.length === 0 && (
-            <tr><td colSpan={4} style={{ textAlign: 'center', color: '#aaa', padding: 24 }}>No tag types match your search</td></tr>
+            <tr><td colSpan={5} style={{ textAlign: 'center', color: '#aaa', padding: 24 }}>No tag types match your search</td></tr>
           )}
         </tbody>
       </table>
+
+      {confirmBulk && (
+        <ConfirmModal
+          title="Delete tag types"
+          message={`Delete ${checkedIds.size} selected tag type${checkedIds.size !== 1 ? 's' : ''}? This cannot be undone.`}
+          subMessage="Assets using these tag types will have their Tag Type cleared."
+          confirmLabel={deleting ? 'Deleting…' : 'Delete'}
+          onConfirm={bulkRemove}
+          onCancel={() => { if (!deleting) setConfirmBulk(false); }}
+        />
+      )}
 
       {modal && (
         <div className="modal-overlay">
